@@ -1,11 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, fonts, spacing, borderRadius } from '../constants';
-import { useAuthStore } from '../store';
+import { fonts, spacing, borderRadius } from '../constants';
 import { useTheme } from '../hooks';
 
 // Screens
@@ -29,37 +27,28 @@ import {
 import { CategoryScreen } from '../screens/category';
 import { PaymentScreen } from '../screens/payment';
 
-// Tab Navigator
 const Tab = createBottomTabNavigator();
-
-// Stack Navigators
 const HomeStack = createNativeStackNavigator();
 const WalletStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 const SellStack = createNativeStackNavigator();
 
-// Home Stack Navigator
 const HomeStackNavigator = () => (
   <HomeStack.Navigator screenOptions={{ headerShown: false }}>
     <HomeStack.Screen name="HomeMain" component={HomeScreen} />
-    <HomeStack.Screen
-      name="AuctionDetail"
-      component={AuctionDetailScreen as any}
-    />
+    <HomeStack.Screen name="AuctionDetail" component={AuctionDetailScreen as any} />
     <HomeStack.Screen name="SearchScreen" component={SearchScreen} />
     <HomeStack.Screen name="Notifications" component={NotificationsScreen} />
     <HomeStack.Screen name="Category" component={CategoryScreen as any} />
   </HomeStack.Navigator>
 );
 
-// Wallet Stack Navigator
 const WalletStackNavigator = () => (
   <WalletStack.Navigator screenOptions={{ headerShown: false }}>
     <WalletStack.Screen name="WalletMain" component={WalletScreen} />
   </WalletStack.Navigator>
 );
 
-// Profile Stack Navigator
 const ProfileStackNavigator = () => (
   <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
     <ProfileStack.Screen name="ProfileMain" component={ProfileScreen} />
@@ -71,7 +60,6 @@ const ProfileStackNavigator = () => (
   </ProfileStack.Navigator>
 );
 
-// Sell Stack Navigator
 const SellStackNavigator = () => (
   <SellStack.Navigator screenOptions={{ headerShown: false }}>
     <SellStack.Screen name="SellMain" component={SellScreen} />
@@ -93,20 +81,32 @@ const TabIcon = ({
   name: TabIconName;
   focused: boolean;
 }) => {
-  const { colors: themeColors } = useTheme();
+  const { colors, mode } = useTheme();
+  const filled = name.replace('-outline', '') as TabIconName;
 
   return (
-    <View style={[styles.tabIconContainer, focused && styles.tabIconFocused]}>
-      <Ionicons
-        name={focused ? `${name.replace('-outline', '')}` as TabIconName : name}
-        size={21}
-        color={focused ? themeColors.primary : themeColors.textMuted}
-      />
+    <View style={styles.tabIconWrap}>
+      <View
+        style={[
+          styles.tabIconContainer,
+          focused && {
+            backgroundColor: colors.primary + (mode === 'dark' ? '22' : '14'),
+          },
+        ]}
+      >
+        <Ionicons
+          name={focused ? (filled as any) : name}
+          size={21}
+          color={focused ? colors.primary : colors.textMuted}
+        />
+      </View>
+      {focused && mode === 'dark' && (
+        <View style={[styles.activeDot, { backgroundColor: colors.primary }]} />
+      )}
     </View>
   );
 };
 
-// Main Tab Navigator
 export const MainNavigator: React.FC = () => {
   const { colors: themeColors, mode } = useTheme();
 
@@ -117,41 +117,46 @@ export const MainNavigator: React.FC = () => {
         tabBarStyle: [
           styles.tabBar,
           {
-            backgroundColor: themeColors.surface,
+            backgroundColor:
+              mode === 'dark' ? themeColors.surface : themeColors.backgroundLight,
             borderColor: themeColors.border,
           },
         ],
         tabBarActiveTintColor: themeColors.primary,
         tabBarInactiveTintColor: themeColors.textMuted,
-        tabBarLabelStyle: [
-          styles.tabLabel,
-          { color: themeColors.textMuted },
-        ],
+        tabBarLabelStyle: styles.tabLabel,
       }}
     >
       <Tab.Screen
         name="Home"
         component={HomeStackNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="home-outline" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="home-outline" focused={focused} />
+          ),
         }}
       />
       <Tab.Screen
         name="Search"
         component={SearchScreen}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="search-outline" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="search-outline" focused={focused} />
+          ),
         }}
       />
       <Tab.Screen
         name="Sell"
         component={SellStackNavigator}
         options={{
-          tabBarIcon: ({ focused }) => (
+          tabBarIcon: () => (
             <View
               style={[
                 styles.sellButton,
-                { backgroundColor: themeColors.primary, shadowColor: themeColors.primary },
+                {
+                  backgroundColor: themeColors.primary,
+                  shadowColor: themeColors.primary,
+                },
               ]}
             >
               <Ionicons name="add" size={28} color="#FFFFFF" />
@@ -164,14 +169,18 @@ export const MainNavigator: React.FC = () => {
         name="Wallet"
         component={WalletStackNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="wallet-outline" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="wallet-outline" focused={focused} />
+          ),
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileStackNavigator}
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="person-outline" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="person-outline" focused={focused} />
+          ),
         }}
       />
     </Tab.Navigator>
@@ -179,10 +188,6 @@ export const MainNavigator: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   tabBar: {
     borderTopWidth: 1,
     height: 84,
@@ -202,8 +207,11 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: fonts.sizes.xs,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
     marginTop: 2,
+  },
+  tabIconWrap: {
+    alignItems: 'center',
   },
   tabIconContainer: {
     width: 40,
@@ -212,41 +220,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tabIconFocused: {
-    backgroundColor: colors.primary + '14',
+  activeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 2,
   },
   sellButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.lg,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
     elevation: 8,
-  },
-  placeholder: {
-    flex: 1,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  placeholderText: {
-    fontSize: 64,
-    marginBottom: spacing.lg,
-  },
-  placeholderTitle: {
-    color: colors.text,
-    fontSize: fonts.sizes.xxl,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
-  },
-  placeholderSubtitle: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
-    textAlign: 'center',
   },
 });

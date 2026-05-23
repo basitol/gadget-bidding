@@ -25,6 +25,7 @@ export type ThemeColors = {
   warning: string;
   error: string;
   info: string;
+  live: string;
 
   // Gradients
   gradientStart: string;
@@ -66,6 +67,7 @@ export const darkColors: ThemeColors = {
   warning: '#F59E0B',
   error: '#EF4444',
   info: '#3B82F6',
+  live: '#F97316',
 
   // Gradients
   gradientStart: '#1D4ED8',
@@ -101,6 +103,7 @@ export const lightColors: ThemeColors = {
   warning: '#F59E0B',
   error: '#EF4444',
   info: '#3B82F6',
+  live: '#F97316',
 
   gradientStart: '#2563EB',
   gradientEnd: '#0EA5E9',

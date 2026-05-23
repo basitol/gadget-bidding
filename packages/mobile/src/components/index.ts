@@ -6,4 +6,5 @@ export { CountdownTimer } from './CountdownTimer';
 export { WalletCard } from './WalletCard';
 export { EmptyState } from './EmptyState';
 export { LoadingScreen } from './LoadingScreen';
+export * from './home';
 export * from './auth';

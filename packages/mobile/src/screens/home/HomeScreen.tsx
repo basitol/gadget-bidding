@@ -1,13 +1,11 @@
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  FlatList,
   TouchableOpacity,
   RefreshControl,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,16 +18,18 @@ import {
   GADGET_CATEGORIES,
   ThemeColors,
 } from '../../constants';
-import { AuctionCard, Card, EmptyState, LoadingScreen } from '../../components';
+import {
+  EmptyState,
+  LoadingScreen,
+  BrandLogo,
+  LiveAuctionCard,
+  QuickActionGrid,
+  QuickAction,
+} from '../../components';
 import { useTheme } from '../../hooks';
 import { useAuctionStore, useAuthStore, useWalletStore } from '../../store';
-import { formatCompactCurrency } from '../../utils';
+import { formatCurrency, formatCompactCurrency } from '../../utils';
 import { Auction } from '../../types';
-
-const { width } = Dimensions.get('window');
-
-const HERO_ACCENT_DARK = ['#0B1220', '#060A14', '#030712'];
-const HERO_ACCENT_LIGHT = ['#FFFFFF', '#F8FAFF', '#F8FAFC'];
 
 type RootStackParamList = {
   Home: undefined;
@@ -43,6 +43,15 @@ type HomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
 };
 
+const LIGHT_CATEGORIES = [
+  { id: 'all', label: 'All', icon: 'apps-outline' as const },
+  ...GADGET_CATEGORIES.slice(0, 4).map(c => ({
+    id: c.id,
+    label: c.label.replace('Smartphones', 'Phones').replace('Smartwatches', 'Watches'),
+    icon: c.icon as keyof typeof Ionicons.glyphMap,
+  })),
+];
+
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const { mode, colors } = useTheme();
   const { user } = useAuthStore();
@@ -50,7 +59,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const {
     auctions,
     hotAuctions,
-    endingSoon,
     isLoading,
     isRefreshing,
     fetchAuctions,
@@ -59,7 +67,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     refresh,
   } = useAuctionStore();
 
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
+
+  const liveAuctions = hotAuctions.length > 0 ? hotAuctions : auctions;
+  const firstName = user?.full_name?.split(' ')[0] || 'there';
+  const initials = user?.full_name
+    ? user.full_name
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : 'GB';
 
   useEffect(() => {
     loadData();
@@ -83,15 +103,162 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     navigation.navigate('AuctionDetail', { auctionId: auction.id });
   };
 
-  const handleCategoryPress = (category: { id: string; label: string }) => {
-    navigation.navigate('Category', {
-      category: category.id,
-      label: category.label,
-    });
+  const navigateTab = (tab: string, screen?: string) => {
+    navigation.getParent()?.navigate(tab as never, screen ? { screen } : undefined);
   };
+
+  const quickActions: QuickAction[] = [
+    {
+      id: 'browse',
+      title: 'Browse Auctions',
+      subtitle: `${auctions.length} live now`,
+      icon: 'hammer-outline',
+      color: colors.primary,
+      live: auctions.length > 0,
+      onPress: () => navigation.navigate('Search'),
+    },
+    {
+      id: 'bids',
+      title: 'My Bids',
+      subtitle: 'Track active bids',
+      icon: 'hand-left-outline',
+      color: colors.warning,
+      onPress: () => navigateTab('Profile', 'MyBids'),
+    },
+    {
+      id: 'orders',
+      title: 'My Orders',
+      subtitle: 'Awaiting delivery',
+      icon: 'cube-outline',
+      color: colors.success,
+      onPress: () => navigateTab('Profile', 'Orders'),
+    },
+    {
+      id: 'notifications',
+      title: 'Notifications',
+      subtitle: 'Stay in the loop',
+      icon: 'notifications-outline',
+      color: colors.accent,
+      onPress: () => navigation.navigate('Notifications'),
+    },
+  ];
 
   if (isLoading && auctions.length === 0) {
     return <LoadingScreen message="Loading auctions..." />;
+  }
+
+  if (mode === 'dark') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.darkHeader}>
+            <BrandLogo showTagline size="sm" />
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => navigation.navigate('Notifications')}
+              >
+                <Ionicons name="notifications-outline" size={20} color={colors.text} />
+                <View style={styles.notifDot} />
+              </TouchableOpacity>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.greetingRow}>
+            <Text style={styles.greeting}>
+              Good {new Date().getHours() < 12 ? 'morning' : 'evening'} 👋{' '}
+              {user?.full_name || firstName}
+            </Text>
+            {user?.is_verified && (
+              <View style={styles.verifiedPill}>
+                <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.darkWalletCard}>
+            <View style={styles.gridPattern} />
+            <Text style={styles.walletLabel}>WALLET BALANCE</Text>
+            <Text style={styles.walletAmount}>
+              {formatCurrency(wallet?.balance || 0)}
+            </Text>
+            <View style={styles.ngnBadge}>
+              <Text style={styles.ngnBadgeText}>NGN Account</Text>
+            </View>
+            {(wallet?.held_balance || 0) > 0 && (
+              <View style={styles.escrowRow}>
+                <Ionicons name="lock-closed-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.escrowText}>
+                  Escrow Hold: {formatCurrency(wallet?.held_balance || 0)}
+                </Text>
+              </View>
+            )}
+            <View style={styles.walletActions}>
+              <TouchableOpacity
+                style={styles.fundBtn}
+                onPress={() => navigateTab('Wallet')}
+              >
+                <Ionicons name="add" size={18} color="#FFFFFF" />
+                <Text style={styles.fundBtnText}>Fund Wallet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.withdrawBtn}
+                onPress={() => navigateTab('Wallet')}
+              >
+                <Ionicons name="arrow-up-outline" size={18} color={colors.text} />
+                <Text style={styles.withdrawBtnText}>Withdraw</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.socialProof}>
+            <Text style={styles.socialTitle}>
+              50,000+ Nigerians bidding right now
+            </Text>
+            <Text style={styles.socialSubtitle}>
+              Over {formatCompactCurrency(6200000000)} in gadgets sold since 2022
+            </Text>
+            <View style={styles.ticker}>
+              <Text style={styles.tickerText} numberOfLines={1}>
+                iPhone 15 Pro sold for ₦680K · MacBook Air M2 sold for ₦920K
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.sectionTitleDark}>Quick Actions</Text>
+          <QuickActionGrid actions={quickActions} />
+
+          {liveAuctions.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitleDark}>Live Now</Text>
+              {liveAuctions.slice(0, 2).map(auction => (
+                <LiveAuctionCard
+                  key={auction.id}
+                  auction={auction}
+                  onPress={() => handleAuctionPress(auction)}
+                />
+              ))}
+            </View>
+          )}
+
+          <View style={styles.bottomPadding} />
+        </ScrollView>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -105,246 +272,130 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             tintColor={colors.primary}
           />
         }
+        contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.heroWrap}>
-          <LinearGradient
-            colors={
-              mode === 'dark'
-                ? HERO_ACCENT_DARK
-                : HERO_ACCENT_LIGHT
-            }
-            style={styles.hero}
-          >
-            <View style={styles.heroGlowTop} />
-            <View style={styles.heroGlowBottom} />
-
-            <View style={styles.header}>
-              <View style={styles.headerLeft}>
-                <View style={styles.logoSmall}>
-                  <Text style={styles.logoSmallText}>GB</Text>
-                </View>
-                <View>
-                  <Text style={styles.kicker}>Lagos, Nigeria</Text>
-                  <Text style={styles.greeting}>
-                    Good {new Date().getHours() < 12 ? 'morning' : 'evening'},
-                    {' '}
-                    {user?.full_name?.split(' ')[0] || 'there'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.headerActions}>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('Search')}
-                  style={styles.headerIconButton}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="search-outline" size={20} color={colors.text} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('Notifications')}
-                  style={styles.headerIconButton}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons
-                    name="notifications-outline"
-                    size={20}
-                    color={colors.text}
-                  />
-                  <View style={styles.notificationBadge} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.heroCopy}>
-              <Text style={styles.heroHeadline}>
-                Bid on premium gadgets with confidence.
-              </Text>
-              <Text style={styles.heroSubtitle}>
-                Clean auctions, fast bidding, and wallet-backed security in one place.
-              </Text>
-            </View>
-
+        <View style={styles.lightHeader}>
+          <BrandLogo size="sm" />
+          <View style={styles.headerActions}>
             <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => navigation.navigate('Wallet')}
-            >
-              <LinearGradient
-                colors={mode === 'dark' ? ['#2563EB', '#1D4ED8'] : ['#2563EB', '#0EA5E9']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.walletCard}
-              >
-                <View>
-                  <Text style={styles.walletLabel}>Wallet balance</Text>
-                  <Text style={styles.walletBalance}>
-                    {formatCompactCurrency(wallet?.balance || 0)}
-                  </Text>
-                  <Text style={styles.walletHint}>Tap to fund or withdraw</Text>
-                </View>
-                <View style={styles.walletIcon}>
-                  <Ionicons name="wallet-outline" size={24} color="#FFFFFF" />
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity
+              style={styles.iconBtn}
               onPress={() => navigation.navigate('Search')}
-              activeOpacity={0.85}
-              style={styles.searchOuter}
             >
-              <Card style={styles.searchCard}>
-                <View style={styles.searchInner}>
-                  <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-                  <Text style={styles.searchPlaceholder}>
-                    Search gadgets, brands, models...
-                  </Text>
-                </View>
-              </Card>
+              <Ionicons name="search-outline" size={20} color={colors.text} />
             </TouchableOpacity>
-
-            <View style={styles.metricsRow}>
-              <Card style={styles.metricCard}>
-                <Ionicons name="flame-outline" size={18} color={colors.primary} />
-                <Text style={styles.metricValue}>{hotAuctions.length}</Text>
-                <Text style={styles.metricLabel}>Hot live</Text>
-              </Card>
-              <Card style={styles.metricCard}>
-                <Ionicons name="time-outline" size={18} color={colors.primary} />
-                <Text style={styles.metricValue}>{endingSoon.length}</Text>
-                <Text style={styles.metricLabel}>Ending soon</Text>
-              </Card>
-              <Card style={styles.metricCard}>
-                <Ionicons name="grid-outline" size={18} color={colors.primary} />
-                <Text style={styles.metricValue}>{auctions.length}</Text>
-                <Text style={styles.metricLabel}>Live auctions</Text>
-              </Card>
-            </View>
-          </LinearGradient>
-        </View>
-
-        {/* Categories */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionEyebrow}>Browse</Text>
-              <Text style={styles.sectionTitle}>Categories</Text>
-            </View>
-            <TouchableOpacity>
-              <Text style={styles.seeAll}>See all</Text>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => navigation.navigate('Notifications')}
+            >
+              <Ionicons name="notifications-outline" size={20} color={colors.text} />
+              <View style={styles.notifDotBlue} />
             </TouchableOpacity>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesContainer}
-          >
-            {GADGET_CATEGORIES.map(category => (
+        </View>
+
+        <View style={styles.livePillRow}>
+          <View style={styles.orangePill}>
+            <View style={styles.orangeDot} />
+            <Text style={styles.orangePillText}>
+              {auctions.length} auctions live now
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.lightHeadline}>
+          Nigeria's #1 Gadget{'\n'}Auction Marketplace
+        </Text>
+
+        <View style={styles.statsRow}>
+          {[
+            { value: '50K+', label: 'Bidders' },
+            { value: '₦6.2B', label: 'Sold' },
+            { value: '4.9★', label: 'Rating' },
+          ].map(stat => (
+            <View key={stat.label} style={styles.statPill}>
+              <Text style={styles.statValue}>{stat.value}</Text>
+              <Text style={styles.statLabel}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryRow}
+        >
+          {LIGHT_CATEGORIES.map(cat => {
+            const active = selectedCategory === cat.id;
+            return (
               <TouchableOpacity
-                key={category.id}
-                onPress={() => handleCategoryPress(category)}
-                activeOpacity={0.7}
+                key={cat.id}
+                style={[styles.categoryChip, active && styles.categoryChipActive]}
+                onPress={() => {
+                  setSelectedCategory(cat.id);
+                  if (cat.id !== 'all') {
+                    navigation.navigate('Category', {
+                      category: cat.id,
+                      label: cat.label,
+                    });
+                  }
+                }}
               >
-                <Card style={styles.categoryItem}>
-                  <View style={styles.categoryIcon}>
-                    <Ionicons name={category.icon as any} size={20} color={colors.primary} />
-                  </View>
-                  <Text style={styles.categoryLabel}>{category.label}</Text>
-                </Card>
+                <Ionicons
+                  name={cat.icon}
+                  size={16}
+                  color={active ? '#FFFFFF' : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    active && styles.categoryChipTextActive,
+                  ]}
+                >
+                  {cat.label}
+                </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitleLight}>Live Auctions</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Search')}>
+            <Text style={styles.seeAll}>See all</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Hot Auctions */}
-        {hotAuctions.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>Featured</Text>
-                <Text style={styles.sectionTitle}>Hot Auctions</Text>
-              </View>
-              <TouchableOpacity>
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={hotAuctions}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.featuredList}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <AuctionCard
-                  auction={item}
-                  onPress={() => handleAuctionPress(item)}
-                  variant="featured"
-                />
-              )}
+        {liveAuctions.length === 0 ? (
+          <EmptyState
+            icon="hammer-outline"
+            title="No Live Auctions"
+            message="Check back soon for new gadget auctions."
+          />
+        ) : (
+          liveAuctions.slice(0, 3).map(auction => (
+            <LiveAuctionCard
+              key={auction.id}
+              auction={auction}
+              onPress={() => handleAuctionPress(auction)}
             />
-          </View>
+          ))
         )}
 
-        {/* Ending Soon */}
-        {endingSoon.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionEyebrow}>Urgent</Text>
-                <Text style={styles.sectionTitle}>Ending Soon</Text>
-              </View>
-              <TouchableOpacity>
-                <Text style={styles.seeAll}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={endingSoon}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalList}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <View style={styles.listItemWrapper}>
-                  <AuctionCard
-                    auction={item}
-                    onPress={() => handleAuctionPress(item)}
-                    variant="list"
-                  />
-                </View>
-              )}
-            />
-          </View>
-        )}
-
-        {/* All Auctions */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionEyebrow}>Discover</Text>
-              <Text style={styles.sectionTitle}>All Auctions</Text>
-            </View>
-            <TouchableOpacity>
-              <Text style={styles.seeAll}>Filter</Text>
-            </TouchableOpacity>
-          </View>
-          {auctions.length === 0 ? (
-            <EmptyState
-              icon="search-outline"
-              title="No Auctions Found"
-              message="There are no active auctions at the moment. Check back later!"
-            />
-          ) : (
-            <View style={styles.gridContainer}>
-              {auctions.map(auction => (
-                <AuctionCard
-                  key={auction.id}
-                  auction={auction}
-                  onPress={() => handleAuctionPress(auction)}
-                  variant="grid"
-                />
-              ))}
-            </View>
-          )}
-        </View>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('Search')}
+        >
+          <LinearGradient
+            colors={[colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.browseCta}
+          >
+            <Ionicons name="hammer-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.browseCtaText}>Browse Live Auctions</Text>
+            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+          </LinearGradient>
+        </TouchableOpacity>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -354,277 +405,349 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
 const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
   StyleSheet.create({
-  container: {
+    container: {
       flex: 1,
       backgroundColor: colors.background,
     },
-    heroWrap: {
+    scrollContent: {
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.md,
     },
-    hero: {
+    lightHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
+    darkHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    iconBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: mode === 'dark' ? colors.surface : colors.backgroundLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    notifDot: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.error,
+    },
+    notifDotBlue: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.primary,
+    },
+    avatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.primary + '22',
+      borderWidth: 1,
+      borderColor: colors.primary + '44',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarText: {
+      color: colors.primary,
+      fontFamily: fonts.bold,
+      fontSize: fonts.sizes.sm,
+    },
+    greetingRow: {
+      marginBottom: spacing.lg,
+    },
+    greeting: {
+      color: colors.text,
+      fontSize: 24,
+      fontFamily: fonts.extraBold,
+      letterSpacing: -0.8,
+      marginBottom: spacing.sm,
+    },
+    verifiedPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.success + '18',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+      borderRadius: borderRadius.full,
+    },
+    verifiedText: {
+      color: colors.success,
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.semiBold,
+    },
+    darkWalletCard: {
+      backgroundColor: colors.surface,
       borderRadius: borderRadius.xxl,
-      padding: spacing.lg,
+      padding: spacing.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: spacing.lg,
       overflow: 'hidden',
+    },
+    gridPattern: {
+      ...StyleSheet.absoluteFillObject,
+      opacity: 0.06,
+      backgroundColor: colors.primary,
+    },
+    walletLabel: {
+      color: colors.textMuted,
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.semiBold,
+      letterSpacing: 1,
+      marginBottom: spacing.xs,
+    },
+    walletAmount: {
+      color: colors.text,
+      fontSize: 36,
+      fontFamily: fonts.extraBold,
+      letterSpacing: -1.2,
+      marginBottom: spacing.sm,
+    },
+    ngnBadge: {
+      alignSelf: 'flex-start',
+      backgroundColor: colors.primary + '18',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: borderRadius.full,
+      marginBottom: spacing.md,
+    },
+    ngnBadgeText: {
+      color: colors.primaryLight,
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.semiBold,
+    },
+    escrowRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginBottom: spacing.lg,
+    },
+    escrowText: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
+    },
+    walletActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    fundBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.primary,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
+    },
+    fundBtnText: {
+      color: '#FFFFFF',
+      fontFamily: fonts.semiBold,
+      fontSize: fonts.sizes.sm,
+    },
+    withdrawBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.surfaceLight,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
       borderWidth: 1,
       borderColor: colors.border,
     },
-  heroGlowTop: {
-      position: 'absolute',
-      top: -60,
-      right: -40,
-      width: 180,
-      height: 180,
-      borderRadius: 90,
-      backgroundColor:
-        mode === 'dark' ? 'rgba(37,99,235,0.10)' : 'rgba(37,99,235,0.06)',
+    withdrawBtnText: {
+      color: colors.text,
+      fontFamily: fonts.semiBold,
+      fontSize: fonts.sizes.sm,
     },
-    heroGlowBottom: {
-      position: 'absolute',
-      bottom: -70,
-      left: -50,
-      width: 220,
-      height: 220,
-      borderRadius: 110,
-      backgroundColor:
-        mode === 'dark' ? 'rgba(14,165,233,0.06)' : 'rgba(14,165,233,0.04)',
+    socialProof: {
+      backgroundColor: colors.surface,
+      borderRadius: borderRadius.xl,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: spacing.xl,
     },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  logoSmall: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: mode === 'dark' ? colors.surface : colors.backgroundLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  logoSmallText: {
-    fontSize: 15,
-    fontFamily: fonts.extraBold,
-    color: colors.text,
-    letterSpacing: -1,
-  },
-  kicker: {
-    color: colors.textMuted,
-    fontSize: fonts.sizes.xs,
-    fontFamily: fonts.medium,
-    marginBottom: 4,
-  },
-  greeting: {
-    fontSize: 24,
-    fontFamily: fonts.extraBold,
-    color: colors.text,
-    letterSpacing: -1,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  headerIconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: mode === 'dark' ? colors.surface : colors.backgroundLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.error,
-    borderWidth: 2,
-    borderColor: mode === 'dark' ? colors.surface : colors.surface,
-  },
-  heroCopy: {
-    marginTop: spacing.xl,
-    marginBottom: spacing.lg,
-  },
-  heroHeadline: {
-    color: colors.text,
-    fontSize: 30,
-    lineHeight: 34,
-    fontFamily: fonts.extraBold,
-    letterSpacing: -1.2,
-  },
-  heroSubtitle: {
-    marginTop: spacing.sm,
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
-    lineHeight: 22,
-    fontFamily: fonts.regular,
-    maxWidth: 320,
-  },
-  walletCard: {
-    borderRadius: borderRadius.xxl,
-    padding: spacing.lg,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  walletLabel: {
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: fonts.sizes.sm,
-    fontFamily: fonts.medium,
-    marginBottom: 6,
-  },
-  walletBalance: {
-    color: '#FFFFFF',
-    fontSize: 34,
-    fontFamily: fonts.extraBold,
-    letterSpacing: -1.3,
-  },
-  walletHint: {
-    marginTop: 4,
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: fonts.sizes.xs,
-    fontFamily: fonts.medium,
-  },
-  walletIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchOuter: {
-    marginTop: spacing.lg,
-  },
-  searchCard: {
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.xl,
-  },
-  searchInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  searchPlaceholder: {
-    color: colors.textMuted,
-    fontSize: fonts.sizes.md,
-    fontFamily: fonts.medium,
-  },
-  section: {
-    marginTop: spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  sectionEyebrow: {
-    color: colors.textMuted,
-    fontSize: fonts.sizes.xs,
-    fontFamily: fonts.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontFamily: fonts.bold,
-    color: colors.text,
-    letterSpacing: -0.8,
-  },
-  seeAll: {
-    color: colors.primary,
-    fontSize: fonts.sizes.md,
-    fontFamily: fonts.semiBold,
-  },
-  categoriesContainer: {
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
-    paddingBottom: spacing.xs,
-  },
-  categoryItem: {
-    alignItems: 'center',
-    width: 92,
-    minHeight: 118,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    justifyContent: 'space-between',
-  },
-  categoryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: mode === 'dark' ? colors.backgroundLight : colors.surfaceLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  categoryLabel: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.xs,
-    lineHeight: 14,
-    textAlign: 'center',
-    fontFamily: fonts.semiBold,
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  metricCard: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    alignItems: 'flex-start',
-    gap: 4,
-    borderRadius: borderRadius.xl,
-  },
-  metricValue: {
-    color: colors.text,
-    fontFamily: fonts.bold,
-    fontSize: 18,
-    letterSpacing: -0.6,
-  },
-  metricLabel: {
-    color: colors.textMuted,
-    fontFamily: fonts.medium,
-    fontSize: fonts.sizes.xs,
-  },
-  featuredList: {
-    paddingHorizontal: spacing.lg,
-  },
-  horizontalList: {
-    paddingHorizontal: spacing.lg,
-  },
-  listItemWrapper: {
-    width: width - spacing.lg * 2 - spacing.md,
-    marginRight: spacing.md,
-  },
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: spacing.lg,
-    justifyContent: 'space-between',
-  },
-  bottomPadding: {
-    height: 100,
-  },
+    socialTitle: {
+      color: colors.text,
+      fontFamily: fonts.bold,
+      fontSize: fonts.sizes.md,
+      marginBottom: 4,
+    },
+    socialSubtitle: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
+      marginBottom: spacing.md,
+    },
+    ticker: {
+      backgroundColor: colors.backgroundLight,
+      borderRadius: borderRadius.lg,
+      padding: spacing.sm,
+    },
+    tickerText: {
+      color: colors.textMuted,
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.medium,
+    },
+    sectionTitleDark: {
+      color: colors.text,
+      fontSize: fonts.sizes.xl,
+      fontFamily: fonts.bold,
+      marginBottom: spacing.md,
+      letterSpacing: -0.5,
+    },
+    section: {
+      marginTop: spacing.xl,
+    },
+    livePillRow: {
+      marginBottom: spacing.md,
+    },
+    orangePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: spacing.xs,
+      backgroundColor: colors.live + '18',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.full,
+      borderWidth: 1,
+      borderColor: colors.live + '33',
+    },
+    orangeDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.live,
+    },
+    orangePillText: {
+      color: colors.live,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.semiBold,
+    },
+    lightHeadline: {
+      color: colors.text,
+      fontSize: 34,
+      lineHeight: 38,
+      fontFamily: fonts.extraBold,
+      letterSpacing: -1.2,
+      marginBottom: spacing.lg,
+    },
+    statsRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginBottom: spacing.xl,
+    },
+    statPill: {
+      flex: 1,
+      backgroundColor: colors.backgroundLight,
+      borderRadius: borderRadius.xl,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.sm,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    statValue: {
+      color: colors.text,
+      fontFamily: fonts.bold,
+      fontSize: fonts.sizes.md,
+    },
+    statLabel: {
+      color: colors.textMuted,
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.medium,
+      marginTop: 2,
+    },
+    categoryRow: {
+      gap: spacing.sm,
+      paddingBottom: spacing.xs,
+      marginBottom: spacing.xl,
+    },
+    categoryChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.backgroundLight,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    categoryChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    categoryChipText: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.semiBold,
+    },
+    categoryChipTextActive: {
+      color: '#FFFFFF',
+    },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
+    sectionTitleLight: {
+      color: colors.text,
+      fontSize: 22,
+      fontFamily: fonts.bold,
+      letterSpacing: -0.5,
+    },
+    seeAll: {
+      color: colors.primary,
+      fontSize: fonts.sizes.md,
+      fontFamily: fonts.semiBold,
+    },
+    browseCta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.lg,
+      borderRadius: borderRadius.xl,
+      marginTop: spacing.md,
+    },
+    browseCtaText: {
+      color: '#FFFFFF',
+      fontSize: fonts.sizes.lg,
+      fontFamily: fonts.bold,
+      flex: 1,
+      textAlign: 'center',
+    },
+    bottomPadding: {
+      height: 110,
+    },
   });
