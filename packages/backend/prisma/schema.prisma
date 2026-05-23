@@ -1,0 +1,444 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============== ENUMS ==============
+
+enum UserRole {
+  user
+  bidder
+  seller
+  admin
+
+  @@map("user_role")
+}
+
+enum AuctionStatus {
+  scheduled
+  active
+  ended
+  cancelled
+
+  @@map("auction_status")
+}
+
+enum GadgetStatus {
+  pending
+  approved
+  rejected
+  sold
+
+  @@map("gadget_status")
+}
+
+enum GadgetCondition {
+  new
+  like_new
+  excellent
+  good
+  fair
+
+  @@map("gadget_condition")
+}
+
+enum BidStatus {
+  active
+  outbid
+  withdrawn
+  won
+
+  @@map("bid_status")
+}
+
+enum BidHoldStatus {
+  held
+  released
+  charged
+
+  @@map("bid_hold_status")
+}
+
+enum PaymentStatus {
+  pending
+  completed
+  failed
+  refunded
+
+  @@map("payment_status")
+}
+
+enum FulfillmentStatus {
+  pending
+  processing
+  shipped
+  delivered
+  cancelled
+
+  @@map("fulfillment_status")
+}
+
+enum TransactionType {
+  deposit
+  withdrawal
+  bid_hold
+  bid_release
+  purchase
+  sale
+  refund
+  fee
+
+  @@map("transaction_type")
+}
+
+enum TransactionStatus {
+  pending
+  completed
+  failed
+
+  @@map("transaction_status")
+}
+
+// ============== MODELS ==============
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phoneNumber   String    @unique @map("phone_number") @db.VarChar(15)
+  email         String?   @unique @db.VarChar(255)
+  fullName      String    @map("full_name") @db.VarChar(255)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  avatarUrl     String?   @map("avatar_url")
+  role          String?   @default("user") @db.VarChar(20)
+  isVerified    Boolean?  @default(false) @map("is_verified")
+  isActive      Boolean?  @default(true) @map("is_active")
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  wallet             Wallet?
+  gadgets            Gadget[]
+  sellerAuctions     Auction[]       @relation("SellerAuctions")
+  wonAuctions        Auction[]       @relation("WonAuctions")
+  bids               Bid[]
+  buyerOrders        Order[]         @relation("BuyerOrders")
+  sellerOrders       Order[]         @relation("SellerOrders")
+  raisedDisputes     Dispute[]       @relation("RaisedDisputes")
+  resolvedDisputes   Dispute[]       @relation("ResolvedDisputes")
+  notifications      Notification[]
+  refreshTokens      RefreshToken[]
+  verifications      UserVerification[]
+  paymentTransactions PaymentTransaction[]
+  auditLogs          AuditLog[]
+
+  @@index([phoneNumber], map: "idx_users_phone")
+  @@index([role], map: "idx_users_role")
+  @@map("users")
+}
+
+model Wallet {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?   @unique @map("user_id") @db.Uuid
+  balance   Decimal?  @default(0.00) @db.Decimal(15, 2)
+  currency  String?   @default("NGN") @db.VarChar(3)
+  isLocked  Boolean?  @default(false) @map("is_locked")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  user         User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+  bidHolds     BidHold[]
+
+  @@index([userId], map: "idx_wallets_user")
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  walletId      String?   @map("wallet_id") @db.Uuid
+  transactionType String  @map("transaction_type") @db.VarChar(20)
+  amount        Decimal   @db.Decimal(15, 2)
+  balanceBefore Decimal   @map("balance_before") @db.Decimal(15, 2)
+  balanceAfter  Decimal   @map("balance_after") @db.Decimal(15, 2)
+  reference     String?   @unique @db.VarChar(255)
+  description   String?
+  metadata      Json?
+  status        String?   @default("pending") @db.VarChar(20)
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  wallet              Wallet?              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  paymentTransactions PaymentTransaction[]
+
+  @@index([status], map: "idx_wallet_transactions_status")
+  @@index([walletId, createdAt(sort: Desc)], map: "idx_wallet_transactions_wallet")
+  @@map("wallet_transactions")
+}
+
+model GadgetCategory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @db.VarChar(100)
+  slug        String    @unique @db.VarChar(100)
+  description String?
+  iconUrl     String?   @map("icon_url")
+  isActive    Boolean?  @default(true) @map("is_active")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  gadgets Gadget[]
+
+  @@index([slug], map: "idx_gadget_categories_slug")
+  @@map("gadget_categories")
+}
+
+model Gadget {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId        String?   @map("seller_id") @db.Uuid
+  categoryId      String?   @map("category_id") @db.Uuid
+  title           String    @db.VarChar(255)
+  description     String
+  brand           String?   @db.VarChar(100)
+  model           String?   @db.VarChar(100)
+  condition       String    @db.VarChar(20)
+  specifications  Json?
+  images          String[]
+  status          String?   @default("pending") @db.VarChar(20)
+  rejectionReason String?   @map("rejection_reason")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  seller   User?           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category GadgetCategory? @relation(fields: [categoryId], references: [id])
+  auction  Auction?
+
+  @@index([categoryId], map: "idx_gadgets_category")
+  @@index([sellerId, status], map: "idx_gadgets_seller")
+  @@index([status], map: "idx_gadgets_status")
+  @@map("gadgets")
+}
+
+model Auction {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gadgetId          String?   @unique @map("gadget_id") @db.Uuid
+  sellerId          String?   @map("seller_id") @db.Uuid
+  startingPrice     Decimal   @map("starting_price") @db.Decimal(15, 2)
+  reservePrice      Decimal?  @map("reserve_price") @db.Decimal(15, 2)
+  currentPrice      Decimal   @map("current_price") @db.Decimal(15, 2)
+  bidIncrement      Decimal?  @default(100.00) @map("bid_increment") @db.Decimal(15, 2)
+  buyNowPrice       Decimal?  @map("buy_now_price") @db.Decimal(15, 2)
+  startTime         DateTime  @map("start_time") @db.Timestamp(6)
+  endTime           DateTime  @map("end_time") @db.Timestamp(6)
+  status            String?   @default("scheduled") @db.VarChar(20)
+  winnerId          String?   @map("winner_id") @db.Uuid
+  totalBids         Int?      @default(0) @map("total_bids")
+  autoExtendEnabled Boolean?  @default(true) @map("auto_extend_enabled")
+  autoExtendMinutes Int?      @default(5) @map("auto_extend_minutes")
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  gadget Gadget? @relation(fields: [gadgetId], references: [id], onDelete: Cascade)
+  seller User?   @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+  winner User?   @relation("WonAuctions", fields: [winnerId], references: [id])
+  bids   Bid[]
+  order  Order?
+
+  @@index([sellerId], map: "idx_auctions_seller")
+  @@index([status, startTime, endTime], map: "idx_auctions_status")
+  @@map("auctions")
+}
+
+model Bid {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auctionId String?   @map("auction_id") @db.Uuid
+  bidderId  String?   @map("bidder_id") @db.Uuid
+  amount    Decimal   @db.Decimal(15, 2)
+  bidTime   DateTime? @default(now()) @map("bid_time") @db.Timestamp(6)
+  isWinning Boolean?  @default(false) @map("is_winning")
+  isAutoBid Boolean?  @default(false) @map("is_auto_bid")
+  status    String?   @default("active") @db.VarChar(20)
+
+  // Relations
+  auction Auction? @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  User?    @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+  bidHold BidHold?
+
+  @@unique([auctionId, bidderId, amount], map: "unique_bid_per_user_price")
+  @@index([auctionId, bidTime(sort: Desc)], map: "idx_bids_auction_time")
+  @@index([bidderId, bidTime(sort: Desc)], map: "idx_bids_bidder")
+  @@index([status], map: "idx_bids_status")
+  @@map("bids")
+}
+
+model BidHold {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bidId      String?   @unique @map("bid_id") @db.Uuid
+  walletId   String?   @map("wallet_id") @db.Uuid
+  amount     Decimal   @db.Decimal(15, 2)
+  status     String?   @default("held") @db.VarChar(20)
+  releasedAt DateTime? @map("released_at") @db.Timestamp(6)
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  bid    Bid?    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  wallet Wallet? @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([bidId], map: "idx_bid_holds_bid")
+  @@index([walletId, status], map: "idx_bid_holds_wallet")
+  @@map("bid_holds")
+}
+
+model Order {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auctionId         String?   @unique @map("auction_id") @db.Uuid
+  buyerId           String?   @map("buyer_id") @db.Uuid
+  sellerId          String?   @map("seller_id") @db.Uuid
+  orderNumber       String    @unique @map("order_number") @db.VarChar(50)
+  totalAmount       Decimal   @map("total_amount") @db.Decimal(15, 2)
+  platformFee       Decimal?  @default(0.00) @map("platform_fee") @db.Decimal(15, 2)
+  sellerPayout      Decimal   @map("seller_payout") @db.Decimal(15, 2)
+  paymentStatus     String?   @default("pending") @map("payment_status") @db.VarChar(20)
+  fulfillmentStatus String?   @default("pending") @map("fulfillment_status") @db.VarChar(20)
+  shippingAddress   Json?     @map("shipping_address")
+  trackingNumber    String?   @map("tracking_number") @db.VarChar(100)
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  auction  Auction?  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  buyer    User?     @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller   User?     @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade)
+  disputes Dispute[]
+
+  @@index([buyerId, paymentStatus], map: "idx_orders_buyer")
+  @@index([orderNumber], map: "idx_orders_order_number")
+  @@index([sellerId, fulfillmentStatus], map: "idx_orders_seller")
+  @@index([paymentStatus, fulfillmentStatus], map: "idx_orders_status")
+  @@map("orders")
+}
+
+model Dispute {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId     String?   @map("order_id") @db.Uuid
+  raisedBy    String?   @map("raised_by") @db.Uuid
+  disputeType String    @map("dispute_type") @db.VarChar(50)
+  description String
+  evidence    Json?
+  status      String?   @default("open") @db.VarChar(20)
+  resolution  String?
+  resolvedBy  String?   @map("resolved_by") @db.Uuid
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamp(6)
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  order    Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  raiser   User?  @relation("RaisedDisputes", fields: [raisedBy], references: [id], onDelete: Cascade)
+  resolver User?  @relation("ResolvedDisputes", fields: [resolvedBy], references: [id])
+
+  @@index([orderId], map: "idx_disputes_order")
+  @@index([raisedBy], map: "idx_disputes_raised_by")
+  @@index([status, createdAt(sort: Desc)], map: "idx_disputes_status")
+  @@map("disputes")
+}
+
+model Notification {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String?   @map("user_id") @db.Uuid
+  notificationType String    @map("notification_type") @db.VarChar(50)
+  title            String    @db.VarChar(255)
+  message          String
+  data             Json?
+  channels         String[]  @default(["push"]) @db.VarChar(20)
+  isRead           Boolean?  @default(false) @map("is_read")
+  sentAt           DateTime? @map("sent_at") @db.Timestamp(6)
+  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([notificationType], map: "idx_notifications_type")
+  @@index([userId, isRead, createdAt(sort: Desc)], map: "idx_notifications_user")
+  @@map("notifications")
+}
+
+model RefreshToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?   @map("user_id") @db.Uuid
+  token      String    @unique
+  deviceInfo Json?     @map("device_info")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamp(6)
+  isRevoked  Boolean?  @default(false) @map("is_revoked")
+  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_refresh_tokens_user")
+  @@map("refresh_tokens")
+}
+
+model UserVerification {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String?   @map("user_id") @db.Uuid
+  verificationType String    @map("verification_type") @db.VarChar(20)
+  verificationCode String?   @map("verification_code") @db.VarChar(10)
+  isVerified       Boolean?  @default(false) @map("is_verified")
+  expiresAt        DateTime? @map("expires_at") @db.Timestamp(6)
+  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_verifications_user")
+  @@map("user_verifications")
+}
+
+model PaymentTransaction {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId              String?   @map("user_id") @db.Uuid
+  walletTransactionId String?   @map("wallet_transaction_id") @db.Uuid
+  paymentGateway      String    @map("payment_gateway") @db.VarChar(20)
+  gatewayReference    String?   @unique @map("gateway_reference") @db.VarChar(255)
+  amount              Decimal   @db.Decimal(15, 2)
+  currency            String?   @default("NGN") @db.VarChar(3)
+  paymentMethod       String?   @map("payment_method") @db.VarChar(50)
+  status              String?   @default("pending") @db.VarChar(20)
+  gatewayResponse     Json?     @map("gateway_response")
+  metadata            Json?
+  createdAt           DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt           DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletTransaction WalletTransaction? @relation(fields: [walletTransactionId], references: [id])
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_payment_transactions_status")
+  @@index([userId], map: "idx_payment_transactions_user")
+  @@map("payment_transactions")
+}
+
+model AuditLog {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String?   @map("user_id") @db.Uuid
+  action       String    @db.VarChar(100)
+  resourceType String?   @map("resource_type") @db.VarChar(50)
+  resourceId   String?   @map("resource_id") @db.Uuid
+  changes      Json?
+  ipAddress    String?   @map("ip_address") @db.Inet
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([action, createdAt(sort: Desc)], map: "idx_audit_logs_action")
+  @@index([resourceType, resourceId], map: "idx_audit_logs_resource")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_audit_logs_user")
+  @@map("audit_logs")
+}
