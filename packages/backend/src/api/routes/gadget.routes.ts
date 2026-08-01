@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import * as gadgetController from '../controllers/gadget.controller';
 import * as gadgetValidator from '../validators/gadget.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
@@ -7,6 +7,9 @@ import {
   sellerOnly,
   adminOnly,
 } from '../middlewares/auth.middleware';
+import { uploadGadgetImages } from '../middlewares/upload.middleware';
+import { uploadRateLimiter } from '../middlewares/security.middleware';
+import { sendError } from '../../utils/response';
 
 const router: Router = Router();
 
@@ -16,6 +19,35 @@ const router: Router = Router();
  * @access  Public
  */
 router.get('/categories', gadgetController.getCategories);
+
+/**
+ * @route   POST /api/v1/gadgets/upload-images
+ * @desc    Upload gadget photos (local device images)
+ * @access  Private (Sellers only)
+ */
+router.post(
+  '/upload-images',
+  authenticate,
+  sellerOnly,
+  uploadRateLimiter,
+  (req: Request, res: Response, next: NextFunction) => {
+    uploadGadgetImages(req, res, (err: unknown) => {
+      if (!err) {
+        next();
+        return;
+      }
+      const uploadError = err as { code?: string; message?: string };
+      if (uploadError.code === 'LIMIT_FILE_SIZE') {
+        return sendError(res, 'Each image must be 5MB or smaller', 400);
+      }
+      if (uploadError.code === 'LIMIT_FILE_COUNT') {
+        return sendError(res, 'Too many images uploaded', 400);
+      }
+      return sendError(res, uploadError.message || 'Image upload failed', 400);
+    });
+  },
+  gadgetController.uploadImages
+);
 
 /**
  * @route   GET /api/v1/gadgets/my-listings

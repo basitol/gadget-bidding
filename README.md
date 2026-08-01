@@ -41,7 +41,7 @@ gadget-bidding/
 │   ├── backend/          # Node.js API server
 │   ├── mobile/           # React Native app
 │   ├── shared/           # Shared TypeScript types
-│   └── admin-dashboard/  # Admin panel (future)
+│   └── admin-dashboard/  # Admin backoffice (Vite)
 ├── pnpm-workspace.yaml
 └── package.json
 ```
@@ -138,6 +138,8 @@ SOCKET_URL=http://localhost:3000
 - gadget_categories, gadgets
 - auctions, bids, bid_holds
 - orders, notifications, disputes, audit_logs
+
+User roles: `bidder` (buyer), `seller`, `admin`
 
 See `packages/backend/src/database/schema.sql` for full schema.
 

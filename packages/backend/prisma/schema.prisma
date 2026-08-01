@@ -7,10 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
+// Prisma enums document allowed VARCHAR values stored in PostgreSQL (see schema.sql CHECK constraints).
+
 // ============== ENUMS ==============
 
 enum UserRole {
-  user
   bidder
   seller
   admin
@@ -31,6 +32,7 @@ enum GadgetStatus {
   pending
   approved
   rejected
+  listed
   sold
 
   @@map("gadget_status")
@@ -42,6 +44,7 @@ enum GadgetCondition {
   excellent
   good
   fair
+  for_parts
 
   @@map("gadget_condition")
 }
@@ -75,6 +78,8 @@ enum PaymentStatus {
 enum FulfillmentStatus {
   pending
   processing
+  sent_to_backoffice
+  received_by_backoffice
   shipped
   delivered
   cancelled
@@ -106,33 +111,35 @@ enum TransactionStatus {
 // ============== MODELS ==============
 
 model User {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  phoneNumber   String    @unique @map("phone_number") @db.VarChar(15)
-  email         String?   @unique @db.VarChar(255)
-  fullName      String    @map("full_name") @db.VarChar(255)
-  passwordHash  String    @map("password_hash") @db.VarChar(255)
-  avatarUrl     String?   @map("avatar_url")
-  role          String?   @default("user") @db.VarChar(20)
-  isVerified    Boolean?  @default(false) @map("is_verified")
-  isActive      Boolean?  @default(true) @map("is_active")
-  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt     DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phoneNumber  String    @unique @map("phone_number") @db.VarChar(15)
+  email        String?   @unique @db.VarChar(255)
+  fullName     String    @map("full_name") @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  avatarUrl    String?   @map("avatar_url")
+  role         String    @default("bidder") @db.VarChar(20)
+  isVerified   Boolean?  @default(false) @map("is_verified")
+  isActive     Boolean?  @default(true) @map("is_active")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  wallet             Wallet?
-  gadgets            Gadget[]
-  sellerAuctions     Auction[]       @relation("SellerAuctions")
-  wonAuctions        Auction[]       @relation("WonAuctions")
-  bids               Bid[]
-  buyerOrders        Order[]         @relation("BuyerOrders")
-  sellerOrders       Order[]         @relation("SellerOrders")
-  raisedDisputes     Dispute[]       @relation("RaisedDisputes")
-  resolvedDisputes   Dispute[]       @relation("ResolvedDisputes")
-  notifications      Notification[]
-  refreshTokens      RefreshToken[]
-  verifications      UserVerification[]
+  wallet              Wallet?
+  gadgets             Gadget[]
+  sellerAuctions      Auction[]            @relation("SellerAuctions")
+  wonAuctions         Auction[]            @relation("WonAuctions")
+  bids                Bid[]
+  buyerOrders         Order[]              @relation("BuyerOrders")
+  sellerOrders        Order[]              @relation("SellerOrders")
+  raisedDisputes      Dispute[]            @relation("RaisedDisputes")
+  resolvedDisputes    Dispute[]            @relation("ResolvedDisputes")
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+  verifications       UserVerification[]
   paymentTransactions PaymentTransaction[]
-  auditLogs          AuditLog[]
+  auditLogs           AuditLog[]
+  supportThreads      SupportThread[]      @relation("SellerSupportThreads")
+  supportMessages     SupportMessage[]
 
   @@index([phoneNumber], map: "idx_users_phone")
   @@index([role], map: "idx_users_role")
@@ -158,17 +165,17 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  walletId      String?   @map("wallet_id") @db.Uuid
-  transactionType String  @map("transaction_type") @db.VarChar(20)
-  amount        Decimal   @db.Decimal(15, 2)
-  balanceBefore Decimal   @map("balance_before") @db.Decimal(15, 2)
-  balanceAfter  Decimal   @map("balance_after") @db.Decimal(15, 2)
-  reference     String?   @unique @db.VarChar(255)
-  description   String?
-  metadata      Json?
-  status        String?   @default("pending") @db.VarChar(20)
-  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  walletId        String?   @map("wallet_id") @db.Uuid
+  transactionType String    @map("transaction_type") @db.VarChar(20)
+  amount          Decimal   @db.Decimal(15, 2)
+  balanceBefore   Decimal   @map("balance_before") @db.Decimal(15, 2)
+  balanceAfter    Decimal   @map("balance_after") @db.Decimal(15, 2)
+  reference       String?   @unique @db.VarChar(255)
+  description     String?
+  metadata        Json?
+  status          String?   @default("pending") @db.VarChar(20)
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
   // Relations
   wallet              Wallet?              @relation(fields: [walletId], references: [id], onDelete: Cascade)
@@ -302,8 +309,11 @@ model Order {
   totalAmount       Decimal   @map("total_amount") @db.Decimal(15, 2)
   platformFee       Decimal?  @default(0.00) @map("platform_fee") @db.Decimal(15, 2)
   sellerPayout      Decimal   @map("seller_payout") @db.Decimal(15, 2)
+  payoutStatus      String?   @default("pending") @map("payout_status") @db.VarChar(20)
+  payoutPaidAt      DateTime? @map("payout_paid_at") @db.Timestamp(6)
+  payoutReference   String?   @map("payout_reference") @db.VarChar(100)
   paymentStatus     String?   @default("pending") @map("payment_status") @db.VarChar(20)
-  fulfillmentStatus String?   @default("pending") @map("fulfillment_status") @db.VarChar(20)
+  fulfillmentStatus String?   @default("pending") @map("fulfillment_status") @db.VarChar(50)
   shippingAddress   Json?     @map("shipping_address")
   trackingNumber    String?   @map("tracking_number") @db.VarChar(100)
   createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
@@ -318,6 +328,7 @@ model Order {
   @@index([buyerId, paymentStatus], map: "idx_orders_buyer")
   @@index([orderNumber], map: "idx_orders_order_number")
   @@index([sellerId, fulfillmentStatus], map: "idx_orders_seller")
+  @@index([payoutStatus, fulfillmentStatus], map: "idx_orders_payout")
   @@index([paymentStatus, fulfillmentStatus], map: "idx_orders_status")
   @@map("orders")
 }
@@ -441,4 +452,38 @@ model AuditLog {
   @@index([resourceType, resourceId], map: "idx_audit_logs_resource")
   @@index([userId, createdAt(sort: Desc)], map: "idx_audit_logs_user")
   @@map("audit_logs")
+}
+
+model SupportThread {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId           String    @map("seller_id") @db.Uuid
+  status             String    @default("open") @db.VarChar(20)
+  subject            String?   @db.VarChar(255)
+  lastMessageAt      DateTime? @default(now()) @map("last_message_at") @db.Timestamp(6)
+  lastMessagePreview String?   @map("last_message_preview") @db.VarChar(255)
+  sellerUnreadCount  Int       @default(0) @map("seller_unread_count")
+  adminUnreadCount   Int       @default(0) @map("admin_unread_count")
+  createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  seller   User             @relation("SellerSupportThreads", fields: [sellerId], references: [id], onDelete: Cascade)
+  messages SupportMessage[]
+
+  @@index([sellerId, status], map: "idx_support_threads_seller")
+  @@index([status, lastMessageAt(sort: Desc)], map: "idx_support_threads_status")
+  @@map("support_threads")
+}
+
+model SupportMessage {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  threadId  String    @map("thread_id") @db.Uuid
+  senderId  String    @map("sender_id") @db.Uuid
+  body      String
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  thread SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt], map: "idx_support_messages_thread")
+  @@map("support_messages")
 }

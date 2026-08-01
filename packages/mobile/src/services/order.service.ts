@@ -1,6 +1,8 @@
 import api, { getErrorMessage } from './api';
 import {
   Order,
+  Dispute,
+  DisputeType,
   ShippingAddress,
   ApiResponse,
   PaginatedResponse,
@@ -47,9 +49,10 @@ class OrderService {
     address: ShippingAddress
   ): Promise<ApiResponse<Order>> {
     try {
-      const response = await api.put(`/orders/${orderId}/shipping-address`, {
-        shipping_address: address,
-      });
+      const response = await api.put(
+        `/orders/${orderId}/shipping-address`,
+        address
+      );
       return response.data;
     } catch (error) {
       throw new Error(getErrorMessage(error));
@@ -74,7 +77,7 @@ class OrderService {
   ): Promise<ApiResponse<Order>> {
     try {
       const response = await api.put(`/orders/${orderId}/fulfillment`, {
-        fulfillment_status: status,
+        status,
         tracking_number: trackingNumber,
       });
       return response.data;
@@ -93,14 +96,30 @@ class OrderService {
     }
   }
 
+  // Open a dispute for an order
+  async createDispute(
+    orderId: string,
+    disputeType: DisputeType,
+    description: string
+  ): Promise<ApiResponse<Dispute>> {
+    try {
+      const response = await api.post(`/orders/${orderId}/disputes`, {
+        dispute_type: disputeType,
+        description,
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
   // Get order stats
   async getOrderStats(): Promise<
     ApiResponse<{
-      total_orders: number;
-      pending_orders: number;
-      completed_orders: number;
-      total_spent: number;
-      total_earned: number;
+      totalPurchases: number;
+      totalSales: number;
+      pendingOrders: number;
+      completedOrders: number;
     }>
   > {
     try {

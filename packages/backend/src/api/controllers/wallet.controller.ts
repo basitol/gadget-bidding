@@ -4,6 +4,7 @@ import * as walletService from '../../services/wallet/wallet.service';
 import * as paystackService from '../../services/payment/paystack.service';
 import { query } from '../../config/database';
 import logger from '../../utils/logger';
+import { safeErrorMessage, USER_ERRORS } from '../../utils/errors';
 
 /**
  * Get wallet balance
@@ -25,9 +26,9 @@ export const getBalance = async (req: Request, res: Response) => {
       currency: wallet?.currency || 'NGN',
       is_locked: wallet?.is_locked || false,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Get balance error:', error);
-    sendError(res, error.message || 'Failed to get balance', 500);
+    sendError(res, safeErrorMessage(error, 'Failed to get balance'), 500);
   }
 };
 
@@ -51,9 +52,9 @@ export const getTransactions = async (req: Request, res: Response) => {
     );
 
     sendPaginated(res, transactions, page, limit, total);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Get transactions error:', error);
-    sendError(res, error.message || 'Failed to get transactions', 500);
+    sendError(res, safeErrorMessage(error, 'Failed to get transactions'), 500);
   }
 };
 
@@ -69,7 +70,6 @@ export const fundWallet = async (req: Request, res: Response) => {
 
     const { amount, email } = req.body;
 
-    // Initialize Paystack payment
     const paymentData = await paystackService.initializePayment(
       email,
       amount,
@@ -79,7 +79,6 @@ export const fundWallet = async (req: Request, res: Response) => {
       }
     );
 
-    // Store payment transaction
     await query(
       `INSERT INTO payment_transactions
        (user_id, payment_gateway, gateway_reference, amount, currency, status, metadata)
@@ -99,9 +98,9 @@ export const fundWallet = async (req: Request, res: Response) => {
       authorization_url: paymentData.authorization_url,
       reference: paymentData.reference,
     }, 'Payment initialized successfully');
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Fund wallet error:', error);
-    sendError(res, error.message || 'Failed to initialize payment', 500);
+    sendError(res, safeErrorMessage(error, 'Failed to initialize payment'), 500);
   }
 };
 
@@ -116,119 +115,67 @@ export const verifyPayment = async (req: Request, res: Response) => {
     }
 
     const { reference } = req.query as { reference: string };
+    if (!reference?.trim()) {
+      return sendError(res, 'Payment reference is required', 400);
+    }
 
-    // Verify with Paystack
     const verification = await paystackService.verifyPayment(reference);
 
     if (!verification.status) {
-      return sendError(res, 'Payment verification failed', 400);
+      return sendError(res, USER_ERRORS.PAYMENT_FAILED, 400);
     }
 
-    // Check if already processed
-    const existingTx = await query(
-      `SELECT * FROM payment_transactions
-       WHERE gateway_reference = $1 AND status = $2`,
-      [reference, 'success']
-    );
-
-    if (existingTx.length > 0) {
-      return sendSuccess(res, {
-        message: 'Payment already processed',
-        amount: verification.amount,
-      });
-    }
-
-    // Update payment transaction
-    await query(
-      `UPDATE payment_transactions
-       SET status = $1, gateway_response = $2, updated_at = NOW()
-       WHERE gateway_reference = $3`,
-      ['success', JSON.stringify(verification.gatewayResponse), reference]
-    );
-
-    // Credit wallet
-    await walletService.createDepositTransaction(
-      req.user.user_id,
-      verification.amount,
+    const result = await walletService.processWalletFundingFromPaystack({
+      userId: req.user.user_id,
       reference,
-      {
-        gateway: 'paystack',
-        payment_method: verification.gatewayResponse.channel,
-      }
-    );
+      amount: verification.amount,
+      gatewayResponse: verification.gatewayResponse,
+      source: 'verify',
+    });
 
     sendSuccess(res, {
-      message: 'Payment successful',
-      amount: verification.amount,
-      currency: verification.currency,
+      message: result.alreadyProcessed
+        ? USER_ERRORS.PAYMENT_ALREADY_PROCESSED
+        : 'Payment successful',
+      amount: result.amount,
+      currency: result.currency,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Verify payment error:', error);
-    sendError(res, error.message || 'Payment verification failed', 500);
+    const message =
+      error instanceof Error ? error.message : USER_ERRORS.PAYMENT_FAILED;
+    if (message === 'Payment reference not found') {
+      return sendError(res, USER_ERRORS.PAYMENT_NOT_FOUND, 404);
+    }
+    if (message === 'Payment reference does not belong to this account') {
+      return sendError(res, USER_ERRORS.PAYMENT_NOT_YOURS, 403);
+    }
+    if (message === 'Payment amount mismatch') {
+      return sendError(res, USER_ERRORS.PAYMENT_AMOUNT_MISMATCH, 400);
+    }
+    sendError(res, safeErrorMessage(error, USER_ERRORS.PAYMENT_FAILED), 500);
   }
 };
 
 /**
- * Withdraw funds
+ * Withdraw funds — disabled until Paystack transfers are wired.
  * POST /api/v1/wallet/withdraw
  */
-export const withdraw = async (req: Request, res: Response) => {
-  try {
-    if (!req.user) {
-      return sendError(res, 'User not authenticated', 401);
-    }
-
-    const { amount, bank_code, account_number, account_name } = req.body;
-
-    // Check available balance
-    const availableBalance = await walletService.getAvailableBalance(req.user.user_id);
-
-    if (availableBalance < amount) {
-      return sendError(
-        res,
-        `Insufficient balance. Available: ₦${availableBalance.toFixed(2)}`,
-        400
-      );
-    }
-
-    // Create withdrawal transaction
-    const transaction = await walletService.createWithdrawalTransaction(
-      req.user.user_id,
-      amount,
-      {
-        bank_code,
-        account_number,
-        account_name,
-      }
-    );
-
-    // Note: In production, you would initiate actual bank transfer here
-    // For now, we'll mark it as pending and process manually
-    logger.info(`Withdrawal requested: ${req.user.user_id} - ₦${amount}`);
-
-    sendSuccess(res, {
-      message: 'Withdrawal request submitted',
-      transaction_id: transaction.id,
-      amount,
-      status: 'pending',
-    }, 'Withdrawal will be processed within 24 hours');
-  } catch (error: any) {
-    logger.error('Withdraw error:', error);
-    sendError(res, error.message || 'Withdrawal failed', 500);
-  }
+export const withdraw = async (_req: Request, res: Response) => {
+  return sendError(res, USER_ERRORS.WITHDRAWALS_DISABLED, 503);
 };
 
 /**
  * List Nigerian banks
  * GET /api/v1/wallet/banks
  */
-export const listBanks = async (req: Request, res: Response) => {
+export const listBanks = async (_req: Request, res: Response) => {
   try {
     const banks = await paystackService.listBanks();
     sendSuccess(res, banks);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('List banks error:', error);
-    sendError(res, error.message || 'Failed to get banks', 500);
+    sendError(res, safeErrorMessage(error, 'Failed to get banks'), 500);
   }
 };
 
@@ -249,8 +196,8 @@ export const resolveAccount = async (req: Request, res: Response) => {
     );
 
     sendSuccess(res, accountDetails);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Resolve account error:', error);
-    sendError(res, error.message || 'Failed to resolve account', 400);
+    sendError(res, safeErrorMessage(error, 'Failed to resolve account'), 400);
   }
 };

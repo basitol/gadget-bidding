@@ -9,13 +9,14 @@ import logger from '../../utils/logger';
  */
 export const register = async (req: Request, res: Response) => {
   try {
-    const { phone_number, email, full_name, password } = req.body;
+    const { phone_number, email, full_name, password, account_type } = req.body;
 
     const result = await authService.registerUser({
       phone_number,
       email,
       full_name,
       password,
+      account_type,
     });
 
     sendSuccess(
@@ -59,11 +60,12 @@ export const verifyOTP = async (req: Request, res: Response) => {
  */
 export const login = async (req: Request, res: Response) => {
   try {
-    const { phone_number, password } = req.body;
+    const { phone_number, password, account_type } = req.body;
 
     const tokens = await authService.loginUser({
       phone_number,
       password,
+      account_type,
     });
 
     sendSuccess(res, tokens, 'Login successful');

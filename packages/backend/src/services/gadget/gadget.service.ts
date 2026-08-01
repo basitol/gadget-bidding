@@ -1,6 +1,12 @@
 import { query, transaction } from '../../config/database';
-import { Gadget, CreateGadgetRequest, GadgetStatus } from '@gadget-bidding/shared';
+import {
+  Gadget,
+  CreateGadgetRequest,
+  GadgetStatus,
+} from '@gadget-bidding/shared';
+import { normalizeMediaPaths } from '@gadget-bidding/shared';
 import logger from '../../utils/logger';
+import * as notificationService from '../notification/notification.service';
 
 /**
  * Create a new gadget listing
@@ -9,6 +15,8 @@ export const createGadget = async (
   sellerId: string,
   data: CreateGadgetRequest
 ): Promise<Gadget> => {
+  const initialStatus: GadgetStatus = 'pending';
+
   const result = await query(
     `INSERT INTO gadgets
      (seller_id, category_id, title, description, brand, model, condition, specifications, images, status)
@@ -23,12 +31,23 @@ export const createGadget = async (
       data.model || null,
       data.condition,
       JSON.stringify(data.specifications || {}),
-      data.images,
-      'pending', // Gadgets start as pending approval
+      normalizeMediaPaths(data.images),
+      initialStatus,
     ]
   );
 
-  logger.info(`Gadget created: ${result[0].id} by ${sellerId}`);
+  logger.info(
+    `Gadget created: ${result[0].id} by ${sellerId} (status=${initialStatus})`
+  );
+
+  notificationService
+    .notifyBackofficeGadgetSubmitted(result[0].id, result[0].title)
+    .catch(error => {
+      logger.error(
+        'Failed to notify backoffice about gadget submission:',
+        error
+      );
+    });
 
   return result[0];
 };
@@ -36,7 +55,9 @@ export const createGadget = async (
 /**
  * Get gadget by ID
  */
-export const getGadgetById = async (gadgetId: string): Promise<Gadget | null> => {
+export const getGadgetById = async (
+  gadgetId: string
+): Promise<Gadget | null> => {
   const result = await query(
     `SELECT g.*, gc.name as category_name, gc.slug as category_slug,
             u.full_name as seller_name, u.phone_number as seller_phone
@@ -56,6 +77,7 @@ export const getGadgetById = async (gadgetId: string): Promise<Gadget | null> =>
 export const getGadgets = async (filters: {
   category_id?: string;
   status?: GadgetStatus;
+  statuses?: GadgetStatus[];
   seller_id?: string;
   search?: string;
   condition?: string;
@@ -80,6 +102,10 @@ export const getGadgets = async (filters: {
   if (filters.status) {
     whereConditions.push(`g.status = $${paramIndex}`);
     params.push(filters.status);
+    paramIndex++;
+  } else if (filters.statuses?.length) {
+    whereConditions.push(`g.status = ANY($${paramIndex}::text[])`);
+    params.push(filters.statuses);
     paramIndex++;
   }
 

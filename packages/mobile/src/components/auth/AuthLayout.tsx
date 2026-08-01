@@ -8,16 +8,16 @@ import {
   Platform,
   TouchableOpacity,
   ViewStyle,
-  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius, shadows } from '../../constants';
+import { FadeInView } from '../FadeInView';
 
-const HERO_DARK = ['#030712', '#0A1628', '#0F1D32'];
-const HERO_LIGHT = ['#F8FAFC', '#EFF6FF', '#F8FAFC'];
+const HERO_DARK = ['#030712', '#0A1628', '#0F1D32'] as const;
+const HERO_LIGHT = ['#F8FAFC', '#EFF6FF', '#F8FAFC'] as const;
 const CONTENT_MAX_WIDTH = 420;
 
 interface AuthLayoutProps {
@@ -27,6 +27,7 @@ interface AuthLayoutProps {
   title?: string;
   subtitle?: string;
   showBrand?: boolean;
+  frameless?: boolean;
   contentStyle?: ViewStyle;
 }
 
@@ -37,10 +38,11 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
   title,
   subtitle,
   showBrand = false,
+  frameless = false,
   contentStyle,
 }) => {
   const { mode, colors } = useTheme();
-  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
 
   return (
@@ -52,17 +54,18 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
       <View style={styles.glowPrimary} />
       <View style={styles.glowSecondary} />
 
-      <SafeAreaView style={styles.safeArea}>
-        {onBack && (
-          <TouchableOpacity
-            onPress={onBack}
-            style={styles.backButton}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="arrow-back" size={20} color={colors.text} />
-          </TouchableOpacity>
-        )}
+      {onBack && (
+        <TouchableOpacity
+          onPress={onBack}
+          style={[styles.backButton, { top: insets.top + spacing.xxl }]}
+          activeOpacity={0.8}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="arrow-back" size={20} color={colors.text} />
+        </TouchableOpacity>
+      )}
 
+      <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
@@ -70,15 +73,15 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
           <ScrollView
             contentContainerStyle={[
               styles.scrollContent,
-              { minHeight: height * 0.88 },
               onBack ? styles.scrollContentWithBack : undefined,
               contentStyle,
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
             bounces={false}
           >
-            <View style={styles.centeredColumn}>
+            <FadeInView style={styles.centeredColumn} offset={16}>
               {showBrand && (
                 <View style={styles.brandSection}>
                   <LinearGradient
@@ -103,10 +106,14 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
                 </View>
               )}
 
-              <View style={styles.card}>{children}</View>
+              {frameless ? (
+                <View style={styles.framelessContent}>{children}</View>
+              ) : (
+                <View style={styles.card}>{children}</View>
+              )}
 
               {footer && <View style={styles.footer}>{footer}</View>}
-            </View>
+            </FadeInView>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -145,9 +152,8 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
     },
     backButton: {
       position: 'absolute',
-      top: spacing.sm,
       left: spacing.xl,
-      zIndex: 10,
+      zIndex: 20,
       width: 44,
       height: 44,
       borderRadius: borderRadius.full,
@@ -158,6 +164,7 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
       justifyContent: 'center',
       alignItems: 'center',
       ...shadows.sm,
+      elevation: 20,
     },
     keyboardView: {
       flex: 1,
@@ -169,7 +176,7 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
       paddingVertical: spacing.xxl,
     },
     scrollContentWithBack: {
-      paddingTop: spacing.xxxl + spacing.xl,
+      paddingTop: spacing.xxxl + spacing.xxl,
     },
     centeredColumn: {
       width: '100%',
@@ -192,20 +199,21 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
     },
     logoText: {
       fontSize: fonts.sizes.xxxl,
-      fontWeight: '800',
+      fontFamily: fonts.extraBold,
       color: '#FFFFFF',
-      letterSpacing: -1,
+      letterSpacing: 0,
     },
     brandName: {
       fontSize: fonts.sizes.xxxl,
-      fontWeight: '800',
+      fontFamily: fonts.extraBold,
       color: colors.text,
-      letterSpacing: -0.5,
+      letterSpacing: 0,
       marginBottom: spacing.xs,
       textAlign: 'center',
     },
     brandTagline: {
       fontSize: fonts.sizes.md,
+      fontFamily: fonts.regular,
       color: colors.textSecondary,
       textAlign: 'center',
       lineHeight: 22,
@@ -218,14 +226,15 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
     },
     title: {
       fontSize: fonts.sizes.xxl,
-      fontWeight: '700',
+      fontFamily: fonts.bold,
       color: colors.text,
-      letterSpacing: -0.5,
+      letterSpacing: 0,
       marginBottom: spacing.xs,
       textAlign: 'center',
     },
     subtitle: {
       fontSize: fonts.sizes.md,
+      fontFamily: fonts.regular,
       color: colors.textSecondary,
       lineHeight: 22,
       textAlign: 'center',
@@ -240,6 +249,9 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
       borderWidth: 1,
       borderColor: colors.border,
       ...shadows.md,
+    },
+    framelessContent: {
+      width: '100%',
     },
     footer: {
       width: '100%',

@@ -2,6 +2,21 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as gadgetService from '../../services/gadget/gadget.service';
 import logger from '../../utils/logger';
+import { safeErrorMessage } from '../../utils/errors';
+
+const PUBLIC_GADGET_STATUSES = ['approved', 'listed', 'sold'] as const;
+
+function canViewGadget(
+  gadget: { seller_id?: string; status?: string },
+  user?: { user_id: string; role: string }
+): boolean {
+  if (!gadget.status || PUBLIC_GADGET_STATUSES.includes(gadget.status as any)) {
+    return true;
+  }
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  return gadget.seller_id === user.user_id;
+}
 
 /**
  * Create a new gadget
@@ -41,10 +56,14 @@ export const getGadgetById = async (req: Request, res: Response) => {
       return sendError(res, 'Gadget not found', 404);
     }
 
+    if (!canViewGadget(gadget, req.user)) {
+      return sendError(res, 'Gadget not found', 404);
+    }
+
     sendSuccess(res, gadget);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Get gadget error:', error);
-    sendError(res, error.message || 'Failed to get gadget', 500);
+    sendError(res, safeErrorMessage(error, 'Failed to get gadget'), 500);
   }
 };
 
@@ -57,6 +76,9 @@ export const getGadgets = async (req: Request, res: Response) => {
     const filters = {
       category_id: req.query.category_id as string,
       status: req.query.status as any,
+      statuses: req.query.status
+        ? undefined
+        : ([...PUBLIC_GADGET_STATUSES] as any),
       seller_id: req.query.seller_id as string,
       condition: req.query.condition as any,
       search: req.query.search as string,
@@ -205,5 +227,44 @@ export const getCategories = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Get categories error:', error);
     sendError(res, error.message || 'Failed to get categories', 500);
+  }
+};
+
+/**
+ * Upload gadget images
+ * POST /api/v1/gadgets/upload-images
+ */
+export const uploadImages = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      return sendError(res, 'At least one image is required', 400);
+    }
+
+    const { buildUploadPath } = await import(
+      '../middlewares/upload.middleware'
+    );
+    const {
+      isCloudinaryEnabled,
+      uploadLocalFiles,
+    } = await import('../../services/media/cloudinary.service');
+
+    let urls: string[];
+
+    if (isCloudinaryEnabled()) {
+      const localPaths = files.map(f => f.path);
+      urls = await uploadLocalFiles(localPaths);
+    } else {
+      urls = files.map(file => buildUploadPath(file.filename));
+    }
+
+    sendSuccess(res, { urls }, 'Images uploaded successfully', 201);
+  } catch (error: unknown) {
+    logger.error('Upload images error:', error);
+    sendError(res, safeErrorMessage(error, 'Failed to upload images'), 500);
   }
 };

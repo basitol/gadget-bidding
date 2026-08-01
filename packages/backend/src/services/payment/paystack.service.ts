@@ -112,12 +112,23 @@ export const verifyWebhookSignature = (
   payload: string,
   signature: string
 ): boolean => {
+  if (!signature || !config.paystack.secretKey) {
+    return false;
+  }
+
   const hash = crypto
     .createHmac('sha512', config.paystack.secretKey)
     .update(payload)
     .digest('hex');
 
-  return hash === signature;
+  const expected = Buffer.from(hash, 'utf8');
+  const received = Buffer.from(signature, 'utf8');
+
+  if (expected.length !== received.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expected, received);
 };
 
 /**

@@ -1,8 +1,9 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Load packages/backend/.env (works from src/ and dist/)
+const backendEnvPath = path.resolve(__dirname, '../../.env');
+dotenv.config({ path: backendEnvPath });
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -83,6 +84,8 @@ interface Config {
   otpExpiryMinutes: number;
   rateLimitWindowMs: number;
   rateLimitMaxRequests: number;
+  rateLimitReadMaxRequests: number;
+  rateLimitWriteMaxRequests: number;
 
   // Platform Settings
   platformFeePercentage: number;
@@ -106,14 +109,14 @@ const config: Config = {
   port: parseInt(process.env.PORT || '3000', 10),
   apiVersion: process.env.API_VERSION || 'v1',
 
-  // Database
+  // Database — DATABASE_URL is the single source of truth for Prisma
   database: {
-    url: isProduction ? requireEnv('DATABASE_URL') : process.env.DATABASE_URL || '',
+    url: process.env.DATABASE_URL || '',
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432', 10),
     name: process.env.DB_NAME || 'gadget_bidding',
     user: process.env.DB_USER || 'postgres',
-    password: isProduction ? requireEnv('DB_PASSWORD') : process.env.DB_PASSWORD || 'password',
+    password: process.env.DB_PASSWORD || '',
     poolMin: parseInt(process.env.DB_POOL_MIN || '2', 10),
     poolMax: parseInt(process.env.DB_POOL_MAX || '10', 10),
   },
@@ -127,11 +130,12 @@ const config: Config = {
 
   // JWT
   jwt: {
-    secret: isProduction ? requireEnv('JWT_SECRET') : process.env.JWT_SECRET || 'jwt_secret_change_this',
-    refreshSecret:
-      isProduction
-        ? requireEnv('JWT_REFRESH_SECRET')
-        : process.env.JWT_REFRESH_SECRET || 'refresh_secret_change_this',
+    secret: isProduction
+      ? requireEnv('JWT_SECRET')
+      : process.env.JWT_SECRET || 'jwt_secret_change_this',
+    refreshSecret: isProduction
+      ? requireEnv('JWT_REFRESH_SECRET')
+      : process.env.JWT_REFRESH_SECRET || 'refresh_secret_change_this',
     accessExpiry: process.env.JWT_ACCESS_EXPIRY || '24h', // Increased for development
     refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '30d',
   },
@@ -152,8 +156,8 @@ const config: Config = {
   // SMS (Termii)
   termii: {
     apiKey: process.env.TERMII_API_KEY || '',
-    senderId: process.env.TERMII_SENDER_ID || 'GadgetBid',
-    apiUrl: process.env.TERMII_API_URL || 'https://api.ng.termii.com/api',
+    senderId: process.env.TERMII_SENDER_ID || 'N-Alert',
+    apiUrl: process.env.TERMII_API_URL || 'https://v3.api.termii.com/api',
   },
 
   // Cloudinary
@@ -173,6 +177,14 @@ const config: Config = {
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
   rateLimitMaxRequests: parseInt(
     process.env.RATE_LIMIT_MAX_REQUESTS || '100',
+    10
+  ),
+  rateLimitReadMaxRequests: parseInt(
+    process.env.RATE_LIMIT_READ_MAX_REQUESTS || '1000',
+    10
+  ),
+  rateLimitWriteMaxRequests: parseInt(
+    process.env.RATE_LIMIT_WRITE_MAX_REQUESTS || '300',
     10
   ),
 

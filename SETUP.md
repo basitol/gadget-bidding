@@ -26,6 +26,12 @@ createdb gadget_bidding
 # Run schema
 psql gadget_bidding < packages/backend/src/database/schema.sql
 
+# Generate Prisma client (required after schema changes)
+pnpm --filter backend prisma:generate
+
+# If upgrading an existing database, apply sync migration:
+# psql gadget_bidding < packages/backend/src/database/migrations/001_sync_prisma_schema.sql
+
 # Verify tables were created
 psql gadget_bidding -c "\dt"
 ```
@@ -56,6 +62,8 @@ cp packages/backend/.env.example packages/backend/.env
 ```
 
 Edit `packages/backend/.env` with your configuration:
+
+> **Security:** See [docs/SECURITY.md](../docs/SECURITY.md) for secrets, rate limits, and production checklist. Never commit `.env` files.
 
 ```env
 # Minimum required for local development:
@@ -100,6 +108,18 @@ You should see:
 📡 API available at http://localhost:3000/api/v1
 ```
 
+### Admin backoffice
+
+```bash
+# Create an admin user (default: 08011111111 / Admin1234)
+pnpm create-admin
+
+# Run the admin web app (http://localhost:5173)
+pnpm dev:admin
+```
+
+Buyers must save a **shipping address** on an order before Paystack or wallet payment.
+
 ## Testing the Authentication API
 
 ### Health Check
@@ -127,9 +147,12 @@ curl -X POST http://localhost:3000/api/v1/auth/register \
     "phone_number": "+2348012345678",
     "full_name": "John Doe",
     "email": "john@example.com",
-    "password": "Password123"
+    "password": "Password123",
+    "account_type": "buyer"
   }'
 ```
+
+Use `"account_type": "seller"` for seller registration. Roles stored in DB: `bidder`, `seller`, `admin`.
 
 Expected response:
 ```json
@@ -168,7 +191,7 @@ Expected response:
       "phone_number": "+2348012345678",
       "full_name": "John Doe",
       "email": "john@example.com",
-      "role": "user",
+      "role": "bidder",
       "is_verified": true,
       "is_active": true
     }
@@ -184,7 +207,8 @@ curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "phone_number": "+2348012345678",
-    "password": "Password123"
+    "password": "Password123",
+    "account_type": "buyer"
   }'
 ```
 

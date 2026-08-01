@@ -10,6 +10,9 @@ import {
   UserLogin,
   AuthTokens,
   OTPVerification,
+  roleForAccountType,
+  assertAccountTypeAccess,
+  normalizeUserRole,
 } from '@gadget-bidding/shared';
 import logger from '../../utils/logger';
 
@@ -44,7 +47,7 @@ export const registerUser = async (
         email: data.email || null,
         fullName: data.full_name,
         passwordHash,
-        role: 'user',
+        role: roleForAccountType(data.account_type),
         wallet: {
           create: {
             balance: 1000, // Starting balance for testing
@@ -98,7 +101,7 @@ export const registerUser = async (
       email: user.email || undefined,
       full_name: user.fullName,
       avatar_url: user.avatarUrl || undefined,
-      role: user.role || 'user',
+      role: normalizeUserRole(user.role),
       is_verified: user.isVerified || false,
       is_active: user.isActive || true,
       created_at: user.createdAt?.toISOString() || new Date().toISOString(),
@@ -169,7 +172,7 @@ export const verifyOTP = async (data: OTPVerification): Promise<AuthTokens> => {
     const tokenPayload = {
       user_id: updatedUser.id,
       phone_number: updatedUser.phoneNumber,
-      role: updatedUser.role || 'user',
+      role: normalizeUserRole(updatedUser.role),
       full_name: updatedUser.fullName,
     };
 
@@ -199,7 +202,7 @@ export const verifyOTP = async (data: OTPVerification): Promise<AuthTokens> => {
       email: updatedUser.email || undefined,
       full_name: updatedUser.fullName,
       avatar_url: updatedUser.avatarUrl || undefined,
-      role: updatedUser.role || 'user',
+      role: normalizeUserRole(updatedUser.role),
       is_verified: updatedUser.isVerified || false,
       is_active: updatedUser.isActive || true,
       created_at:
@@ -245,11 +248,13 @@ export const loginUser = async (data: UserLogin): Promise<AuthTokens> => {
     throw new Error('Please verify your phone number first');
   }
 
+  assertAccountTypeAccess(data.account_type, user.role);
+
   // Generate tokens
   const tokenPayload = {
     user_id: user.id,
     phone_number: user.phoneNumber,
-    role: user.role || 'user',
+    role: normalizeUserRole(user.role),
     full_name: user.fullName,
   };
 
@@ -277,7 +282,7 @@ export const loginUser = async (data: UserLogin): Promise<AuthTokens> => {
     email: user.email || undefined,
     full_name: user.fullName,
     avatar_url: user.avatarUrl || undefined,
-    role: user.role || 'user',
+    role: normalizeUserRole(user.role),
     is_verified: user.isVerified || false,
     is_active: user.isActive || true,
     created_at: user.createdAt?.toISOString() || new Date().toISOString(),
@@ -288,7 +293,12 @@ export const loginUser = async (data: UserLogin): Promise<AuthTokens> => {
 };
 
 /**
- * Refresh access token (and optionally rotate refresh token)
+ * Refresh access token.
+ *
+ * Keep the refresh token stable for mobile sessions. The app can refresh from
+ * API calls and socket reconnects at the same time; rotating on every refresh
+ * creates a race where one request revokes the token while the other is still
+ * using it, which forces the mobile client to clear auth.
  */
 export const refreshAccessToken = async (
   refreshToken: string
@@ -314,38 +324,11 @@ export const refreshAccessToken = async (
   const access_token = generateAccessToken({
     user_id: user.id,
     phone_number: user.phoneNumber,
-    role: user.role || 'user',
+    role: normalizeUserRole(user.role),
     full_name: user.fullName,
   });
 
-  // Rotate refresh token for security (revoke old, create new)
-  await prisma.refreshToken.update({
-    where: { token: refreshToken },
-    data: { isRevoked: true },
-  });
-
-  const newRefreshToken = generateRefreshToken({
-    user_id: user.id,
-    phone_number: user.phoneNumber,
-    role: user.role || 'user',
-    full_name: user.fullName,
-  });
-
-  const refreshExpiry = new Date();
-  const refreshDays = config.jwt.refreshExpiry.includes('d')
-    ? parseInt(config.jwt.refreshExpiry, 10)
-    : 30;
-  refreshExpiry.setDate(refreshExpiry.getDate() + refreshDays);
-
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      token: newRefreshToken,
-      expiresAt: refreshExpiry,
-    },
-  });
-
-  return { access_token, refresh_token: newRefreshToken };
+  return { access_token, refresh_token: refreshToken };
 };
 
 /**
@@ -390,8 +373,14 @@ export const resendOTP = async (
       },
     });
 
-    // Send OTP via SMS
-    await sendOTPSMS(phoneNumber, otp);
+    // Send OTP via SMS (don't block on this)
+    sendOTPSMS(phoneNumber, otp).catch(err => {
+      logger.error('Failed to send OTP SMS:', err);
+    });
+
+    if (config.nodeEnv === 'development') {
+      logger.info(`[DEV] OTP for ${phoneNumber}: ${otp}`);
+    }
 
     logger.info(`OTP resent to: ${phoneNumber}`);
 

@@ -160,16 +160,27 @@ export const formatBidCount = (count: number): string => {
   return `${count} bids`;
 };
 
+/** Fallback for unknown enums — never show raw snake_case to users */
+export const humanizeKey = (value?: string | null): string => {
+  if (!value) return 'Unknown';
+  return value
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, char => char.toUpperCase());
+};
+
 // Get condition label
-export const getConditionLabel = (condition: string): string => {
+export const getConditionLabel = (condition?: string | null): string => {
+  if (!condition) return 'N/A';
   const labels: Record<string, string> = {
     new: 'Brand New',
     like_new: 'Like New',
     excellent: 'Excellent',
     good: 'Good',
     fair: 'Fair',
+    for_parts: 'For Parts',
   };
-  return labels[condition] || condition;
+  return labels[condition] || humanizeKey(condition);
 };
 
 // Get condition color
@@ -180,6 +191,90 @@ export const getConditionColor = (condition: string): string => {
     excellent: '#8B5CF6',
     good: '#F59E0B',
     fair: '#EF4444',
+    for_parts: '#6B7280',
   };
   return colors[condition] || '#6B7280';
+};
+
+export const getAuctionStatusLabel = (status?: string | null): string => {
+  if (!status) return 'Unknown';
+  const labels: Record<string, string> = {
+    draft: 'Draft',
+    scheduled: 'Scheduled',
+    active: 'Live',
+    ended: 'Ended',
+    cancelled: 'Cancelled',
+    sold: 'Sold',
+  };
+  return labels[status] || humanizeKey(status);
+};
+
+export const getOrderStatusLabel = (status?: string | null): string => {
+  if (!status) return 'Pending';
+  const labels: Record<string, string> = {
+    pending: 'Pending',
+    pending_payment: 'Pending payment',
+    processing: 'Processing',
+    sent_to_backoffice: 'Sent to backoffice',
+    received_by_backoffice: 'Received by backoffice',
+    paid: 'Paid',
+    shipped: 'Shipped',
+    delivered: 'Delivered',
+    completed: 'Completed',
+    disputed: 'Disputed',
+    cancelled: 'Cancelled',
+    refunded: 'Refunded',
+  };
+  return labels[status] || humanizeKey(status);
+};
+
+export const getPaymentStatusLabel = (status?: string | null): string => {
+  if (!status) return 'Pending';
+  const labels: Record<string, string> = {
+    pending: 'Pending',
+    paid: 'Paid',
+    failed: 'Failed',
+    refunded: 'Refunded',
+    abandoned: 'Abandoned',
+  };
+  return labels[status] || humanizeKey(status);
+};
+
+export const getTransactionTypeLabel = (type?: string | null): string => {
+  if (!type) return 'Transaction';
+  const labels: Record<string, string> = {
+    deposit: 'Deposit',
+    withdrawal: 'Withdrawal',
+    bid_hold: 'Bid held',
+    bid_release: 'Bid released',
+    bid_charge: 'Bid charged',
+    purchase: 'Purchase',
+    sale: 'Sale proceeds',
+    sale_credit: 'Sale proceeds',
+    refund: 'Refund',
+    fee: 'Platform fee',
+    payment: 'Payment',
+  };
+  return labels[type] || humanizeKey(type);
+};
+
+export const getTransactionStatusLabel = (status?: string | null): string => {
+  if (!status) return 'Pending';
+  const labels: Record<string, string> = {
+    pending: 'Pending',
+    completed: 'Completed',
+    failed: 'Failed',
+  };
+  return labels[status] || humanizeKey(status);
+};
+
+export const getRoleLabel = (role?: string | null): string => {
+  if (!role) return 'User';
+  const labels: Record<string, string> = {
+    bidder: 'Buyer',
+    seller: 'Seller',
+    admin: 'Admin',
+    user: 'Buyer',
+  };
+  return labels[role] || humanizeKey(role);
 };

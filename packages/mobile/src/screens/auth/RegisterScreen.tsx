@@ -6,6 +6,8 @@ import {
   Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { Button, Input } from '../../components';
 import {
   AuthLayout,
@@ -23,14 +25,35 @@ import {
   isValidFullName,
   formatToInternational,
 } from '../../utils';
+import { AppInterfaceType } from '../../utils/roles';
 
 type RegisterScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Register'>;
+  route: RouteProp<AuthStackParamList, 'Register'>;
+};
+
+const COPY: Record<
+  AppInterfaceType,
+  { title: string; subtitle: string; signInLabel: string }
+> = {
+  buyer: {
+    title: 'Create buyer account',
+    subtitle: 'Join GadgetBid to discover deals and bid on gadgets',
+    signInLabel: 'Sign in as buyer',
+  },
+  seller: {
+    title: 'Create seller account',
+    subtitle: 'Start listing gadgets and running auctions on GadgetBid',
+    signInLabel: 'Sign in as seller',
+  },
 };
 
 export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   navigation,
+  route,
 }) => {
+  const interfaceType = route.params.interfaceType;
+  const copy = COPY[interfaceType];
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -83,34 +106,41 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
     try {
       const formattedPhone = formatToInternational(phoneNumber);
-      const verification_id = await register({
-        phone_number: formattedPhone,
-        full_name: fullName.trim(),
-        password,
-        email: email || undefined,
-      });
+      const verification_id = await register(
+        {
+          phone_number: formattedPhone,
+          full_name: fullName.trim(),
+          password,
+          email: email || undefined,
+        },
+        interfaceType
+      );
 
       navigation.navigate('OtpVerification', {
         phone_number: formattedPhone,
         verification_id,
         isNewUser: true,
+        interfaceType,
       });
-    } catch {
-      Alert.alert('Registration Failed', error || 'Please try again');
+    } catch (err) {
+      Alert.alert(
+        'Registration Failed',
+        err instanceof Error ? err.message : 'Please try again'
+      );
     }
   };
 
   return (
     <AuthLayout
       onBack={() => navigation.goBack()}
-      title="Create account"
-      subtitle="Join thousands of Nigerians buying and selling gadgets"
+      title={copy.title}
+      subtitle={copy.subtitle}
       footer={
         <>
           <AuthFooterLink
             text="Already have an account?"
-            linkText="Sign in"
-            onPress={() => navigation.navigate('Login')}
+            linkText={copy.signInLabel}
+            onPress={() => navigation.navigate('Login', { interfaceType })}
           />
           <Text style={styles.terms}>
             By creating an account, you agree to our{' '}
@@ -120,12 +150,25 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         </>
       }
     >
+      <View style={styles.interfaceBadge}>
+        <Ionicons
+          name={interfaceType === 'buyer' ? 'cart-outline' : 'storefront-outline'}
+          size={16}
+          color={colors.primary}
+        />
+        <Text style={styles.interfaceBadgeText}>
+          {interfaceType === 'buyer' ? 'Buyer registration' : 'Seller registration'}
+        </Text>
+      </View>
+
       <Input
         label="Full name"
         placeholder="John Doe"
         value={fullName}
         onChangeText={setFullName}
         autoCapitalize="words"
+        autoComplete="name"
+        textContentType="name"
         error={errors.fullName}
         iconName="person-outline"
       />
@@ -137,6 +180,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         onChangeText={setPhoneNumber}
         keyboardType="phone-pad"
         autoCapitalize="none"
+        autoComplete="tel"
+        textContentType="telephoneNumber"
         error={errors.phone}
         iconName="call-outline"
       />
@@ -148,6 +193,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         onChangeText={setEmail}
         keyboardType="email-address"
         autoCapitalize="none"
+        autoComplete="email"
+        textContentType="emailAddress"
         error={errors.email}
         iconName="mail-outline"
       />
@@ -159,6 +206,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         onChangeText={setPassword}
         secureTextEntry
         showPasswordToggle
+        autoComplete="password-new"
+        textContentType="newPassword"
         error={errors.password}
         iconName="lock-closed-outline"
       />
@@ -170,6 +219,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         onChangeText={setConfirmPassword}
         secureTextEntry
         showPasswordToggle
+        autoComplete="password-new"
+        textContentType="newPassword"
         error={errors.confirmPassword}
         iconName="lock-closed-outline"
       />
@@ -195,6 +246,25 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    interfaceBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      alignSelf: 'center',
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.primary + '14',
+      borderWidth: 1,
+      borderColor: colors.primary + '33',
+      marginBottom: spacing.lg,
+    },
+    interfaceBadgeText: {
+      color: colors.primary,
+      fontSize: fonts.sizes.sm,
+      fontWeight: '700',
+    },
     errorContainer: {
       backgroundColor: colors.error + '15',
       padding: spacing.md,

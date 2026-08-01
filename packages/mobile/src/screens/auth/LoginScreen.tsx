@@ -7,6 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Input } from '../../components';
 import {
@@ -18,12 +19,48 @@ import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
 import { isValidNigerianPhone, formatToInternational } from '../../utils';
+import { AppInterfaceType } from '../../utils/roles';
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+  route: RouteProp<AuthStackParamList, 'Login'>;
 };
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
+const COPY: Record<
+  AppInterfaceType,
+  {
+    title: string;
+    subtitle: string;
+    features: Array<{ icon: keyof typeof Ionicons.glyphMap; label: string }>;
+    registerLabel: string;
+  }
+> = {
+  buyer: {
+    title: 'Buyer sign in',
+    subtitle: 'Sign in to browse auctions and place bids',
+    features: [
+      { icon: 'flash-outline', label: 'Live bidding' },
+      { icon: 'shield-checkmark-outline', label: 'Secure wallet' },
+    ],
+    registerLabel: 'Create buyer account',
+  },
+  seller: {
+    title: 'Seller sign in',
+    subtitle: 'Sign in to manage listings and auctions',
+    features: [
+      { icon: 'storefront-outline', label: 'List gadgets' },
+      { icon: 'stats-chart-outline', label: 'Track sales' },
+    ],
+    registerLabel: 'Create seller account',
+  },
+};
+
+export const LoginScreen: React.FC<LoginScreenProps> = ({
+  navigation,
+  route,
+}) => {
+  const interfaceType = route.params.interfaceType;
+  const copy = COPY[interfaceType];
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -60,37 +97,75 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
     try {
       const formattedPhone = formatToInternational(phoneNumber);
-      await login(formattedPhone, password);
-    } catch {
+      await login(formattedPhone, password, interfaceType);
+    } catch (err) {
       Alert.alert(
         'Login Failed',
-        error || 'Please check your credentials and try again'
+        err instanceof Error
+          ? err.message
+          : 'Please check your credentials and try again'
       );
     }
   };
 
+  const goBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Splash');
+    }
+  };
+
+  const switchInterface = () => {
+    const nextType: AppInterfaceType =
+      interfaceType === 'buyer' ? 'seller' : 'buyer';
+    navigation.replace('Login', { interfaceType: nextType });
+  };
+
   return (
     <AuthLayout
-      showBrand
-      title="Welcome back"
-      subtitle="Sign in to continue bidding on premium gadgets"
+      onBack={goBack}
+      title={copy.title}
+      subtitle={copy.subtitle}
       footer={
-        <AuthFooterLink
-          text="Don't have an account?"
-          linkText="Create account"
-          onPress={() => navigation.navigate('Register')}
-        />
+        <>
+          <AuthFooterLink
+            text="Don't have an account?"
+            linkText={copy.registerLabel}
+            onPress={() => navigation.navigate('Register', { interfaceType })}
+          />
+          <TouchableOpacity
+            style={styles.switchInterface}
+            onPress={switchInterface}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.switchInterfaceText}>
+              {interfaceType === 'buyer'
+                ? 'Selling instead? Switch to seller login'
+                : 'Buying instead? Switch to buyer login'}
+            </Text>
+          </TouchableOpacity>
+        </>
       }
     >
+      <View style={styles.interfaceBadge}>
+        <Ionicons
+          name={interfaceType === 'buyer' ? 'cart-outline' : 'storefront-outline'}
+          size={16}
+          color={colors.primary}
+        />
+        <Text style={styles.interfaceBadgeText}>
+          {interfaceType === 'buyer' ? 'Buyer account' : 'Seller account'}
+        </Text>
+      </View>
+
       <View style={styles.featureRow}>
-        <View style={styles.featurePill}>
-          <Ionicons name="flash-outline" size={14} color={colors.primary} />
-          <Text style={styles.featureText}>Live bidding</Text>
-        </View>
-        <View style={styles.featurePill}>
-          <Ionicons name="shield-checkmark-outline" size={14} color={colors.primary} />
-          <Text style={styles.featureText}>Secure wallet</Text>
-        </View>
+        {copy.features.map(feature => (
+          <View key={feature.label} style={styles.featurePill}>
+            <Ionicons name={feature.icon} size={14} color={colors.primary} />
+            <Text style={styles.featureText}>{feature.label}</Text>
+          </View>
+        ))}
       </View>
 
       <Input
@@ -100,6 +175,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         onChangeText={setPhoneNumber}
         keyboardType="phone-pad"
         autoCapitalize="none"
+        autoComplete="tel"
+        textContentType="telephoneNumber"
         error={errors.phone}
         iconName="call-outline"
       />
@@ -111,6 +188,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         onChangeText={setPassword}
         secureTextEntry
         showPasswordToggle
+        autoComplete="password"
+        textContentType="password"
         error={errors.password}
         iconName="lock-closed-outline"
       />
@@ -139,6 +218,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    interfaceBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      alignSelf: 'center',
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.primary + '14',
+      borderWidth: 1,
+      borderColor: colors.primary + '33',
+      marginBottom: spacing.md,
+    },
+    interfaceBadgeText: {
+      color: colors.primary,
+      fontSize: fonts.sizes.sm,
+      fontWeight: '700',
+    },
     featureRow: {
       flexDirection: 'row',
       justifyContent: 'center',
@@ -171,6 +269,15 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.primary,
       fontSize: fonts.sizes.sm,
       fontWeight: '600',
+    },
+    switchInterface: {
+      marginTop: spacing.md,
+    },
+    switchInterfaceText: {
+      color: colors.textMuted,
+      fontSize: fonts.sizes.sm,
+      textAlign: 'center',
+      textDecorationLine: 'underline',
     },
     errorContainer: {
       flexDirection: 'row',

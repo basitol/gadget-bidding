@@ -6,51 +6,86 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { EmptyState, LoadingScreen } from '../../components';
+import { useIsTabRoot } from '../../hooks';
 import { orderService } from '../../services';
-import { formatCurrency, formatDate } from '../../utils';
+import { formatCurrency, formatDate, getOrderStatusLabel } from '../../utils';
 import { Order } from '../../types';
 
 type OrdersScreenProps = {
   navigation: NativeStackNavigationProp<any>;
+  route?: { params?: { initialTab?: 'purchases' | 'sales' } };
 };
 
-export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
+export const OrdersScreen: React.FC<OrdersScreenProps> = ({
+  navigation,
+  route,
+}) => {
+  const isTabRoot = useIsTabRoot();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'purchases' | 'sales'>(
-    'purchases'
+    route?.params?.initialTab ?? 'purchases'
   );
 
   useEffect(() => {
-    loadOrders();
+    setPage(1);
+    loadOrders(1, false);
   }, [activeTab]);
 
-  const loadOrders = async () => {
-    setIsLoading(true);
+  const loadOrders = async (nextPage = 1, append = false) => {
+    if (append) setIsLoadingMore(true);
+    else setIsLoading(true);
+    setLoadError(null);
     try {
       const response =
         activeTab === 'purchases'
-          ? await orderService.getMyOrders()
-          : await orderService.getMySales();
-      setOrders(response.data);
+          ? await orderService.getMyOrders(nextPage, 20)
+          : await orderService.getMySales(nextPage, 20);
+      const batch = response.data || [];
+      setOrders(prev => (append ? [...prev, ...batch] : batch));
+      const totalPages =
+        (response.pagination as any)?.totalPages ||
+        response.pagination?.total_pages ||
+        1;
+      setPage(nextPage);
+      setHasMore(nextPage < totalPages);
     } catch (error) {
       console.error('Failed to load orders:', error);
+      const message =
+        error instanceof Error ? error.message : 'Failed to load orders';
+      setLoadError(
+        message.includes('timeout')
+          ? 'Could not reach the server. Check that the backend is running and you are on the same Wi‑Fi.'
+          : message
+      );
+      if (!append) setOrders([]);
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
   };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await loadOrders();
+    await loadOrders(1, false);
     setIsRefreshing(false);
+  };
+
+  const handleLoadMore = () => {
+    if (isLoading || isLoadingMore || !hasMore) return;
+    loadOrders(page + 1, true);
   };
 
   const getStatusColor = (status: string): string => {
@@ -58,6 +93,8 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
       pending: colors.warning,
       pending_payment: colors.warning,
       processing: colors.info,
+      sent_to_backoffice: colors.primary,
+      received_by_backoffice: colors.primary,
       paid: colors.info,
       shipped: colors.primary,
       delivered: colors.success,
@@ -74,6 +111,8 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
       pending: 'time-outline',
       pending_payment: 'time-outline',
       processing: 'settings-outline',
+      sent_to_backoffice: 'send-outline',
+      received_by_backoffice: 'business-outline',
       paid: 'checkmark-circle-outline',
       shipped: 'car-outline',
       delivered: 'cube-outline',
@@ -83,6 +122,41 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
       refunded: 'cash-outline',
     };
     return icons[status] || 'document-text-outline';
+  };
+
+  const getOrderNextStep = (order: Order): string => {
+    const fulfillmentStatus = order.fulfillment_status || 'pending';
+    const paymentStatus = order.payment_status || 'pending';
+
+    if (activeTab === 'purchases') {
+      if (paymentStatus === 'pending') return 'Pay now to secure your win';
+      if (fulfillmentStatus === 'processing')
+        return 'Seller is preparing the item';
+      if (fulfillmentStatus === 'sent_to_backoffice')
+        return 'Seller has sent item to backoffice';
+      if (fulfillmentStatus === 'received_by_backoffice')
+        return 'Backoffice received item';
+      if (fulfillmentStatus === 'shipped')
+        return 'Confirm delivery after receiving it';
+      if (fulfillmentStatus === 'delivered') return 'Delivered';
+      if (fulfillmentStatus === 'cancelled') return 'Cancelled';
+      return 'Track your order progress';
+    }
+
+    if (paymentStatus === 'pending') return 'Waiting for buyer payment';
+    if (fulfillmentStatus === 'processing') return 'Send item to backoffice';
+    if (fulfillmentStatus === 'sent_to_backoffice')
+      return 'Waiting for backoffice confirmation';
+    if (fulfillmentStatus === 'received_by_backoffice')
+      return 'Backoffice received item';
+    if (fulfillmentStatus === 'shipped')
+      return 'Backoffice delivery in progress';
+    if (fulfillmentStatus === 'delivered') {
+      if (order.payout_status === 'paid') return 'Payout paid';
+      if (order.payout_status === 'held') return 'Payout held for review';
+      return 'Payout ready for admin release';
+    }
+    return 'Manage this sale';
   };
 
   const renderOrder = ({ item }: { item: Order }) => {
@@ -106,16 +180,18 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
               { backgroundColor: getStatusColor(displayStatus) + '20' },
             ]}
           >
-            <Text style={styles.statusIcon}>
-              {getStatusIcon(displayStatus)}
-            </Text>
+            <Ionicons
+              name={getStatusIcon(displayStatus)}
+              size={14}
+              color={getStatusColor(displayStatus)}
+            />
             <Text
               style={[
                 styles.statusText,
                 { color: getStatusColor(displayStatus) },
               ]}
             >
-              {displayStatus?.replace(/_/g, ' ') || 'pending'}
+              {getOrderStatusLabel(displayStatus)}
             </Text>
           </View>
         </View>
@@ -123,7 +199,11 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
         <View style={styles.orderContent}>
           <View style={styles.gadgetInfo}>
             <View style={styles.gadgetImage}>
-              <Ionicons name="phone-portrait-outline" size={22} color={colors.text} />
+              <Ionicons
+                name="phone-portrait-outline"
+                size={22}
+                color={colors.text}
+              />
             </View>
             <View style={styles.gadgetDetails}>
               <Text style={styles.gadgetTitle} numberOfLines={2}>
@@ -137,13 +217,25 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
         </View>
 
         <View style={styles.orderFooter}>
-          {displayStatus === 'shipped' && item.tracking_number && (
-            <View style={styles.trackingInfo}>
-              <Text style={styles.trackingLabel}>Tracking:</Text>
-              <Text style={styles.trackingNumber}>{item.tracking_number}</Text>
-            </View>
-          )}
-          <Text style={styles.viewDetails}>View Details →</Text>
+          <View style={styles.nextStep}>
+            <Ionicons
+              name={
+                activeTab === 'purchases'
+                  ? 'navigate-circle-outline'
+                  : 'bag-check-outline'
+              }
+              size={16}
+              color={colors.primary}
+            />
+            <Text style={styles.nextStepText} numberOfLines={1}>
+              {getOrderNextStep(item)}
+            </Text>
+          </View>
+          <Text style={styles.viewDetails}>
+            {item.payment_status === 'pending' && activeTab === 'purchases'
+              ? 'Pay →'
+              : 'Open →'}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -153,13 +245,19 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Orders</Text>
+        {isTabRoot ? (
+          <View style={styles.placeholder} />
+        ) : (
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.text} />
+          </TouchableOpacity>
+        )}
+        <Text style={styles.title}>
+          {route?.params?.initialTab === 'sales' ? 'Sales' : 'Orders'}
+        </Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -204,17 +302,35 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
         <LoadingScreen message="Loading orders..." />
       ) : orders.length === 0 ? (
         <EmptyState
-          icon={activeTab === 'purchases' ? 'cart-outline' : 'pricetag-outline'}
+          icon={
+            loadError
+              ? 'cloud-offline-outline'
+              : activeTab === 'purchases'
+                ? 'cart-outline'
+                : 'pricetag-outline'
+          }
           title={
-            activeTab === 'purchases' ? 'No Purchases Yet' : 'No Sales Yet'
+            loadError
+              ? 'Couldn’t load orders'
+              : activeTab === 'purchases'
+                ? 'No Purchases Yet'
+                : 'No Sales Yet'
           }
           message={
-            activeTab === 'purchases'
+            loadError ||
+            (activeTab === 'purchases'
               ? 'Your purchased items will appear here'
-              : 'Items you sell will appear here'
+              : 'Items you sell will appear here')
           }
-          actionLabel="Browse Auctions"
-          onAction={() => navigation.navigate('Home')}
+          actionLabel={loadError ? 'Try again' : 'Browse Auctions'}
+          onAction={() =>
+            loadError
+              ? loadOrders(1, false)
+              : navigation.navigate('MainTabs', {
+                  screen:
+                    route?.params?.initialTab === 'sales' ? 'Listings' : 'Home',
+                })
+          }
         />
       ) : (
         <FlatList
@@ -222,6 +338,16 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
           keyExtractor={item => item.id}
           renderItem={renderOrder}
           contentContainerStyle={styles.listContent}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <ActivityIndicator
+                style={{ marginVertical: spacing.lg }}
+                color={colors.primary}
+              />
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -254,10 +380,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  backIcon: {
-    fontSize: fonts.sizes.xl,
-    color: colors.text,
   },
   title: {
     fontSize: fonts.sizes.xl,
@@ -326,9 +448,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
     gap: spacing.xs,
   },
-  statusIcon: {
-    fontSize: fonts.sizes.sm,
-  },
   statusText: {
     fontSize: fonts.sizes.xs,
     fontWeight: '600',
@@ -350,9 +469,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceLight,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  gadgetEmoji: {
-    fontSize: fonts.sizes.xxl,
   },
   gadgetDetails: {
     flex: 1,
@@ -389,6 +505,19 @@ const styles = StyleSheet.create({
   },
   trackingNumber: {
     color: colors.primary,
+    fontSize: fonts.sizes.sm,
+    fontWeight: '500',
+  },
+  nextStep: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginRight: spacing.md,
+  },
+  nextStepText: {
+    flex: 1,
+    color: colors.textSecondary,
     fontSize: fonts.sizes.sm,
     fontWeight: '500',
   },

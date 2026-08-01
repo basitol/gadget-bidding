@@ -62,6 +62,20 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
       logger.info(`User connected: ${userId} (socket: ${socket.id})`);
     }
 
+    // Join support thread room (seller or admin)
+    socket.on('support:join', (threadId: string) => {
+      if (!threadId || typeof threadId !== 'string') return;
+      socket.join(`support:${threadId}`);
+      logger.info(
+        `User ${userId} joined support thread room ${threadId} (socket: ${socket.id})`
+      );
+    });
+
+    socket.on('support:leave', (threadId: string) => {
+      if (!threadId || typeof threadId !== 'string') return;
+      socket.leave(`support:${threadId}`);
+    });
+
     // Join auction room
     socket.on('auction:join', async (auctionId: string) => {
       try {
@@ -220,6 +234,18 @@ export const emitToAuction = (
   data: any
 ): void => {
   io.to(`auction:${auctionId}`).emit(event, data);
+};
+
+/**
+ * Emit event to everyone watching a support thread
+ */
+export const emitToSupportThread = (
+  threadId: string,
+  event: string,
+  data: any
+): void => {
+  if (!io) return;
+  io.to(`support:${threadId}`).emit(event, data);
 };
 
 /**

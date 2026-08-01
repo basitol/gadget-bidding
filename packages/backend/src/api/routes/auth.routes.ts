@@ -3,8 +3,12 @@ import * as authController from '../controllers/auth.controller';
 import * as authValidator from '../validators/auth.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
+import { authRateLimiter } from '../middlewares/security.middleware';
 
 const router: Router = Router();
+
+// Stricter rate limit on all auth routes
+router.use(authRateLimiter);
 
 /**
  * @route   POST /api/v1/auth/register

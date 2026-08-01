@@ -18,8 +18,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import {
-  colors,
+  ThemeColors,
   fonts,
   spacing,
   borderRadius,
@@ -27,21 +28,39 @@ import {
   MIN_BID_INCREMENT,
 } from '../../constants';
 import { Button, CountdownTimer, LoadingScreen } from '../../components';
+import { useTheme } from '../../hooks';
 import { useAuctionStore, useWalletStore, useAuthStore } from '../../store';
 import { socketService } from '../../services';
+import {
+  BID_COMMITMENT_AMOUNT,
+  BID_DEFAULT_PENALTY_AMOUNT,
+  BID_PAYMENT_DEADLINE_HOURS,
+  getOrderedSpecEntries,
+} from '@gadget-bidding/shared';
 import {
   formatCurrency,
   formatDateTime,
   formatRelativeTime,
   getConditionLabel,
   getConditionColor,
+  getAuctionStatusLabel,
 } from '../../utils';
+import { mediaUrls } from '../../utils/images';
 import { Bid } from '../../types';
 
 const { width } = Dimensions.get('window');
 
 type RootStackParamList = {
   AuctionDetail: { auctionId: string };
+  Wallet: undefined;
+  ShippingAddress: {
+    orderId: string;
+    orderNumber: string;
+    amount: number;
+    gadgetTitle?: string;
+    returnToPayment?: boolean;
+  };
+  OrderDetail: { orderId: string };
 };
 
 type AuctionDetailScreenProps = {
@@ -54,6 +73,8 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
   route,
 }) => {
   const { auctionId } = route.params;
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [showBidModal, setShowBidModal] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
@@ -131,15 +152,15 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
 
     const availableBalance =
       (wallet?.balance || 0) - (wallet?.held_balance || 0);
-    if (amount > availableBalance) {
+    if (availableBalance < BID_COMMITMENT_AMOUNT) {
       Alert.alert(
-        'Insufficient Balance',
-        `You need ${formatCurrency(amount)} but only have ${formatCurrency(availableBalance)} available. Please fund your wallet.`,
+        'Wallet Balance Required',
+        `You need at least ${formatCurrency(BID_COMMITMENT_AMOUNT)} available in your wallet to place a bid. You currently have ${formatCurrency(availableBalance)} available.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Fund Wallet',
-            onPress: () => navigation.navigate('Wallet' as never),
+            onPress: () => navigation.navigate('Wallet'),
           },
         ]
       );
@@ -151,8 +172,8 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
       await placeBid(auctionId, amount);
       setShowBidModal(false);
       Alert.alert(
-        'Bid Placed! 🎉',
-        `Your bid of ${formatCurrency(amount)} has been placed successfully.`
+        'Bid Placed!',
+        `Your bid of ${formatCurrency(amount)} has been placed. ${formatCurrency(BID_COMMITMENT_AMOUNT)} is held only if you are the current winning bidder.`
       );
     } catch (err) {
       Alert.alert(
@@ -181,20 +202,18 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
               if (orderInfo) {
                 // Navigate to payment screen
                 Alert.alert(
-                  'Order Created! 🎉',
+                  'Order Created!',
                   `Order #${orderInfo.orderNumber} has been created. Proceed to payment to complete your purchase.`,
                   [
                     {
                       text: 'Pay Now',
                       onPress: () => {
-                        navigation.navigate('Profile', {
-                          screen: 'Payment',
-                          params: {
-                            orderId: orderInfo.orderId,
-                            orderNumber: orderInfo.orderNumber,
-                            amount: orderInfo.amount,
-                            gadgetTitle: currentAuction.gadget?.title,
-                          },
+                        navigation.navigate('ShippingAddress', {
+                          orderId: orderInfo.orderId,
+                          orderNumber: orderInfo.orderNumber,
+                          amount: orderInfo.amount,
+                          gadgetTitle: currentAuction.gadget?.title,
+                          returnToPayment: true,
                         });
                       },
                     },
@@ -202,9 +221,8 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
                       text: 'Pay Later',
                       style: 'cancel',
                       onPress: () => {
-                        navigation.navigate('Profile', {
-                          screen: 'OrderDetail',
-                          params: { orderId: orderInfo.orderId },
+                        navigation.navigate('OrderDetail', {
+                          orderId: orderInfo.orderId,
                         });
                       },
                     },
@@ -273,13 +291,17 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
   }
 
   const gadget = currentAuction.gadget;
-  const images = gadget?.images || [];
+  const images = mediaUrls(gadget?.images);
   const isActive = currentAuction.status === 'active';
   const isOwner = currentAuction.seller_id === user?.id;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Image Gallery */}
         <View style={styles.imageContainer}>
           <ScrollView
@@ -302,7 +324,11 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
               ))
             ) : (
               <View style={[styles.image, styles.placeholderImage]}>
-                <Text style={styles.placeholderText}>📷</Text>
+                <Ionicons
+                  name="image-outline"
+                  size={58}
+                  color={colors.textMuted}
+                />
               </View>
             )}
           </ScrollView>
@@ -312,7 +338,7 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Text style={styles.backIcon}>←</Text>
+            <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
 
           {/* Image Indicators */}
@@ -340,7 +366,7 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
             ]}
           >
             <Text style={styles.statusText}>
-              {currentAuction.status.toUpperCase()}
+              {getAuctionStatusLabel(currentAuction.status)}
             </Text>
           </View>
         </View>
@@ -350,6 +376,18 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
           {/* Title & Condition */}
           <View style={styles.titleSection}>
             <Text style={styles.title}>{gadget?.title}</Text>
+            {(gadget?.brand || gadget?.model) && (
+              <Text style={styles.productLine}>
+                {[
+                  gadget?.brand,
+                  gadget?.model,
+                  gadget?.specifications?.color,
+                  gadget?.specifications?.storage,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            )}
             {gadget?.condition && (
               <View
                 style={[
@@ -417,20 +455,25 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
           </View>
 
           {/* Specifications */}
-          {gadget?.specifications &&
-            Object.keys(gadget.specifications).length > 0 && (
+          {(() => {
+            const specEntries = getOrderedSpecEntries(
+              gadget?.specifications as Record<string, unknown> | undefined
+            );
+            if (specEntries.length === 0) return null;
+            return (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Specifications</Text>
                 <View style={styles.specsContainer}>
-                  {Object.entries(gadget.specifications).map(([key, value]) => (
-                    <View key={key} style={styles.specRow}>
-                      <Text style={styles.specKey}>{key}</Text>
-                      <Text style={styles.specValue}>{value}</Text>
+                  {specEntries.map(entry => (
+                    <View key={entry.key} style={styles.specRow}>
+                      <Text style={styles.specKey}>{entry.label}</Text>
+                      <Text style={styles.specValue}>{entry.value}</Text>
                     </View>
                   ))}
                 </View>
               </View>
-            )}
+            );
+          })()}
 
           {/* Bid History */}
           <View style={styles.section}>
@@ -480,15 +523,13 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
             </View>
           </View>
         </View>
-
-        <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Bottom Action Bar */}
+      {/* Bottom Action Bar — in layout flow, not overlaying content */}
       {isActive && !isOwner && (
         <View style={styles.actionBar}>
-          <View style={styles.actionBarContent}>
-            <View style={styles.actionButtons}>
+          <View style={styles.actionButtons}>
+            {currentAuction.buy_now_price ? (
               <TouchableOpacity
                 style={styles.buyNowButtonCustom}
                 onPress={handleBuyNow}
@@ -496,23 +537,20 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
               >
                 <Text style={styles.buyNowButtonLabel}>Buy Now</Text>
                 <Text style={styles.buyNowButtonPrice}>
-                  {formatCurrency(
-                    currentAuction.buy_now_price ||
-                      currentAuction.current_price * 1.5
-                  )}
+                  {formatCurrency(currentAuction.buy_now_price)}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.bidButtonCustom}
-                onPress={handleOpenBidModal}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.bidButtonLabel}>Place Bid</Text>
-                <Text style={styles.bidButtonPrice}>
-                  Min: {formatCurrency(getMinBidAmount())}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            ) : null}
+            <TouchableOpacity
+              style={styles.bidButtonCustom}
+              onPress={handleOpenBidModal}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.bidButtonLabel}>Place Bid</Text>
+              <Text style={styles.bidButtonPrice}>
+                Min: {formatCurrency(getMinBidAmount())}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -534,10 +572,11 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
             onPress={() => setShowBidModal(false)}
           />
           <View style={styles.modalContent}>
+            <View style={styles.grabHandle} />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Place Your Bid</Text>
               <TouchableOpacity onPress={() => setShowBidModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -578,11 +617,27 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
               </View>
 
               <View style={styles.balanceInfo}>
-                <Text style={styles.balanceLabel}>Available Balance:</Text>
+                <Text style={styles.balanceLabel}>
+                  Required Wallet Balance:
+                </Text>
                 <Text style={styles.balanceAmount}>
-                  {formatCurrency(
-                    (wallet?.balance || 0) - (wallet?.held_balance || 0)
-                  )}
+                  {formatCurrency(BID_COMMITMENT_AMOUNT)}
+                </Text>
+              </View>
+
+              <View style={styles.bidPolicyBox}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={18}
+                  color={colors.primary}
+                />
+                <Text style={styles.bidPolicyText}>
+                  If you win, pay within {BID_PAYMENT_DEADLINE_HOURS} hours.
+                  Missing payment forfeits the{' '}
+                  {formatCurrency(BID_COMMITMENT_AMOUNT)} hold, suspends your
+                  account, and requires a{' '}
+                  {formatCurrency(BID_DEFAULT_PENALTY_AMOUNT)} reactivation
+                  penalty.
                 </Text>
               </View>
 
@@ -601,425 +656,454 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  errorText: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.lg,
-    marginBottom: spacing.lg,
-  },
-  imageContainer: {
-    position: 'relative',
-  },
-  image: {
-    width,
-    height: width * 0.8,
-  },
-  placeholderImage: {
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    fontSize: 64,
-  },
-  backButton: {
-    position: 'absolute',
-    top: spacing.md,
-    left: spacing.md,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backIcon: {
-    color: colors.text,
-    fontSize: fonts.sizes.xl,
-  },
-  imageIndicators: {
-    position: 'absolute',
-    bottom: spacing.md,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  indicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-  activeIndicator: {
-    backgroundColor: colors.text,
-    width: 24,
-  },
-  statusBadge: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.success,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-  },
-  endedBadge: {
-    backgroundColor: colors.error,
-  },
-  statusText: {
-    color: colors.text,
-    fontSize: fonts.sizes.xs,
-    fontWeight: '700',
-  },
-  content: {
-    padding: spacing.lg,
-  },
-  titleSection: {
-    marginBottom: spacing.lg,
-  },
-  title: {
-    fontSize: fonts.sizes.xxl,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  conditionBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-  },
-  conditionText: {
-    fontSize: fonts.sizes.sm,
-    fontWeight: '600',
-  },
-  priceSection: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  priceLabel: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-  },
-  currentPrice: {
-    color: colors.secondary,
-    fontSize: fonts.sizes.xxxl,
-    fontWeight: '700',
-  },
-  bidCountBox: {
-    backgroundColor: colors.primary + '20',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  bidCountNumber: {
-    color: colors.primary,
-    fontSize: fonts.sizes.xxl,
-    fontWeight: '700',
-  },
-  bidCountLabel: {
-    color: colors.primary,
-    fontSize: fonts.sizes.xs,
-  },
-  buyNowRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  buyNowLabel: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-  },
-  buyNowPrice: {
-    color: colors.accent,
-    fontSize: fonts.sizes.xl,
-    fontWeight: '700',
-  },
-  countdownSection: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    alignItems: 'center',
-  },
-  countdownLabel: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-    marginBottom: spacing.md,
-  },
-  section: {
-    marginBottom: spacing.xl,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: fonts.sizes.lg,
-    fontWeight: '700',
-    marginBottom: spacing.md,
-  },
-  description: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
-    lineHeight: 24,
-  },
-  specsContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-  },
-  specRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  specKey: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-  },
-  specValue: {
-    color: colors.text,
-    fontSize: fonts.sizes.sm,
-    fontWeight: '500',
-  },
-  noBids: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-  },
-  noBidsText: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
-  },
-  bidItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
-  },
-  bidderInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  bidderAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary + '30',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bidderInitial: {
-    color: colors.primary,
-    fontSize: fonts.sizes.lg,
-    fontWeight: '700',
-  },
-  bidderName: {
-    color: colors.text,
-    fontSize: fonts.sizes.sm,
-    fontWeight: '500',
-  },
-  bidTime: {
-    color: colors.textMuted,
-    fontSize: fonts.sizes.xs,
-  },
-  bidAmount: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
-    fontWeight: '600',
-  },
-  activeBid: {
-    color: colors.success,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  infoLabel: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-  },
-  infoValue: {
-    color: colors.text,
-    fontSize: fonts.sizes.sm,
-  },
-  bottomPadding: {
-    height: 180, // Increased to account for action bar + tab bar
-  },
-  actionBar: {
-    position: 'absolute',
-    bottom: 80, // Account for tab bar height
-    left: 0,
-    right: 0,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingBottom: spacing.md,
-    ...shadows.lg,
-  },
-  actionBarContent: {
-    padding: spacing.md,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  buyNowButtonCustom: {
-    flex: 1,
-    backgroundColor: colors.warning,
-    borderRadius: borderRadius.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-  },
-  buyNowButtonLabel: {
-    color: colors.background,
-    fontSize: fonts.sizes.sm,
-    fontWeight: '600',
-  },
-  buyNowButtonPrice: {
-    color: colors.background,
-    fontSize: fonts.sizes.md,
-    fontWeight: '700',
-  },
-  bidButtonCustom: {
-    flex: 1.2,
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-  },
-  bidButtonLabel: {
-    color: colors.text,
-    fontSize: fonts.sizes.sm,
-    fontWeight: '600',
-  },
-  bidButtonPrice: {
-    color: colors.text,
-    fontSize: fonts.sizes.xs,
-    fontWeight: '500',
-    opacity: 0.9,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalDismissArea: {
-    flex: 1,
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: borderRadius.xxl,
-    borderTopRightRadius: borderRadius.xxl,
-    paddingBottom: spacing.xxl,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    color: colors.text,
-    fontSize: fonts.sizes.xl,
-    fontWeight: '700',
-  },
-  modalClose: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.xl,
-  },
-  modalBody: {
-    padding: spacing.lg,
-  },
-  modalLabel: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-    marginBottom: spacing.xs,
-  },
-  modalCurrentPrice: {
-    color: colors.text,
-    fontSize: fonts.sizes.xxl,
-    fontWeight: '700',
-    marginBottom: spacing.lg,
-  },
-  bidInput: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    fontSize: fonts.sizes.xxl,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  quickBids: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  quickBidButton: {
-    backgroundColor: colors.surfaceLight,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  quickBidText: {
-    color: colors.primary,
-    fontSize: fonts.sizes.sm,
-    fontWeight: '600',
-  },
-  balanceInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceLight,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.lg,
-  },
-  balanceLabel: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.sm,
-  },
-  balanceAmount: {
-    color: colors.text,
-    fontSize: fonts.sizes.md,
-    fontWeight: '600',
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scroll: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: spacing.lg,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.xl,
+    },
+    errorText: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.lg,
+      marginBottom: spacing.lg,
+    },
+    imageContainer: {
+      position: 'relative',
+    },
+    image: {
+      width,
+      height: width * 0.8,
+    },
+    placeholderImage: {
+      backgroundColor: colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    backButton: {
+      position: 'absolute',
+      top: spacing.md,
+      left: spacing.md,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    imageIndicators: {
+      position: 'absolute',
+      bottom: spacing.md,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: spacing.sm,
+    },
+    indicator: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: 'rgba(255,255,255,0.5)',
+    },
+    activeIndicator: {
+      backgroundColor: colors.text,
+      width: 24,
+    },
+    statusBadge: {
+      position: 'absolute',
+      top: spacing.md,
+      right: spacing.md,
+      backgroundColor: colors.success,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: borderRadius.sm,
+    },
+    endedBadge: {
+      backgroundColor: colors.error,
+    },
+    statusText: {
+      color: '#FFFFFF',
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.bold,
+    },
+    content: {
+      padding: spacing.lg,
+    },
+    titleSection: {
+      marginBottom: spacing.lg,
+    },
+    title: {
+      fontSize: fonts.sizes.xxl,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    productLine: {
+      fontSize: fonts.sizes.sm,
+      color: colors.textSecondary,
+      marginBottom: spacing.sm,
+    },
+    conditionBadge: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      borderRadius: borderRadius.sm,
+    },
+    conditionText: {
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.semiBold,
+    },
+    priceSection: {
+      backgroundColor: colors.surface,
+      borderRadius: borderRadius.lg,
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+    },
+    priceRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    priceLabel: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+    },
+    currentPrice: {
+      color: colors.secondary,
+      fontSize: fonts.sizes.xxxl,
+      fontFamily: fonts.bold,
+    },
+    bidCountBox: {
+      backgroundColor: colors.primary + '20',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+    },
+    bidCountNumber: {
+      color: colors.primary,
+      fontSize: fonts.sizes.xxl,
+      fontFamily: fonts.bold,
+    },
+    bidCountLabel: {
+      color: colors.primary,
+      fontSize: fonts.sizes.xs,
+    },
+    buyNowRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    buyNowLabel: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+    },
+    buyNowPrice: {
+      color: colors.accent,
+      fontSize: fonts.sizes.xl,
+      fontFamily: fonts.bold,
+    },
+    countdownSection: {
+      backgroundColor: colors.surface,
+      borderRadius: borderRadius.lg,
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+      alignItems: 'center',
+    },
+    countdownLabel: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      marginBottom: spacing.md,
+    },
+    section: {
+      marginBottom: spacing.xl,
+    },
+    sectionTitle: {
+      color: colors.text,
+      fontSize: fonts.sizes.lg,
+      fontFamily: fonts.bold,
+      marginBottom: spacing.md,
+    },
+    description: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.md,
+      lineHeight: 24,
+    },
+    specsContainer: {
+      backgroundColor: colors.surface,
+      borderRadius: borderRadius.lg,
+      padding: spacing.md,
+    },
+    specRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    specKey: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+    },
+    specValue: {
+      color: colors.text,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
+    },
+    noBids: {
+      backgroundColor: colors.surface,
+      borderRadius: borderRadius.lg,
+      padding: spacing.xl,
+      alignItems: 'center',
+    },
+    noBidsText: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.md,
+    },
+    bidItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
+      marginBottom: spacing.sm,
+    },
+    bidderInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    bidderAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.primary + '30',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    bidderInitial: {
+      color: colors.primary,
+      fontSize: fonts.sizes.lg,
+      fontFamily: fonts.bold,
+    },
+    bidderName: {
+      color: colors.text,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
+    },
+    bidTime: {
+      color: colors.textMuted,
+      fontSize: fonts.sizes.xs,
+    },
+    bidAmount: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.md,
+      fontFamily: fonts.semiBold,
+    },
+    activeBid: {
+      color: colors.success,
+    },
+    infoRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    infoLabel: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+    },
+    infoValue: {
+      color: colors.text,
+      fontSize: fonts.sizes.sm,
+    },
+    actionBar: {
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+    },
+    actionButtons: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: spacing.sm,
+    },
+    buyNowButtonCustom: {
+      flex: 1,
+      backgroundColor: colors.warning + '1A',
+      borderWidth: 1.5,
+      borderColor: colors.warning,
+      borderRadius: borderRadius.full,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+    },
+    buyNowButtonLabel: {
+      color: colors.warning,
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.semiBold,
+    },
+    buyNowButtonPrice: {
+      color: colors.warning,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.bold,
+    },
+    bidButtonCustom: {
+      flex: 1,
+      backgroundColor: colors.primary,
+      borderRadius: borderRadius.full,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+    },
+    bidButtonLabel: {
+      color: '#FFFFFF',
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.semiBold,
+    },
+    bidButtonPrice: {
+      color: '#FFFFFF',
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
+      opacity: 0.9,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      justifyContent: 'flex-end',
+    },
+    modalDismissArea: {
+      flex: 1,
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: borderRadius.xxl,
+      borderTopRightRadius: borderRadius.xxl,
+      paddingBottom: spacing.xxl,
+    },
+    grabHandle: {
+      alignSelf: 'center',
+      width: 40,
+      height: 4,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.textMuted,
+      opacity: 0.4,
+      marginTop: spacing.sm,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: spacing.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    modalTitle: {
+      color: colors.text,
+      fontSize: fonts.sizes.xl,
+      fontFamily: fonts.bold,
+    },
+    modalBody: {
+      padding: spacing.lg,
+    },
+    modalLabel: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      marginBottom: spacing.xs,
+    },
+    modalCurrentPrice: {
+      color: colors.text,
+      fontSize: fonts.sizes.xxl,
+      fontFamily: fonts.bold,
+      marginBottom: spacing.lg,
+    },
+    bidInput: {
+      backgroundColor: colors.surfaceLight,
+      borderRadius: borderRadius.xl,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      padding: spacing.lg,
+      fontSize: fonts.sizes.xxl,
+      fontFamily: fonts.bold,
+      color: colors.text,
+      textAlign: 'center',
+      marginBottom: spacing.md,
+    },
+    quickBids: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: spacing.lg,
+    },
+    quickBidButton: {
+      backgroundColor: colors.primary + '14',
+      borderWidth: 1,
+      borderColor: colors.primary + '2A',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.full,
+    },
+    quickBidText: {
+      color: colors.primary,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.semiBold,
+    },
+    balanceInfo: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors.surfaceLight,
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
+      marginBottom: spacing.md,
+    },
+    balanceLabel: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+    },
+    balanceAmount: {
+      color: colors.text,
+      fontSize: fonts.sizes.md,
+      fontFamily: fonts.semiBold,
+    },
+    bidPolicyBox: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      backgroundColor: colors.primary + '10',
+      borderWidth: 1,
+      borderColor: colors.primary + '24',
+      borderRadius: borderRadius.lg,
+      padding: spacing.md,
+      marginBottom: spacing.lg,
+    },
+    bidPolicyText: {
+      flex: 1,
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      lineHeight: 20,
+      fontFamily: fonts.medium,
+    },
+  });

@@ -3,6 +3,13 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as orderService from '../../services/order/order.service';
 import logger from '../../utils/logger';
 
+const hideBuyerAddress = <T extends { shipping_address?: unknown }>(
+  order: T
+): T => ({
+  ...order,
+  shipping_address: undefined,
+});
+
 /**
  * Get order by ID
  * GET /api/v1/orders/:orderId
@@ -28,7 +35,10 @@ export const getOrderById = async (req: Request, res: Response) => {
       return sendError(res, 'Unauthorized to view this order', 403);
     }
 
-    sendSuccess(res, order);
+    sendSuccess(
+      res,
+      order.seller_id === req.user.user_id ? hideBuyerAddress(order) : order
+    );
   } catch (error: any) {
     logger.error('Get order error:', error);
     sendError(res, error.message || 'Failed to get order', 500);
@@ -60,7 +70,10 @@ export const getOrderByNumber = async (req: Request, res: Response) => {
       return sendError(res, 'Unauthorized to view this order', 403);
     }
 
-    sendSuccess(res, order);
+    sendSuccess(
+      res,
+      order.seller_id === req.user.user_id ? hideBuyerAddress(order) : order
+    );
   } catch (error: any) {
     logger.error('Get order by number error:', error);
     sendError(res, error.message || 'Failed to get order', 500);
@@ -116,7 +129,7 @@ export const getMySales = async (req: Request, res: Response) => {
       status
     );
 
-    sendPaginated(res, orders, page, limit, total);
+    sendPaginated(res, orders.map(hideBuyerAddress), page, limit, total);
   } catch (error: any) {
     logger.error('Get my sales error:', error);
     sendError(res, error.message || 'Failed to get sales', 500);
@@ -225,6 +238,36 @@ export const confirmDelivery = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Confirm delivery error:', error);
     sendError(res, error.message || 'Failed to confirm delivery', 400);
+  }
+};
+
+/**
+ * Open dispute for an order
+ * POST /api/v1/orders/:orderId/disputes
+ */
+export const createDispute = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+
+    const { orderId } = req.params;
+    const { dispute_type, description } = req.body as {
+      dispute_type: string;
+      description: string;
+    };
+
+    const dispute = await orderService.createDispute(
+      orderId,
+      req.user.user_id,
+      dispute_type,
+      description
+    );
+
+    sendSuccess(res, dispute, 'Dispute opened successfully', 201);
+  } catch (error: any) {
+    logger.error('Create dispute error:', error);
+    sendError(res, error.message || 'Failed to open dispute', 400);
   }
 };
 

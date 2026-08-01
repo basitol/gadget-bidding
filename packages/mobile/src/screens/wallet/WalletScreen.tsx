@@ -13,6 +13,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -21,16 +22,21 @@ import {
   EmptyState,
   LoadingScreen,
 } from '../../components';
+import { useIsTabRoot } from '../../hooks';
 import { useWalletStore } from '../../store';
 import { walletService } from '../../services';
 import {
   formatCurrency,
   formatDateTime,
   formatRelativeTime,
+  getTransactionTypeLabel,
+  getTransactionStatusLabel,
 } from '../../utils';
 import { WalletTransaction } from '../../types';
 
 export const WalletScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const isTabRoot = useIsTabRoot();
   const [showFundModal, setShowFundModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [fundAmount, setFundAmount] = useState('');
@@ -151,9 +157,7 @@ export const WalletScreen: React.FC = () => {
           </View>
           <View>
             <Text style={styles.transactionType}>
-              {transactionType
-                .replace(/_/g, ' ')
-                .replace(/\b\w/g, l => l.toUpperCase())}
+              {getTransactionTypeLabel(transactionType)}
             </Text>
             <Text style={styles.transactionTime}>
               {formatRelativeTime(item.created_at)}
@@ -167,14 +171,20 @@ export const WalletScreen: React.FC = () => {
               { color: getTransactionColor(transactionType) },
             ]}
           >
-            {['deposit', 'sale_credit', 'bid_release', 'refund'].includes(
-              transactionType
-            )
+            {[
+              'deposit',
+              'sale',
+              'sale_credit',
+              'bid_release',
+              'refund',
+            ].includes(transactionType)
               ? '+'
               : '-'}
             {formatCurrency(item.amount)}
           </Text>
-          <Text style={styles.transactionStatus}>{transactionStatus}</Text>
+          <Text style={styles.transactionStatus}>
+            {getTransactionStatusLabel(transactionStatus)}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -198,6 +208,14 @@ export const WalletScreen: React.FC = () => {
       >
         {/* Header */}
         <View style={styles.header}>
+          {!isTabRoot && navigation.canGoBack() ? (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            >
+              <Ionicons name="chevron-back" size={20} color={colors.text} />
+            </TouchableOpacity>
+          ) : null}
           <Text style={styles.title}>Wallet</Text>
         </View>
 
@@ -243,7 +261,7 @@ export const WalletScreen: React.FC = () => {
 
           {transactions.length === 0 ? (
             <EmptyState
-              icon="💳"
+              icon="card-outline"
               title="No Transactions"
               message="Your transaction history will appear here once you fund your wallet or place bids."
               actionLabel="Fund Wallet"
@@ -284,7 +302,11 @@ export const WalletScreen: React.FC = () => {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Fund Wallet</Text>
                 <TouchableOpacity onPress={() => setShowFundModal(false)}>
-                  <Text style={styles.modalClose}>✕</Text>
+                  <Ionicons
+                    name="close"
+                    size={22}
+                    color={colors.textSecondary}
+                  />
                 </TouchableOpacity>
               </View>
 
@@ -316,7 +338,12 @@ export const WalletScreen: React.FC = () => {
                 <View style={styles.paymentMethods}>
                   <Text style={styles.paymentLabel}>Payment Method</Text>
                   <View style={styles.paymentOption}>
-                    <Text style={styles.paymentIcon}>💳</Text>
+                    <Ionicons
+                      name="card-outline"
+                      size={22}
+                      color={colors.primary}
+                      style={styles.paymentIcon}
+                    />
                     <Text style={styles.paymentName}>Paystack (Card/Bank)</Text>
                     <View style={styles.paymentSelected} />
                   </View>
@@ -355,7 +382,11 @@ export const WalletScreen: React.FC = () => {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Withdraw Funds</Text>
                 <TouchableOpacity onPress={() => setShowWithdrawModal(false)}>
-                  <Text style={styles.modalClose}>✕</Text>
+                  <Ionicons
+                    name="close"
+                    size={22}
+                    color={colors.textSecondary}
+                  />
                 </TouchableOpacity>
               </View>
 
@@ -380,7 +411,11 @@ export const WalletScreen: React.FC = () => {
                 />
 
                 <View style={styles.withdrawInfo}>
-                  <Text style={styles.withdrawInfoIcon}>ℹ️</Text>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={20}
+                    color={colors.primary}
+                  />
                   <Text style={styles.withdrawInfoText}>
                     Withdrawals are processed within 24 hours. Minimum
                     withdrawal is ₦1,000.
@@ -412,6 +447,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
   },
   title: {
     fontSize: fonts.sizes.xxxl,
@@ -485,9 +529,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  transactionEmoji: {
-    fontSize: fonts.sizes.xl,
-  },
   transactionType: {
     color: colors.text,
     fontSize: fonts.sizes.md,
@@ -537,10 +578,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fonts.sizes.xl,
     fontWeight: '700',
-  },
-  modalClose: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.xl,
   },
   modalBody: {
     padding: spacing.lg,
@@ -595,7 +632,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   paymentIcon: {
-    fontSize: fonts.sizes.xl,
     marginRight: spacing.md,
   },
   paymentName: {
@@ -633,9 +669,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     marginBottom: spacing.lg,
     gap: spacing.sm,
-  },
-  withdrawInfoIcon: {
-    fontSize: fonts.sizes.lg,
   },
   withdrawInfoText: {
     flex: 1,

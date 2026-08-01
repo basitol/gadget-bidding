@@ -8,15 +8,24 @@ import {
   AuctionFilters,
 } from '../types';
 
+export interface GadgetCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  icon_url?: string | null;
+  is_active?: boolean;
+}
+
 export interface CreateGadgetData {
   title: string;
   description: string;
-  category: string;
-  brand?: string;
-  model?: string;
+  category_id: string;
+  brand: string;
+  model: string;
   condition: string;
   images: string[];
-  specifications?: Record<string, string>;
+  specifications?: Record<string, unknown>;
 }
 
 export interface CreateAuctionData {
@@ -24,9 +33,22 @@ export interface CreateAuctionData {
   starting_price: number;
   reserve_price?: number;
   buy_now_price?: number;
-  min_bid_increment?: number;
+  bid_increment?: number;
   start_time: string;
   end_time: string;
+}
+
+export interface SellerDashboard {
+  stats: {
+    total_gadgets: number;
+    pending_gadgets: number;
+    ready_gadgets: number;
+    total_auctions: number;
+    active_auctions: number;
+    sold_orders: number;
+  };
+  pending_gadgets: Gadget[];
+  ready_gadgets: Gadget[];
 }
 
 class AuctionService {
@@ -40,6 +62,49 @@ class AuctionService {
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }
+  }
+
+  /** Upload local device photos; returns public image URLs */
+  async uploadImages(localUris: string[]): Promise<string[]> {
+    if (localUris.length === 0) return [];
+
+    const { toJpegUris } = await import('../utils/images');
+    const jpegUris = await toJpegUris(localUris);
+
+    const formData = new FormData();
+    jpegUris.forEach((uri, index) => {
+      formData.append('images', {
+        uri,
+        name: `gadget_${Date.now()}_${index}.jpg`,
+        type: 'image/jpeg',
+      } as unknown as Blob);
+    });
+
+    try {
+      const response = await api.post('/gadgets/upload-images', formData, {
+        transformRequest: data => data,
+      });
+      return response.data?.data?.urls || [];
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /** Keep remote URLs; upload any local file URIs */
+  async resolveImageUrls(uris: string[]): Promise<string[]> {
+    const remote: string[] = [];
+    const local: string[] = [];
+
+    uris.forEach(uri => {
+      if (/^https?:\/\//i.test(uri)) {
+        remote.push(uri);
+      } else {
+        local.push(uri);
+      }
+    });
+
+    const uploaded = await this.uploadImages(local);
+    return [...remote, ...uploaded];
   }
 
   // Get gadget by ID
@@ -65,9 +130,18 @@ class AuctionService {
   }
 
   // Get gadget categories
-  async getCategories(): Promise<ApiResponse<string[]>> {
+  async getCategories(): Promise<ApiResponse<GadgetCategory[]>> {
     try {
       const response = await api.get('/gadgets/categories');
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  async getSellerDashboard(): Promise<ApiResponse<SellerDashboard>> {
+    try {
+      const response = await api.get('/seller/dashboard');
       return response.data;
     } catch (error) {
       throw new Error(getErrorMessage(error));

@@ -2,11 +2,61 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 /**
+ * Pull a usable hostname from Expo host / linking URIs.
+ * Handles forms like:
+ * - 192.168.1.5:8081
+ * - exp://192.168.1.5:8081
+ * - http://192.168.1.5:8081
+ */
+function extractHost(uri?: string | null): string | null {
+  if (!uri) return null;
+
+  // Already "host:port"
+  if (/^[\d.]+(?::\d+)?$/.test(uri) || /^[a-z0-9.-]+(?::\d+)?$/i.test(uri)) {
+    const host = uri.split(':')[0];
+    return host || null;
+  }
+
+  try {
+    const normalized = uri.includes('://') ? uri : `http://${uri}`;
+    const { hostname } = new URL(normalized);
+    if (
+      hostname &&
+      hostname !== 'exp' &&
+      hostname !== 'http' &&
+      hostname !== 'https'
+    ) {
+      return hostname;
+    }
+  } catch {
+    // fall through
+  }
+
+  const stripped = uri.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const host = stripped.split('/')[0]?.split(':')[0];
+  if (
+    host &&
+    host !== 'exp' &&
+    host !== 'http' &&
+    host !== 'https'
+  ) {
+    return host;
+  }
+
+  return null;
+}
+
+/**
  * Resolve the dev machine IP/host for API calls.
  * Uses Expo's host URI when available (physical device / Expo Go),
  * otherwise falls back to simulator/emulator defaults.
  */
 function getDevApiHost(): string {
+  const envHost = process.env.EXPO_PUBLIC_API_HOST;
+  if (envHost && envHost.trim()) {
+    return envHost.trim();
+  }
+
   // iOS Simulator shares the Mac loopback — localhost is most reliable
   if (Platform.OS === 'ios' && Constants.isDevice === false) {
     return 'localhost';
@@ -17,13 +67,19 @@ function getDevApiHost(): string {
     return '10.0.2.2';
   }
 
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    Constants.manifest2?.extra?.expoClient?.hostUri ??
-    Constants.linkingUri;
+  const legacyManifest = (Constants as { manifest?: Record<string, string> })
+    .manifest;
 
-  if (hostUri) {
-    const host = hostUri.split(':')[0];
+  const candidates = [
+    Constants.expoConfig?.hostUri,
+    Constants.manifest2?.extra?.expoClient?.hostUri,
+    legacyManifest?.debuggerHost,
+    legacyManifest?.hostUri,
+    Constants.linkingUri,
+  ];
+
+  for (const candidate of candidates) {
+    const host = extractHost(candidate);
     if (host) {
       return host;
     }
@@ -42,6 +98,11 @@ export const SOCKET_URL = __DEV__
   ? `http://${DEV_API_HOST}:3000`
   : 'https://api.gadgetbid.ng';
 
+if (__DEV__) {
+  // Helps diagnose "timeout" / Network Error when Wi‑Fi IP changes
+  console.log(`[API] base URL → ${API_BASE_URL}`);
+}
+
 // App Configuration
 export const APP_NAME = 'GadgetBid';
 export const CURRENCY = '₦';
@@ -59,6 +120,7 @@ export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'access_token',
   REFRESH_TOKEN: 'refresh_token',
   USER: 'user',
+  INTERFACE_TYPE: 'interface_type',
   ONBOARDING_COMPLETE: 'onboarding_complete',
 };
 

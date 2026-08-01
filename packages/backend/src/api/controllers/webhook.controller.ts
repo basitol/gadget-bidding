@@ -12,19 +12,21 @@ import logger from '../../utils/logger';
  */
 export const paystackWebhook = async (req: Request, res: Response) => {
   try {
-    // Verify webhook signature
     const signature = req.headers['x-paystack-signature'] as string;
-    const payload = JSON.stringify(req.body);
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body.toString('utf8')
+      : typeof req.body === 'string'
+        ? req.body
+        : JSON.stringify(req.body);
 
-    if (!paystackService.verifyWebhookSignature(payload, signature)) {
+    if (!paystackService.verifyWebhookSignature(rawBody, signature)) {
       logger.warn('Invalid Paystack webhook signature');
       return res.status(400).send('Invalid signature');
     }
 
-    const event = req.body;
+    const event = JSON.parse(rawBody);
     logger.info(`Paystack webhook received: ${event.event}`);
 
-    // Handle different event types
     switch (event.event) {
       case 'charge.success':
         await handleChargeSuccess(event.data);
@@ -42,24 +44,22 @@ export const paystackWebhook = async (req: Request, res: Response) => {
         logger.info(`Unhandled webhook event: ${event.event}`);
     }
 
-    // Always respond with 200 to acknowledge receipt
     res.status(200).send('Webhook received');
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Webhook processing error:', error);
-    // Still return 200 to prevent retries
-    res.status(200).send('Error processing webhook');
+    // 5xx so Paystack retries transient failures
+    res.status(500).send('Error processing webhook');
   }
 };
 
 /**
  * Handle successful charge
  */
-async function handleChargeSuccess(data: any) {
-  const reference = data.reference;
-  const amount = data.amount / 100; // Convert kobo to Naira
-  const metadata = data.metadata || {};
+async function handleChargeSuccess(data: Record<string, unknown>) {
+  const reference = data.reference as string;
+  const amount = (data.amount as number) / 100;
+  const metadata = (data.metadata as Record<string, unknown>) || {};
 
-  // Check if already processed
   const existingTx = await prisma.paymentTransaction.findFirst({
     where: {
       gatewayReference: reference,
@@ -72,7 +72,6 @@ async function handleChargeSuccess(data: any) {
     return;
   }
 
-  // Get pending transaction
   const pendingTx = await prisma.paymentTransaction.findFirst({
     where: {
       gatewayReference: reference,
@@ -85,13 +84,19 @@ async function handleChargeSuccess(data: any) {
     return;
   }
 
-  // Check if this is an order payment
-  const txMetadata = (pendingTx.metadata as any) || {};
+  const txMetadata = (pendingTx.metadata as Record<string, unknown>) || {};
+
   if (txMetadata.purpose === 'order_payment' && txMetadata.order_id) {
-    // Process order payment
+    const expectedAmount = parseFloat(pendingTx.amount.toString());
+    if (Math.abs(expectedAmount - amount) > 0.01) {
+      throw new Error(
+        `Order payment amount mismatch for ${reference}: expected ${expectedAmount}, got ${amount}`
+      );
+    }
+
     logger.info(`Processing order payment via webhook: ${reference}`);
     await orderService.processOrderPayment(
-      txMetadata.order_id,
+      txMetadata.order_id as string,
       reference,
       amount,
       data
@@ -99,51 +104,23 @@ async function handleChargeSuccess(data: any) {
     return;
   }
 
-  // Otherwise, it's a wallet deposit
-  // Update payment transaction (use 'success' as per DB constraint)
-  await prisma.paymentTransaction.update({
-    where: { id: pendingTx.id },
-    data: {
-      status: 'success',
-      gatewayResponse: data,
-      updatedAt: new Date(),
-    },
-  });
+  if (!pendingTx.userId) {
+    throw new Error(`Wallet funding missing user for reference: ${reference}`);
+  }
 
-  // Credit wallet
-  await walletService.createDepositTransaction(
-    pendingTx.userId!,
-    amount,
+  await walletService.processWalletFundingFromPaystack({
+    userId: pendingTx.userId,
     reference,
-    {
-      gateway: 'paystack',
-      payment_method: data.channel,
-      webhook: true,
-    }
-  );
-
-  logger.info(`Wallet credited via webhook: ${pendingTx.userId} - ₦${amount}`);
+    amount,
+    gatewayResponse: data,
+    source: 'webhook',
+  });
 }
 
-/**
- * Handle successful transfer
- */
-async function handleTransferSuccess(data: any) {
-  const reference = data.reference;
-
-  logger.info(`Transfer successful: ${reference}`);
-
-  // Update withdrawal transaction status
-  // You would implement this based on your withdrawal flow
+async function handleTransferSuccess(data: Record<string, unknown>) {
+  logger.info(`Transfer successful: ${data.reference}`);
 }
 
-/**
- * Handle failed transfer
- */
-async function handleTransferFailed(data: any) {
-  const reference = data.reference;
-
-  logger.error(`Transfer failed: ${reference}`, data);
-
-  // Handle failed transfer - refund to wallet, notify user, etc.
+async function handleTransferFailed(data: Record<string, unknown>) {
+  logger.error(`Transfer failed: ${data.reference}`, data);
 }

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, WebViewNavigation } from 'react-native-webview';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { orderService } from '../../services';
 import { formatCurrency } from '../../utils';
@@ -102,7 +103,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
       if (response.data?.payment_status === 'paid') {
         Alert.alert(
-          'Payment Successful! 🎉',
+          'Payment Successful!',
           `Your payment for order #${orderNumber} was successful. The seller will be notified to ship your item.`,
           [
             {
@@ -167,13 +168,18 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             onPress={() => navigation.goBack()}
             style={styles.closeButton}
           >
-            <Text style={styles.closeIcon}>✕</Text>
+            <Ionicons name="close" size={22} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.title}>Payment</Text>
           <View style={styles.placeholder} />
         </View>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>⚠️</Text>
+          <Ionicons
+            name="alert-circle-outline"
+            size={56}
+            color={colors.error}
+            style={styles.errorIcon}
+          />
           <Text style={styles.errorTitle}>Payment Error</Text>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity
@@ -198,7 +204,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleCancel} style={styles.closeButton}>
-          <Text style={styles.closeIcon}>✕</Text>
+          <Ionicons name="close" size={22} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.title}>Pay {formatCurrency(amount)}</Text>
@@ -249,7 +255,12 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
       {/* Security Notice */}
       <View style={styles.securityBar}>
-        <Text style={styles.securityIcon}>🔒</Text>
+        <Ionicons
+          name="lock-closed-outline"
+          size={16}
+          color={colors.success}
+          style={styles.securityIcon}
+        />
         <Text style={styles.securityText}>Secured by Paystack</Text>
       </View>
     </SafeAreaView>
@@ -277,10 +288,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  closeIcon: {
-    fontSize: fonts.sizes.lg,
-    color: colors.text,
   },
   headerCenter: {
     alignItems: 'center',
@@ -351,7 +358,6 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   securityIcon: {
-    fontSize: fonts.sizes.md,
     marginRight: spacing.xs,
   },
   securityText: {
@@ -365,7 +371,6 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   errorIcon: {
-    fontSize: 64,
     marginBottom: spacing.lg,
   },
   errorTitle: {

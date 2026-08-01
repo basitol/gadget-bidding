@@ -32,11 +32,13 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   navigation,
   route,
 }) => {
-  const { phone_number, verification_id, isNewUser } = route.params;
+  const { phone_number, verification_id, isNewUser, interfaceType } =
+    route.params;
   const { mode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
 
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
+  const [verificationId, setVerificationId] = useState(verification_id);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [resendTimer, setResendTimer] = useState(60);
   const [isResending, setIsResending] = useState(false);
@@ -56,6 +58,25 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   }, [resendTimer]);
 
   const handleOtpChange = (value: string, index: number) => {
+    // Autofill / paste: a full (or partial) code arrives in one field.
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, '').slice(0, OTP_LENGTH).split('');
+      if (digits.length) {
+        const filled = Array(OTP_LENGTH).fill('');
+        digits.forEach((d, i) => {
+          filled[i] = d;
+        });
+        setOtp(filled);
+        const nextIndex = Math.min(digits.length, OTP_LENGTH - 1);
+        inputRefs.current[nextIndex]?.focus();
+        if (digits.length === OTP_LENGTH) {
+          Keyboard.dismiss();
+          handleVerify(filled.join(''));
+        }
+      }
+      return;
+    }
+
     if (value && !/^\d$/.test(value)) return;
 
     const newOtp = [...otp];
@@ -91,11 +112,11 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     }
 
     try {
-      await verifyOtp(verification_id, code);
-    } catch {
+      await verifyOtp(verificationId, code, interfaceType);
+    } catch (err) {
       Alert.alert(
         'Verification Failed',
-        error || 'Invalid OTP code. Please try again.'
+        err instanceof Error ? err.message : 'Invalid OTP code. Please try again.'
       );
       setOtp(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
@@ -107,7 +128,11 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
 
     setIsResending(true);
     try {
-      await authService.resendOtp(phone_number);
+      const response = await authService.resendOtp(phone_number);
+      const newVerificationId = response.data?.verification_id;
+      if (newVerificationId) {
+        setVerificationId(newVerificationId);
+      }
       setResendTimer(60);
       setOtp(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
@@ -156,7 +181,9 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
             onKeyPress={e => handleKeyPress(e, index)}
             onFocus={() => setFocusedIndex(index)}
             keyboardType="number-pad"
-            maxLength={1}
+            textContentType="oneTimeCode"
+            autoComplete={index === 0 ? 'sms-otp' : 'off'}
+            maxLength={index === 0 ? OTP_LENGTH : 1}
             selectTextOnFocus
           />
         ))}
@@ -197,7 +224,9 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
         <Text style={styles.infoText}>
           {isNewUser
-            ? 'After verification, your account will be created and you can start bidding right away.'
+            ? interfaceType === 'seller'
+              ? 'After verification, your seller account will be ready to list gadgets.'
+              : 'After verification, your buyer account will be ready — start bidding right away.'
             : 'Enter the code to complete your login securely.'}
         </Text>
       </View>

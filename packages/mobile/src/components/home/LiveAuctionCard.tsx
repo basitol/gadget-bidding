@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   Image,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
+  Animated,
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,7 +14,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius, shadows } from '../../constants';
 import { Auction } from '../../types';
-import { formatCurrency, formatCountdown } from '../../utils';
+import {
+  formatCurrency,
+  formatCountdown,
+  getConditionLabel,
+} from '../../utils';
+import { mediaUrl } from '../../utils/images';
 
 const { width } = Dimensions.get('window');
 
@@ -30,6 +37,15 @@ export const LiveAuctionCard: React.FC<LiveAuctionCardProps> = ({
   const { colors, mode } = useTheme();
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
   const [countdown, setCountdown] = useState(formatCountdown(auction.end_time));
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const animateTo = (value: number) =>
+    Animated.spring(scale, {
+      toValue: value,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 0,
+    }).start();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -39,18 +55,25 @@ export const LiveAuctionCard: React.FC<LiveAuctionCardProps> = ({
   }, [auction.end_time]);
 
   const imageUri =
-    auction.gadget?.images?.[0] || 'https://via.placeholder.com/400x260';
+    mediaUrl(auction.gadget?.images?.[0]) ||
+    'https://via.placeholder.com/400x260';
   const subtitle = [
     auction.gadget?.brand,
     auction.gadget?.model,
-    auction.gadget?.condition?.replace('_', ' '),
+    auction.gadget?.condition
+      ? getConditionLabel(auction.gadget.condition)
+      : null,
   ]
     .filter(Boolean)
     .join(' · ');
 
   return (
-    <View style={styles.card}>
-      <TouchableOpacity onPress={onPress} activeOpacity={0.92}>
+    <Animated.View style={[styles.card, { transform: [{ scale }] }]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => animateTo(0.98)}
+        onPressOut={() => animateTo(1)}
+      >
         <View style={styles.imageWrap}>
         <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
         <LinearGradient
@@ -59,7 +82,7 @@ export const LiveAuctionCard: React.FC<LiveAuctionCardProps> = ({
         />
         <View style={styles.imageBadges}>
           <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
+            <Ionicons name="flash" size={11} color="#FFFFFF" />
             <Text style={styles.liveText}>LIVE</Text>
           </View>
           <View style={styles.timeBadge}>
@@ -69,7 +92,7 @@ export const LiveAuctionCard: React.FC<LiveAuctionCardProps> = ({
         </View>
         <Text style={styles.bidsHour}>{auction.bid_count} bids this hour</Text>
         </View>
-      </TouchableOpacity>
+      </Pressable>
 
       <View style={styles.body}>
         <View style={styles.titleRow}>
@@ -123,7 +146,7 @@ export const LiveAuctionCard: React.FC<LiveAuctionCardProps> = ({
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
@@ -161,17 +184,11 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
     liveBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      backgroundColor: colors.error,
+      gap: 4,
+      backgroundColor: colors.primary,
       paddingHorizontal: spacing.sm,
       paddingVertical: 6,
       borderRadius: borderRadius.full,
-    },
-    liveDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: '#FFFFFF',
     },
     liveText: {
       color: '#FFFFFF',

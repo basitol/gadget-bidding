@@ -1,0 +1,43 @@
+---
+description: Security requirements for GadgetBid — secrets, auth, payments, and data
+alwaysApply: true
+---
+
+# GadgetBid Security Rules
+
+## Secrets & environment
+
+- **Never** commit `.env`, API keys, JWT secrets, or `DATABASE_URL` with credentials.
+- All secrets live in `packages/backend/.env` only (not repo root). Use `.env.example` for templates with placeholders.
+- In production, `JWT_SECRET` and `JWT_REFRESH_SECRET` must be 32+ random characters; startup validation enforces this.
+- Do not log passwords, OTP codes, tokens, Paystack signatures, or full payment payloads.
+
+## Authentication & authorization
+
+- Protected routes must use `authenticate` middleware; seller actions use `sellerOnly`; admin uses `adminOnly`.
+- JWT access tokens are short-lived; refresh tokens are stored server-side and revocable.
+- Passwords: bcrypt only, never store or return plaintext.
+- Login/register/OTP endpoints must stay behind `authRateLimiter`.
+
+## Input & output
+
+- Validate all request bodies with express-validator; reject unknown fields where appropriate.
+- Never expose stack traces or internal errors in production API responses.
+- Use parameterized queries (Prisma or `$1` placeholders) — no string-concatenated SQL.
+
+## Payments & webhooks
+
+- Paystack webhooks: verify `x-paystack-signature` against **raw** request body with HMAC-SHA512; use timing-safe compare.
+- Treat webhook handlers as idempotent (check reference before crediting wallet or marking orders paid).
+- Never trust client-reported payment success without Paystack verify or signed webhook.
+
+## Mobile
+
+- Store tokens in SecureStore only, not AsyncStorage.
+- Do not embed secret keys in the mobile app; only public Paystack keys if needed client-side.
+
+## When adding features
+
+- Apply rate limiting to new public or abuse-prone endpoints.
+- Add audit logging for admin, role changes, and financial operations when touching those flows.
+- Review CORS and Socket.io origins when adding new clients.

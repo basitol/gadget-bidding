@@ -7,13 +7,16 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { EmptyState, LoadingScreen } from '../../components';
 import { auctionService } from '../../services';
 import { formatCurrency, formatRelativeTime } from '../../utils';
+import { mediaUrl } from '../../utils/images';
 import { Bid } from '../../types';
 
 type MyBidsScreenProps = {
@@ -25,38 +28,63 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
   const [activeBids, setActiveBids] = useState<Bid[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'active'>('all');
 
-  const loadBids = useCallback(async () => {
+  const loadBids = useCallback(async (nextPage = 1, append = false) => {
+    if (append) setIsLoadingMore(true);
     try {
-      const [allBidsResponse, activeBidsResponse] = await Promise.all([
-        auctionService.getMyBids(),
-        auctionService.getMyActiveBids(),
-      ]);
-      setBids(allBidsResponse.data || []);
-      setActiveBids(activeBidsResponse.data || []);
+      if (append) {
+        const allBidsResponse = await auctionService.getMyBids(nextPage, 20);
+        const batch = allBidsResponse.data || [];
+        setBids(prev => [...prev, ...batch]);
+        const totalPages =
+          (allBidsResponse.pagination as any)?.totalPages ||
+          allBidsResponse.pagination?.total_pages ||
+          1;
+        setPage(nextPage);
+        setHasMore(nextPage < totalPages);
+      } else {
+        const [allBidsResponse, activeBidsResponse] = await Promise.all([
+          auctionService.getMyBids(1, 20),
+          auctionService.getMyActiveBids(),
+        ]);
+        setBids(allBidsResponse.data || []);
+        setActiveBids(activeBidsResponse.data || []);
+        const totalPages =
+          (allBidsResponse.pagination as any)?.totalPages ||
+          allBidsResponse.pagination?.total_pages ||
+          1;
+        setPage(1);
+        setHasMore(1 < totalPages);
+      }
     } catch (error) {
       console.error('Failed to load bids:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      setIsLoadingMore(false);
     }
   }, []);
 
   useEffect(() => {
-    loadBids();
+    loadBids(1, false);
   }, [loadBids]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    loadBids();
+    loadBids(1, false);
+  };
+
+  const handleLoadMore = () => {
+    if (activeTab !== 'all' || isLoading || isLoadingMore || !hasMore) return;
+    loadBids(page + 1, true);
   };
 
   const handleBidPress = (bid: Bid) => {
-    navigation.navigate('Home', {
-      screen: 'AuctionDetail',
-      params: { auctionId: bid.auction_id },
-    });
+    navigation.navigate('AuctionDetail', { auctionId: bid.auction_id });
   };
 
   const getBidStatusColor = (bid: Bid): string => {
@@ -75,12 +103,12 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
     return 'Active';
   };
 
-  const getBidStatusIcon = (bid: Bid): string => {
-    if (bid.is_winning) return '🏆';
-    if (bid.status === 'outbid') return '⚡';
-    if (bid.status === 'won') return '🎉';
-    if (bid.status === 'lost') return '😢';
-    return '🎯';
+  const getBidStatusIcon = (bid: Bid): keyof typeof Ionicons.glyphMap => {
+    if (bid.is_winning) return 'trophy-outline';
+    if (bid.status === 'outbid') return 'flash-outline';
+    if (bid.status === 'won') return 'sparkles-outline';
+    if (bid.status === 'lost') return 'trending-down-outline';
+    return 'radio-button-on-outline';
   };
 
   const displayBids = activeTab === 'all' ? bids : activeBids;
@@ -96,11 +124,15 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
           <View style={styles.auctionImage}>
             {(item as any).auction?.gadget?.images?.[0] ? (
               <Image
-                source={{ uri: (item as any).auction.gadget.images[0] }}
+                source={{ uri: mediaUrl((item as any).auction.gadget.images[0]) }}
                 style={styles.auctionImageContent}
               />
             ) : (
-              <Text style={styles.auctionEmoji}>📱</Text>
+              <Ionicons
+                name="phone-portrait-outline"
+                size={24}
+                color={colors.textMuted}
+              />
             )}
           </View>
           <View style={styles.auctionDetails}>
@@ -118,7 +150,11 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
             { backgroundColor: getBidStatusColor(item) + '20' },
           ]}
         >
-          <Text style={styles.statusIcon}>{getBidStatusIcon(item)}</Text>
+          <Ionicons
+            name={getBidStatusIcon(item)}
+            size={13}
+            color={getBidStatusColor(item)}
+          />
           <Text style={[styles.statusText, { color: getBidStatusColor(item) }]}>
             {getBidStatusText(item)}
           </Text>
@@ -158,7 +194,7 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>My Bids</Text>
         <View style={styles.placeholder} />
@@ -225,7 +261,9 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
       {/* Bids List */}
       {displayBids.length === 0 ? (
         <EmptyState
-          icon={activeTab === 'all' ? '🎯' : '🏆'}
+          icon={
+            activeTab === 'all' ? 'radio-button-on-outline' : 'trophy-outline'
+          }
           title={activeTab === 'all' ? 'No Bids Yet' : 'No Winning Bids'}
           message={
             activeTab === 'all'
@@ -233,7 +271,9 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
               : "You don't have any winning bids at the moment"
           }
           actionLabel="Browse Auctions"
-          onAction={() => navigation.navigate('Home')}
+          onAction={() =>
+            navigation.navigate('MainTabs', { screen: 'Home' })
+          }
         />
       ) : (
         <FlatList
@@ -241,6 +281,16 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
           keyExtractor={item => item.id}
           renderItem={renderBid}
           contentContainerStyle={styles.listContent}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <ActivityIndicator
+                style={{ marginVertical: spacing.lg }}
+                color={colors.primary}
+              />
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -273,10 +323,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  backIcon: {
-    fontSize: fonts.sizes.xl,
-    color: colors.text,
   },
   title: {
     fontSize: fonts.sizes.xl,
@@ -372,9 +418,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  auctionEmoji: {
-    fontSize: fonts.sizes.xl,
-  },
   auctionDetails: {
     flex: 1,
     marginLeft: spacing.md,
@@ -396,9 +439,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
     gap: spacing.xs,
-  },
-  statusIcon: {
-    fontSize: fonts.sizes.sm,
   },
   statusText: {
     fontSize: fonts.sizes.xs,

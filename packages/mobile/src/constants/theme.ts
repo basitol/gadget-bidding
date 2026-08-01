@@ -158,26 +158,44 @@ export const borderRadius = {
   full: 9999,
 };
 
+// Softer, layered shadows for a modern depth feel.
+// Lower opacity + larger blur radius reads as elevation, not a hard drop shadow.
 export const shadows = {
-  sm: {
-    shadowColor: '#000',
+  xs: {
+    shadowColor: '#0B1220',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  sm: {
+    shadowColor: '#0B1220',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
   },
   md: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowColor: '#0B1220',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 6,
   },
   lg: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowColor: '#0B1220',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 12,
   },
 };
+
+// Colored elevation — use for primary CTAs to give a soft brand glow.
+export const glow = (color: string) => ({
+  shadowColor: color,
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.35,
+  shadowRadius: 18,
+  elevation: 10,
+});

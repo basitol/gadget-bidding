@@ -8,10 +8,12 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Button, Input } from '../../components';
 import { auctionService } from '../../services';
 import { formatCurrency } from '../../utils';
+import { PLATFORM_FEE_PERCENTAGE } from '@gadget-bidding/shared';
 
 type CreateAuctionScreenProps = {
   navigation: any;
@@ -24,6 +26,17 @@ const DURATION_OPTIONS = [
   { id: '5', label: '5 Days', hours: 120 },
   { id: '7', label: '7 Days', hours: 168 },
 ];
+
+const formatMoneyInput = (value: string): string => {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('en-NG');
+};
+
+const parseMoneyInput = (value: string): number => {
+  const digits = value.replace(/\D/g, '');
+  return digits ? Number(digits) : NaN;
+};
 
 export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
   navigation,
@@ -40,13 +53,26 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const startingAmount = parseMoneyInput(startingPrice);
+  const reserveAmount = parseMoneyInput(reservePrice);
+  const buyNowAmount = parseMoneyInput(buyNowPrice);
+  const expectedSaleAmount = !isNaN(buyNowAmount)
+    ? buyNowAmount
+    : !isNaN(reserveAmount)
+      ? reserveAmount
+      : !isNaN(startingAmount)
+        ? startingAmount
+        : 0;
+  const estimatedFee = (expectedSaleAmount * PLATFORM_FEE_PERCENTAGE) / 100;
+  const estimatedPayout = Math.max(0, expectedSaleAmount - estimatedFee);
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    const startPrice = parseFloat(startingPrice);
-    const reserve = parseFloat(reservePrice);
-    const buyNow = parseFloat(buyNowPrice);
-    const increment = parseFloat(bidIncrement);
+    const startPrice = parseMoneyInput(startingPrice);
+    const reserve = parseMoneyInput(reservePrice);
+    const buyNow = parseMoneyInput(buyNowPrice);
+    const increment = parseMoneyInput(bidIncrement);
 
     if (!startingPrice || isNaN(startPrice) || startPrice < 1000) {
       newErrors.startingPrice = 'Starting price must be at least ₦1,000';
@@ -85,35 +111,35 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
     setIsLoading(true);
     try {
       const selectedDuration = DURATION_OPTIONS.find(d => d.id === duration);
+      // Buffer a few seconds so "Start Immediately" isn't rejected as past
       const startTime = startNow
-        ? new Date()
-        : new Date(Date.now() + 24 * 60 * 60 * 1000); // Start now or tomorrow
+        ? new Date(Date.now() + 5_000)
+        : new Date(Date.now() + 24 * 60 * 60 * 1000);
       const endTime = new Date(
         startTime.getTime() + (selectedDuration?.hours || 72) * 60 * 60 * 1000
       );
 
       await auctionService.createAuction({
         gadget_id: gadgetId,
-        starting_price: parseFloat(startingPrice),
-        reserve_price: reservePrice ? parseFloat(reservePrice) : undefined,
-        buy_now_price: buyNowPrice ? parseFloat(buyNowPrice) : undefined,
-        min_bid_increment: parseFloat(bidIncrement),
+        starting_price: parseMoneyInput(startingPrice),
+        reserve_price: reservePrice ? parseMoneyInput(reservePrice) : undefined,
+        buy_now_price: buyNowPrice ? parseMoneyInput(buyNowPrice) : undefined,
+        bid_increment: parseMoneyInput(bidIncrement),
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
       });
 
       Alert.alert(
-        'Success! 🎉',
+        'Success!',
         'Your auction has been created and is now live!',
         [
           {
-            text: 'View My Auctions',
-            onPress: () =>
-              navigation.navigate('Profile', { screen: 'MyAuctions' }),
-          },
-          {
             text: 'Done',
-            onPress: () => navigation.navigate('Home'),
+            onPress: () =>
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'MainTabs', params: { screen: 'Auctions' } }],
+              }),
           },
         ]
       );
@@ -132,7 +158,7 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Create Auction</Text>
         <View style={styles.placeholder} />
@@ -151,9 +177,9 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
 
           <Input
             label="Starting Price *"
-            placeholder="e.g., 50000"
+            placeholder="e.g., 50,000"
             value={startingPrice}
-            onChangeText={setStartingPrice}
+            onChangeText={value => setStartingPrice(formatMoneyInput(value))}
             keyboardType="number-pad"
             error={errors.startingPrice}
             leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
@@ -163,7 +189,7 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
             label="Reserve Price (Optional)"
             placeholder="Minimum price to sell"
             value={reservePrice}
-            onChangeText={setReservePrice}
+            onChangeText={value => setReservePrice(formatMoneyInput(value))}
             keyboardType="number-pad"
             error={errors.reservePrice}
             leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
@@ -173,7 +199,7 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
             label="Buy Now Price (Optional)"
             placeholder="Instant purchase price"
             value={buyNowPrice}
-            onChangeText={setBuyNowPrice}
+            onChangeText={value => setBuyNowPrice(formatMoneyInput(value))}
             keyboardType="number-pad"
             error={errors.buyNowPrice}
             leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
@@ -183,11 +209,47 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
             label="Minimum Bid Increment *"
             placeholder="e.g., 2000"
             value={bidIncrement}
-            onChangeText={setBidIncrement}
+            onChangeText={value => setBidIncrement(formatMoneyInput(value))}
             keyboardType="number-pad"
             error={errors.bidIncrement}
             leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
           />
+
+          {expectedSaleAmount > 0 ? (
+            <View style={styles.feePreviewCard}>
+              <View style={styles.feePreviewHeader}>
+                <Text style={styles.feePreviewTitle}>
+                  Seller payout estimate
+                </Text>
+                <Text style={styles.feePreviewBadge}>
+                  {PLATFORM_FEE_PERCENTAGE}% fee
+                </Text>
+              </View>
+              <View style={styles.feePreviewRow}>
+                <Text style={styles.feePreviewLabel}>Estimated sale</Text>
+                <Text style={styles.feePreviewValue}>
+                  {formatCurrency(expectedSaleAmount)}
+                </Text>
+              </View>
+              <View style={styles.feePreviewRow}>
+                <Text style={styles.feePreviewLabel}>Platform fee</Text>
+                <Text style={styles.feePreviewValueMuted}>
+                  -{formatCurrency(estimatedFee)}
+                </Text>
+              </View>
+              <View style={styles.feeDivider} />
+              <View style={styles.feePreviewRow}>
+                <Text style={styles.feePreviewNetLabel}>You receive</Text>
+                <Text style={styles.feePreviewNetValue}>
+                  {formatCurrency(estimatedPayout)}
+                </Text>
+              </View>
+              <Text style={styles.feePreviewNote}>
+                Final payout is calculated from the winning bid or buy-now
+                price.
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Duration Section */}
@@ -286,14 +348,16 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Starting Price</Text>
             <Text style={styles.summaryValue}>
-              {startingPrice ? formatCurrency(parseFloat(startingPrice)) : '—'}
+              {startingPrice
+                ? formatCurrency(parseMoneyInput(startingPrice))
+                : '—'}
             </Text>
           </View>
           {reservePrice && (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Reserve Price</Text>
               <Text style={styles.summaryValue}>
-                {formatCurrency(parseFloat(reservePrice))}
+                {formatCurrency(parseMoneyInput(reservePrice))}
               </Text>
             </View>
           )}
@@ -301,7 +365,7 @@ export const CreateAuctionScreen: React.FC<CreateAuctionScreenProps> = ({
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Buy Now Price</Text>
               <Text style={styles.summaryValue}>
-                {formatCurrency(parseFloat(buyNowPrice))}
+                {formatCurrency(parseMoneyInput(buyNowPrice))}
               </Text>
             </View>
           )}
@@ -356,10 +420,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  backIcon: {
-    fontSize: fonts.sizes.xl,
-    color: colors.text,
-  },
   title: {
     fontSize: fonts.sizes.xl,
     fontWeight: '700',
@@ -389,6 +449,77 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fonts.sizes.md,
     fontWeight: '600',
+  },
+  feePreviewCard: {
+    marginTop: spacing.sm,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    backgroundColor: colors.primary + '10',
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  feePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  feePreviewTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontFamily: fonts.semiBold,
+  },
+  feePreviewBadge: {
+    color: colors.primary,
+    backgroundColor: colors.primary + '18',
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    fontSize: fonts.sizes.xs,
+    fontFamily: fonts.semiBold,
+    overflow: 'hidden',
+  },
+  feePreviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  feePreviewLabel: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.sm,
+    fontFamily: fonts.medium,
+  },
+  feePreviewValue: {
+    color: colors.text,
+    fontSize: fonts.sizes.sm,
+    fontFamily: fonts.semiBold,
+  },
+  feePreviewValueMuted: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.sm,
+    fontFamily: fonts.semiBold,
+  },
+  feeDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.primary + '25',
+  },
+  feePreviewNetLabel: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontFamily: fonts.semiBold,
+  },
+  feePreviewNetValue: {
+    color: colors.primary,
+    fontSize: fonts.sizes.lg,
+    fontFamily: fonts.bold,
+  },
+  feePreviewNote: {
+    color: colors.textMuted,
+    fontSize: fonts.sizes.xs,
+    fontFamily: fonts.regular,
+    lineHeight: 18,
   },
   durationGrid: {
     flexDirection: 'row',

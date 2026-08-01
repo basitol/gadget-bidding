@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import { isSellerRole } from '@gadget-bidding/shared';
 import { verifyAccessToken } from '../../utils/jwt';
 import { sendError } from '../../utils/response';
+import prisma from '../../config/prisma';
 
 // Extend Express Request to include user data
 declare global {
@@ -23,6 +25,14 @@ export const authenticate = (
   res: Response,
   next: NextFunction
 ) => {
+  void authenticateUser(req, res, next);
+};
+
+const authenticateUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     // Get token from header
     const authHeader = req.headers.authorization;
@@ -35,6 +45,19 @@ export const authenticate = (
 
     // Verify token
     const decoded = verifyAccessToken(token);
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.user_id },
+      select: { isActive: true },
+    });
+
+    if (!user || user.isActive === false) {
+      return sendError(
+        res,
+        'This account is suspended. Please contact support.',
+        403
+      );
+    }
 
     // Attach user to request
     req.user = decoded;
@@ -74,7 +97,7 @@ export const sellerOnly = (req: Request, res: Response, next: NextFunction) => {
     return sendError(res, 'Authentication required', 401);
   }
 
-  if (req.user.role !== 'seller' && req.user.role !== 'admin') {
+  if (!isSellerRole(req.user.role)) {
     return sendError(
       res,
       'Only sellers can perform this action. Please upgrade to a seller account.',

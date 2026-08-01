@@ -2,17 +2,20 @@ import api, { getErrorMessage } from './api';
 import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from '../constants';
 import { User, LoginResponse, ApiResponse } from '../types';
+import { AppInterfaceType } from '../utils/roles';
 
 export interface RegisterData {
   phone_number: string;
   full_name: string;
   password: string;
   email?: string;
+  account_type: AppInterfaceType;
 }
 
 export interface LoginData {
   phone_number: string;
   password: string;
+  account_type: AppInterfaceType;
 }
 
 export interface VerifyOtpData {
@@ -50,6 +53,23 @@ class AuthService {
     }
   }
 
+  async persistInterfaceType(interfaceType: AppInterfaceType): Promise<void> {
+    await SecureStore.setItemAsync(STORAGE_KEYS.INTERFACE_TYPE, interfaceType);
+  }
+
+  async getInterfaceType(): Promise<AppInterfaceType | null> {
+    try {
+      const value = await SecureStore.getItemAsync(STORAGE_KEYS.INTERFACE_TYPE);
+      return value === 'buyer' || value === 'seller' ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async clearInterfaceType(): Promise<void> {
+    await SecureStore.deleteItemAsync(STORAGE_KEYS.INTERFACE_TYPE);
+  }
+
   // Login
   async login(data: LoginData): Promise<LoginResponse> {
     try {
@@ -60,6 +80,7 @@ class AuthService {
       await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, access_token);
       await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, refresh_token);
       await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user));
+      await this.persistInterfaceType(data.account_type);
 
       return response.data;
     } catch (error) {
@@ -70,7 +91,7 @@ class AuthService {
   // Resend OTP
   async resendOtp(
     phone_number: string
-  ): Promise<ApiResponse<{ message: string }>> {
+  ): Promise<ApiResponse<{ verification_id: string }>> {
     try {
       const response = await api.post('/auth/resend-otp', { phone_number });
       return response.data;
@@ -95,6 +116,7 @@ class AuthService {
       await SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
       await SecureStore.deleteItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
       await SecureStore.deleteItemAsync(STORAGE_KEYS.USER);
+      await SecureStore.deleteItemAsync(STORAGE_KEYS.INTERFACE_TYPE);
     }
   }
 

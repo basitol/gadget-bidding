@@ -3,6 +3,7 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as biddingService from '../../services/bidding/bidding.service';
 import * as auctionService from '../../services/auction/auction.service';
 import * as orderService from '../../services/order/order.service';
+import * as notificationService from '../../services/notification/notification.service';
 import {
   emitToAuction,
   emitToUser,
@@ -102,6 +103,17 @@ export const buyNow = async (req: Request, res: Response) => {
       orderNumber: order?.order_number,
       timestamp: new Date(),
     });
+
+    notificationService
+      .notifyBackofficeBuyNowUsed(
+        auctionId,
+        bid.id,
+        bid.amount,
+        order?.order_number
+      )
+      .catch(error => {
+        logger.error('Failed to notify backoffice about buy now:', error);
+      });
 
     sendSuccess(
       res,

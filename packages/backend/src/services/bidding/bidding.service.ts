@@ -1,5 +1,6 @@
 import prisma from '../../config/prisma';
 import {
+  BID_COMMITMENT_AMOUNT,
   Bid,
   BidStatus,
   BidWithBidder,
@@ -137,9 +138,9 @@ export const placeBid = async (
     );
     const actualAvailableBalance = balance - heldAmount;
 
-    if (actualAvailableBalance < data.amount) {
+    if (actualAvailableBalance < BID_COMMITMENT_AMOUNT) {
       throw new Error(
-        `Insufficient balance. Available: ₦${actualAvailableBalance.toLocaleString()}`
+        `You need at least ₦${BID_COMMITMENT_AMOUNT.toLocaleString()} available in your wallet to bid. Available: ₦${actualAvailableBalance.toLocaleString()}`
       );
     }
 
@@ -160,7 +161,7 @@ export const placeBid = async (
       data: {
         bidId: bid.id,
         walletId: wallet.id,
-        amount: data.amount,
+        amount: BID_COMMITMENT_AMOUNT,
         status: 'held',
       },
     });
@@ -170,10 +171,10 @@ export const placeBid = async (
       data: {
         walletId: wallet.id,
         transactionType: 'bid_hold',
-        amount: data.amount,
+        amount: BID_COMMITMENT_AMOUNT,
         balanceBefore: balance,
         balanceAfter: balance,
-        description: 'Hold for bid on auction',
+        description: 'Commitment hold for bid on auction',
         status: 'completed',
       },
     });

@@ -7,6 +7,7 @@ import {
 } from '@gadget-bidding/shared';
 import logger from '../../utils/logger';
 import config from '../../config';
+import * as notificationService from '../notification/notification.service';
 
 // Helper to convert Prisma Decimal to number
 const toNumber = (value: any): number => {
@@ -42,7 +43,9 @@ export const createAuction = async (
   sellerId: string,
   data: CreateAuctionRequest
 ): Promise<Auction> => {
-  return prisma.$transaction(async tx => {
+  let createdGadgetTitle = 'A gadget';
+
+  const createdAuction = await prisma.$transaction(async tx => {
     // Verify gadget ownership and approval
     const gadget = await tx.gadget.findFirst({
       where: {
@@ -56,6 +59,8 @@ export const createAuction = async (
       throw new Error('Gadget not found, not owned by you, or not approved');
     }
 
+    createdGadgetTitle = gadget.title;
+
     // Check if gadget already has an auction
     const existingAuction = await tx.auction.findUnique({
       where: { gadgetId: data.gadget_id },
@@ -66,13 +71,22 @@ export const createAuction = async (
     }
 
     // Validate dates
-    const startTime = new Date(data.start_time);
+    const requestedStart = new Date(data.start_time);
     const endTime = new Date(data.end_time);
     const now = new Date();
 
-    if (startTime < now) {
+    // Allow "start immediately" despite network delay / clock skew
+    const PAST_GRACE_MS = 60_000;
+    if (requestedStart.getTime() < now.getTime() - PAST_GRACE_MS) {
       throw new Error('Start time must be in the future');
     }
+
+    // Treat now / near-future (≤30s) as go-live immediately
+    const IMMEDIATE_WINDOW_MS = 30_000;
+    const startTime =
+      requestedStart.getTime() <= now.getTime() + IMMEDIATE_WINDOW_MS
+        ? now
+        : requestedStart;
 
     if (endTime <= startTime) {
       throw new Error('End time must be after start time');
@@ -127,6 +141,14 @@ export const createAuction = async (
 
     return transformAuction(auction);
   });
+
+  notificationService
+    .notifyBackofficeAuctionCreated(createdAuction.id, createdGadgetTitle)
+    .catch(error => {
+      logger.error('Failed to notify backoffice about new auction:', error);
+    });
+
+  return createdAuction;
 };
 
 /**
@@ -201,10 +223,11 @@ export const getAuctions = async (filters: {
   // Build where conditions
   const where: any = {};
 
-  // Status filter
+  // Public browse defaults to live/upcoming only.
+  // Seller "my auctions" returns all statuses unless a status is passed.
   if (filters.status) {
     where.status = filters.status;
-  } else {
+  } else if (!filters.seller_id) {
     where.status = { in: ['active', 'scheduled'] };
   }
 
@@ -295,6 +318,7 @@ export const getAuctions = async (filters: {
       seconds_remaining: secondsRemaining,
       gadget: auction.gadget
         ? {
+            id: auction.gadget.id,
             title: auction.gadget.title,
             images: auction.gadget.images,
             condition: auction.gadget.condition,
@@ -377,20 +401,28 @@ export const updateAuction = async (
  */
 export const cancelAuction = async (
   auctionId: string,
-  sellerId: string
+  sellerId: string,
+  options?: { force?: boolean; asAdmin?: boolean }
 ): Promise<void> => {
   return prisma.$transaction(async tx => {
     // Get auction
     const auction = await tx.auction.findFirst({
-      where: { id: auctionId, sellerId },
+      where: options?.asAdmin
+        ? { id: auctionId }
+        : { id: auctionId, sellerId },
     });
 
     if (!auction) {
       throw new Error('Auction not found or unauthorized');
     }
 
+    if (auction.status === 'cancelled' || auction.status === 'ended') {
+      throw new Error(`Cannot cancel an auction that is already ${auction.status}`);
+    }
+
     // Can only cancel scheduled auctions or active auctions with no bids
-    if (auction.status !== 'scheduled') {
+    // Admins may force-cancel active auctions with bids.
+    if (!options?.force && auction.status !== 'scheduled') {
       const bidsCount = await tx.bid.count({
         where: { auctionId },
       });
@@ -414,7 +446,9 @@ export const cancelAuction = async (
       });
     }
 
-    logger.info(`Auction cancelled: ${auctionId}`);
+    logger.info(
+      `Auction cancelled: ${auctionId}${options?.asAdmin ? ' (admin)' : ''}`
+    );
   });
 };
 

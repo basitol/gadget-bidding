@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthNavigator } from './AuthNavigator';
-import { MainNavigator } from './MainNavigator';
+import { BuyerNavigator } from './BuyerNavigator';
+import { SellerNavigator } from './SellerNavigator';
 import { useAuthStore } from '../store';
 import { colors } from '../constants';
+import { isSellerRole } from '../utils/roles';
 
 export const RootNavigator: React.FC = () => {
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isAuthenticated, interfaceType, user, checkAuth } = useAuthStore();
   const [initialCheckDone, setInitialCheckDone] = useState(false);
 
   useEffect(() => {
@@ -18,8 +20,10 @@ export const RootNavigator: React.FC = () => {
     initAuth();
   }, []);
 
-  // Show loading screen while checking auth
-  if (!initialCheckDone || isLoading) {
+  // Only block on the initial auth check. Per-action loading (login/register)
+  // is handled by the buttons themselves — gating here would unmount the
+  // navigator and reset the stack back to the initial route.
+  if (!initialCheckDone) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -28,9 +32,20 @@ export const RootNavigator: React.FC = () => {
     );
   }
 
+  const resolvedInterface =
+    interfaceType ?? (user && isSellerRole(user.role) ? 'seller' : 'buyer');
+
   return (
     <NavigationContainer>
-      {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
+      {isAuthenticated ? (
+        resolvedInterface === 'seller' ? (
+          <SellerNavigator />
+        ) : (
+          <BuyerNavigator />
+        )
+      ) : (
+        <AuthNavigator />
+      )}
     </NavigationContainer>
   );
 };

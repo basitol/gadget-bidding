@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fonts, borderRadius, spacing, shadows } from '../constants';
 import { Auction } from '../types';
 import { formatCurrency, formatCountdown, getConditionLabel, getConditionColor } from '../utils';
+import { mediaUrl } from '../utils/images';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - spacing.lg * 3) / 2;
@@ -47,7 +48,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
         style={styles.featuredContainer}
       >
         <Image
-          source={{ uri: auction.gadget?.images?.[0] || 'https://via.placeholder.com/400' }}
+          source={{ uri: mediaUrl(auction.gadget?.images?.[0]) || 'https://via.placeholder.com/400' }}
           style={styles.featuredImage}
           resizeMode="cover"
         />
@@ -101,7 +102,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
         style={styles.listContainer}
       >
         <Image
-          source={{ uri: auction.gadget?.images?.[0] || 'https://via.placeholder.com/150' }}
+          source={{ uri: mediaUrl(auction.gadget?.images?.[0]) || 'https://via.placeholder.com/150' }}
           style={styles.listImage}
           resizeMode="cover"
         />
@@ -153,7 +154,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
     >
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: auction.gadget?.images?.[0] || 'https://via.placeholder.com/200' }}
+          source={{ uri: mediaUrl(auction.gadget?.images?.[0]) || 'https://via.placeholder.com/200' }}
           style={styles.gridImage}
           resizeMode="cover"
         />

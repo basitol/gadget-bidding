@@ -190,6 +190,25 @@ class SocketService {
     }
   }
 
+  joinSupportThread(threadId: string): void {
+    if (!threadId) return;
+    if (this.socket?.connected) {
+      this.socket.emit('support:join', threadId);
+      return;
+    }
+    const onConnect = () => {
+      this.socket?.emit('support:join', threadId);
+      this.socket?.off('connect', onConnect);
+    };
+    this.socket?.on('connect', onConnect);
+  }
+
+  leaveSupportThread(threadId: string): void {
+    if (this.socket?.connected && threadId) {
+      this.socket.emit('support:leave', threadId);
+    }
+  }
+
   // Set up event listeners
   private setupEventListeners(): void {
     if (!this.socket) return;
@@ -287,6 +306,11 @@ class SocketService {
         this.emit('auction:ending_soon', data);
       }
     );
+
+    // Support chat message
+    this.socket.on('support:message', (data: unknown) => {
+      this.emit('support:message', data);
+    });
 
     // Generic error
     this.socket.on('error', (data: { message: string }) => {

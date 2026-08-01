@@ -23,21 +23,23 @@ export const validateCreateGadget: ValidationChain[] = [
     .isLength({ min: 20, max: 5000 })
     .withMessage('Description must be between 20 and 5000 characters'),
   body('brand')
-    .optional()
     .trim()
-    .isLength({ max: 100 })
+    .notEmpty()
+    .withMessage('Brand is required')
+    .isLength({ min: 1, max: 100 })
     .withMessage('Brand must not exceed 100 characters'),
   body('model')
-    .optional()
     .trim()
-    .isLength({ max: 100 })
+    .notEmpty()
+    .withMessage('Model is required')
+    .isLength({ min: 1, max: 100 })
     .withMessage('Model must not exceed 100 characters'),
   body('condition')
     .notEmpty()
     .withMessage('Condition is required')
-    .isIn(['new', 'like_new', 'good', 'fair', 'for_parts'])
+    .isIn(['new', 'like_new', 'excellent', 'good', 'fair', 'for_parts'])
     .withMessage(
-      'Condition must be one of: new, like_new, good, fair, for_parts'
+      'Condition must be one of: new, like_new, excellent, good, fair, for_parts'
     ),
   body('specifications')
     .optional()
@@ -91,9 +93,9 @@ export const validateUpdateGadget: ValidationChain[] = [
     .withMessage('Model must not exceed 100 characters'),
   body('condition')
     .optional()
-    .isIn(['new', 'like_new', 'good', 'fair', 'for_parts'])
+    .isIn(['new', 'like_new', 'excellent', 'good', 'fair', 'for_parts'])
     .withMessage(
-      'Condition must be one of: new, like_new, good, fair, for_parts'
+      'Condition must be one of: new, like_new, excellent, good, fair, for_parts'
     ),
   body('specifications')
     .optional()
@@ -139,9 +141,9 @@ export const validateGadgetFilters: ValidationChain[] = [
     .withMessage('Seller ID must be a valid UUID'),
   query('condition')
     .optional()
-    .isIn(['new', 'like_new', 'good', 'fair', 'for_parts'])
+    .isIn(['new', 'like_new', 'excellent', 'good', 'fair', 'for_parts'])
     .withMessage(
-      'Condition must be one of: new, like_new, good, fair, for_parts'
+      'Condition must be one of: new, like_new, excellent, good, fair, for_parts'
     ),
   query('search')
     .optional()

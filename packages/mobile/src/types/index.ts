@@ -31,7 +31,9 @@ export interface Wallet {
   user_id: string;
   balance: number;
   held_balance: number;
+  available_balance?: number;
   currency: string;
+  is_locked?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -65,9 +67,9 @@ export interface Gadget {
   category: string;
   brand?: string;
   model?: string;
-  condition: 'new' | 'like_new' | 'excellent' | 'good' | 'fair';
+  condition: 'new' | 'like_new' | 'excellent' | 'good' | 'fair' | 'for_parts';
   images: string[];
-  specifications?: Record<string, string>;
+  specifications?: Record<string, unknown>;
   status: 'draft' | 'pending' | 'approved' | 'rejected' | 'sold';
   rejection_reason?: string;
   created_at: string;
@@ -88,7 +90,7 @@ export interface Auction {
   start_time: string;
   end_time: string;
   original_end_time: string;
-  status: 'scheduled' | 'active' | 'ended' | 'cancelled' | 'sold';
+  status: 'scheduled' | 'active' | 'ended' | 'sold' | 'cancelled';
   winner_id?: string;
   winning_bid_id?: string;
   bid_count: number;
@@ -107,7 +109,8 @@ export interface Bid {
   amount: number;
   is_auto_bid: boolean;
   max_auto_bid?: number;
-  status: 'active' | 'outbid' | 'won' | 'cancelled';
+  status: 'active' | 'outbid' | 'won' | 'lost' | 'cancelled';
+  is_winning?: boolean;
   created_at: string;
   bidder?: User;
   bid_time: string;
@@ -122,8 +125,13 @@ export interface Order {
   seller_id: string;
   gadget_id: string;
   amount: number;
+  total_amount?: number;
   platform_fee: number;
   seller_amount: number;
+  seller_payout?: number;
+  payout_status?: 'pending' | 'ready' | 'held' | 'paid';
+  payout_paid_at?: string;
+  payout_reference?: string;
   status:
     | 'pending_payment'
     | 'paid'
@@ -132,10 +140,24 @@ export interface Order {
     | 'completed'
     | 'disputed'
     | 'cancelled';
-  payment_status: 'pending' | 'paid' | 'refunded';
-  fulfillment_status: 'pending' | 'processing' | 'shipped' | 'delivered';
+  payment_status: 'pending' | 'paid' | 'completed' | 'refunded';
+  fulfillment_status:
+    | 'pending'
+    | 'processing'
+    | 'sent_to_backoffice'
+    | 'received_by_backoffice'
+    | 'paid'
+    | 'shipped'
+    | 'delivered'
+    | 'completed'
+    | 'disputed'
+    | 'cancelled'
+    | 'refunded';
   shipping_address?: ShippingAddress;
   tracking_number?: string;
+  disputes?: Dispute[];
+  open_dispute?: boolean;
+  paid_at?: string;
   shipped_at?: string;
   delivered_at?: string;
   created_at: string;
@@ -144,6 +166,26 @@ export interface Order {
   gadget?: Gadget;
   buyer?: User;
   seller?: User;
+}
+
+export type DisputeType =
+  | 'item_not_received'
+  | 'item_damaged'
+  | 'item_not_as_described'
+  | 'fraud'
+  | 'other';
+
+export interface Dispute {
+  id: string;
+  order_id: string;
+  raised_by: string;
+  dispute_type: DisputeType;
+  description: string;
+  evidence?: Record<string, unknown>;
+  status: 'open' | 'investigating' | 'resolved' | 'closed';
+  resolution?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ShippingAddress {
@@ -157,6 +199,15 @@ export interface ShippingAddress {
   country: string;
 }
 
+export interface UserAddress extends ShippingAddress {
+  id: string;
+  user_id: string;
+  label: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // Notification Types
 export interface Notification {
   id: string;
@@ -166,11 +217,24 @@ export interface Notification {
     | 'outbid'
     | 'auction_won'
     | 'auction_lost'
+    | 'auction_created'
     | 'auction_ending'
+    | 'auction_ending_soon'
+    | 'bid_defaulted'
+    | 'backoffice_intake'
+    | 'gadget_submitted'
+    | 'buy_now_used'
+    | 'order_paid_admin'
+    | 'fulfillment_updated'
+    | 'delivery_confirmed_admin'
+    | 'dispute_opened'
+    | 'support_message'
+    | 'payment_initiated'
     | 'order_created'
     | 'order_shipped'
     | 'order_delivered'
     | 'payment_received'
+    | 'payment_failed'
     | 'wallet_funded'
     | 'system';
   title: string;
@@ -208,4 +272,6 @@ export interface AuctionFilters {
   search?: string;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
 }

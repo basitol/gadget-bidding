@@ -31,6 +31,13 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow GadgetBid to access your photos so you can list gadgets.",
+          "cameraPermission": "Allow GadgetBid to use your camera so you can photograph gadgets."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",

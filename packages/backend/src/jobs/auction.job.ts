@@ -125,6 +125,20 @@ const activateScheduledAuctions = async (): Promise<void> => {
 };
 
 /**
+ * Expire unpaid orders that missed the payment window
+ */
+const expirePendingOrders = async (): Promise<void> => {
+  try {
+    const count = await orderService.expirePendingOrders();
+    if (count > 0) {
+      logger.info(`Expired ${count} unpaid pending orders`);
+    }
+  } catch (error) {
+    logger.error('Error expiring pending orders:', error);
+  }
+};
+
+/**
  * Notify users about auctions ending soon
  */
 const notifyAuctionsEndingSoon = async (): Promise<void> => {
@@ -159,11 +173,13 @@ export const startAuctionJob = (): void => {
   // Run immediately on start
   processExpiredAuctions();
   activateScheduledAuctions();
+  expirePendingOrders();
 
   // Then run every 30 seconds
   auctionJobInterval = setInterval(async () => {
     await processExpiredAuctions();
     await activateScheduledAuctions();
+    await expirePendingOrders();
     await notifyAuctionsEndingSoon();
   }, 30000); // 30 seconds
 
@@ -187,4 +203,5 @@ export const stopAuctionJob = (): void => {
 export const triggerAuctionProcessing = async (): Promise<void> => {
   await processExpiredAuctions();
   await activateScheduledAuctions();
+  await expirePendingOrders();
 };

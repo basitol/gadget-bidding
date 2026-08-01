@@ -8,16 +8,20 @@ import {
   RefreshControl,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { EmptyState, LoadingScreen, Button } from '../../components';
+import { useIsTabRoot } from '../../hooks';
 import { auctionService } from '../../services';
 import {
   formatCurrency,
   formatRelativeTime,
   formatDateTime,
+  getAuctionStatusLabel,
 } from '../../utils';
 import { Auction } from '../../types';
 
@@ -28,37 +32,52 @@ type MyAuctionsScreenProps = {
 export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
   navigation,
 }) => {
+  const isTabRoot = useIsTabRoot();
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'ended'>('all');
 
-  const loadAuctions = useCallback(async () => {
+  const loadAuctions = useCallback(async (nextPage = 1, append = false) => {
+    if (append) setIsLoadingMore(true);
     try {
-      const response = await auctionService.getMyAuctions();
-      setAuctions(response.data || []);
+      const response = await auctionService.getMyAuctions(nextPage, 20);
+      const batch = response.data || [];
+      setAuctions(prev => (append ? [...prev, ...batch] : batch));
+      const totalPages =
+        (response.pagination as any)?.totalPages ||
+        response.pagination?.total_pages ||
+        1;
+      setPage(nextPage);
+      setHasMore(nextPage < totalPages);
     } catch (error) {
       console.error('Failed to load auctions:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      setIsLoadingMore(false);
     }
   }, []);
 
   useEffect(() => {
-    loadAuctions();
+    loadAuctions(1, false);
   }, [loadAuctions]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    loadAuctions();
+    loadAuctions(1, false);
+  };
+
+  const handleLoadMore = () => {
+    if (isLoading || isLoadingMore || !hasMore) return;
+    loadAuctions(page + 1, true);
   };
 
   const handleAuctionPress = (auction: Auction) => {
-    navigation.navigate('Home', {
-      screen: 'AuctionDetail',
-      params: { auctionId: auction.id },
-    });
+    navigation.navigate('AuctionDetail', { auctionId: auction.id });
   };
 
   const handleCancelAuction = async (auction: Auction) => {
@@ -96,16 +115,16 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
     return statusColors[status] || colors.textSecondary;
   };
 
-  const getStatusIcon = (status: string): string => {
-    const icons: Record<string, string> = {
-      draft: '📝',
-      scheduled: '📅',
-      active: '🔴',
-      ended: '⏰',
-      sold: '✅',
-      cancelled: '❌',
+  const getStatusIcon = (status: string): keyof typeof Ionicons.glyphMap => {
+    const icons: Record<string, keyof typeof Ionicons.glyphMap> = {
+      draft: 'document-text-outline',
+      scheduled: 'calendar-outline',
+      active: 'flash-outline',
+      ended: 'time-outline',
+      sold: 'checkmark-circle-outline',
+      cancelled: 'close-circle-outline',
     };
-    return icons[status] || '📋';
+    return icons[status] || 'pricetag-outline';
   };
 
   const filteredAuctions = auctions.filter(auction => {
@@ -132,7 +151,11 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
                 style={styles.gadgetImageContent}
               />
             ) : (
-              <Text style={styles.gadgetEmoji}>📱</Text>
+              <Ionicons
+                name="phone-portrait-outline"
+                size={26}
+                color={colors.textMuted}
+              />
             )}
           </View>
           <View style={styles.gadgetDetails}>
@@ -150,11 +173,15 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
             { backgroundColor: getStatusColor(item.status) + '20' },
           ]}
         >
-          <Text style={styles.statusIcon}>{getStatusIcon(item.status)}</Text>
+          <Ionicons
+            name={getStatusIcon(item.status)}
+            size={12}
+            color={getStatusColor(item.status)}
+          />
           <Text
             style={[styles.statusText, { color: getStatusColor(item.status) }]}
           >
-            {item.status}
+            {getAuctionStatusLabel(item.status)}
           </Text>
         </View>
       </View>
@@ -213,18 +240,22 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
+        {isTabRoot ? (
+          <View style={styles.headerSpacer} />
+        ) : (
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.text} />
+          </TouchableOpacity>
+        )}
         <Text style={styles.title}>My Auctions</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => navigation.navigate('Sell')}
+          onPress={() => navigation.navigate('CreateGadget')}
         >
-          <Text style={styles.addIcon}>➕</Text>
+          <Ionicons name="add" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
@@ -305,7 +336,7 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
       {/* Auctions List */}
       {filteredAuctions.length === 0 ? (
         <EmptyState
-          icon="🏷️"
+          icon="pricetag-outline"
           title="No Auctions"
           message={
             activeTab === 'all'
@@ -313,7 +344,7 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
               : `No ${activeTab} auctions found`
           }
           actionLabel="Create Auction"
-          onAction={() => navigation.navigate('Sell')}
+          onAction={() => navigation.navigate('CreateGadget')}
         />
       ) : (
         <FlatList
@@ -321,6 +352,16 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
           keyExtractor={item => item.id}
           renderItem={renderAuction}
           contentContainerStyle={styles.listContent}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <ActivityIndicator
+                style={{ marginVertical: spacing.lg }}
+                color={colors.primary}
+              />
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -354,9 +395,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  backIcon: {
-    fontSize: fonts.sizes.xl,
-    color: colors.text,
+  headerSpacer: {
+    width: 40,
+    height: 40,
   },
   title: {
     fontSize: fonts.sizes.xl,
@@ -370,9 +411,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  addIcon: {
-    fontSize: fonts.sizes.lg,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -460,9 +498,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  gadgetEmoji: {
-    fontSize: fonts.sizes.xxl,
-  },
   gadgetDetails: {
     flex: 1,
     marginLeft: spacing.md,
@@ -484,9 +519,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
     gap: spacing.xs,
-  },
-  statusIcon: {
-    fontSize: fonts.sizes.sm,
   },
   statusText: {
     fontSize: fonts.sizes.xs,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,30 +6,86 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius, shadows } from '../../constants';
 import { Button } from '../../components';
-import { useAuthStore, useWalletStore } from '../../store';
+import {
+  useAuthStore,
+  useSellerDashboardStore,
+  useWalletStore,
+} from '../../store';
+import { auctionService, orderService } from '../../services';
 import { formatCurrency, formatDate } from '../../utils';
 
-type ProfileStackParamList = {
-  Profile: undefined;
-  Orders: undefined;
-  MyBids: undefined;
-  MyAuctions: undefined;
-  Settings: undefined;
+type ProfileScreenProps = {
+  navigation: any;
 };
 
-type ProfileScreenProps = {
-  navigation: NativeStackNavigationProp<ProfileStackParamList, 'Profile'>;
+type MenuItem = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
 };
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
-  const { user, logout } = useAuthStore();
-  const { wallet } = useWalletStore();
+  const { user, interfaceType, logout } = useAuthStore();
+  const { wallet, fetchWallet } = useWalletStore();
+  const { dashboard, fetchDashboard } = useSellerDashboardStore();
+  const isSeller = interfaceType === 'seller';
+  const [activeCount, setActiveCount] = useState(0);
+  const [soldCount, setSoldCount] = useState(0);
+  const [buyerWonCount, setBuyerWonCount] = useState(0);
+  const [buyerActiveBids, setBuyerActiveBids] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadStats = useCallback(async () => {
+    try {
+      await fetchWallet();
+
+      if (isSeller) {
+        await fetchDashboard(false);
+      } else {
+        const [statsRes, bidsRes] = await Promise.all([
+          orderService.getOrderStats(),
+          auctionService.getMyBids(1, 50),
+        ]);
+        setBuyerWonCount(statsRes.data?.completedOrders ?? 0);
+        const bids = bidsRes.data || [];
+        setBuyerActiveBids(
+          bids.filter((b: { status?: string }) => b.status === 'active').length
+        );
+      }
+    } catch (error) {
+      console.error('Failed to load profile stats:', error);
+    }
+  }, [fetchDashboard, fetchWallet, isSeller]);
+
+  React.useEffect(() => {
+    if (!isSeller || !dashboard) return;
+    setActiveCount(dashboard.stats.active_auctions);
+    setSoldCount(dashboard.stats.sold_orders);
+  }, [dashboard, isSeller]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+    }, [loadStats])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    if (isSeller) {
+      await Promise.all([fetchWallet(), fetchDashboard(true)]);
+    } else {
+      await loadStats();
+    }
+    setRefreshing(false);
+  };
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -44,58 +100,99 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
     ]);
   };
 
-  const menuItems = [
-    {
-      icon: 'bag-outline',
-      title: 'My Orders',
-      subtitle: 'View your purchase history',
-      onPress: () => navigation.navigate('Orders'),
-    },
-    {
-      icon: 'medal-outline',
-      title: 'My Bids',
-      subtitle: 'Track your active bids',
-      onPress: () => navigation.navigate('MyBids'),
-    },
-    {
-      icon: 'pricetag-outline',
-      title: 'My Auctions',
-      subtitle: 'Manage your listings',
-      onPress: () => navigation.navigate('MyAuctions'),
-    },
-    {
-      icon: 'wallet-outline',
-      title: 'Wallet',
-      subtitle: formatCurrency(wallet?.balance || 0),
-      onPress: () => {},
-    },
-    {
-      icon: 'settings-outline',
-      title: 'Settings',
-      subtitle: 'App preferences',
-      onPress: () => navigation.navigate('Settings'),
-    },
-    {
-      icon: 'help-circle-outline',
-      title: 'Help & Support',
-      subtitle: 'Get assistance',
-      onPress: () => {},
-    },
-    {
-      icon: 'document-text-outline',
-      title: 'Terms & Privacy',
-      subtitle: 'Legal information',
-      onPress: () => {},
-    },
-  ];
+  const menuItems: MenuItem[] = useMemo(() => {
+    if (isSeller) {
+      return [
+        {
+          icon: 'pricetag-outline',
+          title: 'My Auctions',
+          subtitle: 'Live, scheduled, and ended listings',
+          onPress: () => navigation.navigate('Auctions'),
+        },
+        {
+          icon: 'bag-handle-outline',
+          title: 'Sales Orders',
+          subtitle: 'Track sold items and shipments',
+          onPress: () => navigation.navigate('Sales'),
+        },
+        {
+          icon: 'wallet-outline',
+          title: 'Wallet & Payouts',
+          subtitle: formatCurrency(wallet?.balance || 0),
+          onPress: () => navigation.navigate('Wallet'),
+        },
+        {
+          icon: 'add-circle-outline',
+          title: 'List a Gadget',
+          subtitle: 'Create a new listing',
+          onPress: () => navigation.navigate('CreateGadget'),
+        },
+        {
+          icon: 'settings-outline',
+          title: 'Settings',
+          subtitle: 'Account, alerts, and preferences',
+          onPress: () => navigation.navigate('Settings'),
+        },
+        {
+          icon: 'chatbubbles-outline',
+          title: 'Help & Support',
+          subtitle: 'Chat with GadgetBid support',
+          onPress: () => navigation.navigate('SupportChat'),
+        },
+      ];
+    }
+
+    return [
+      {
+        icon: 'bag-outline',
+        title: 'My Orders',
+        subtitle: 'View your purchase history',
+        onPress: () => navigation.navigate('Orders'),
+      },
+      {
+        icon: 'medal-outline',
+        title: 'My Bids',
+        subtitle: 'Track your active bids',
+        onPress: () => navigation.navigate('MyBids'),
+      },
+      {
+        icon: 'wallet-outline',
+        title: 'Wallet',
+        subtitle: formatCurrency(wallet?.balance || 0),
+        onPress: () => navigation.navigate('Wallet'),
+      },
+      {
+        icon: 'settings-outline',
+        title: 'Settings',
+        subtitle: 'App preferences',
+        onPress: () => navigation.navigate('Settings'),
+      },
+      {
+        icon: 'help-circle-outline',
+        title: 'Help & Support',
+        subtitle: 'Get assistance',
+        onPress: () =>
+          Alert.alert('Help', 'Email support@gadgetbid.ng for help.'),
+      },
+    ];
+  }, [isSeller, navigation, wallet?.balance]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
-          <TouchableOpacity style={styles.iconButton} activeOpacity={0.8}>
-            <Ionicons name="ellipsis-horizontal" size={18} color={colors.text} />
+          <TouchableOpacity
+            style={styles.iconButton}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Settings')}
+          >
+            <Ionicons name="settings-outline" size={18} color={colors.text} />
           </TouchableOpacity>
         </View>
 
@@ -108,34 +205,81 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.full_name || 'User'}</Text>
             <Text style={styles.userPhone}>{user?.phone_number}</Text>
-            {user?.email && <Text style={styles.userEmail}>{user.email}</Text>}
+            <View style={styles.roleBadge}>
+              <Ionicons
+                name={isSeller ? 'storefront-outline' : 'cart-outline'}
+                size={12}
+                color={colors.primary}
+              />
+              <Text style={styles.roleBadgeText}>
+                {isSeller ? 'Seller account' : 'Buyer account'}
+              </Text>
+            </View>
           </View>
-          <TouchableOpacity style={styles.editButton} activeOpacity={0.8}>
-            <Ionicons name="pencil-outline" size={18} color={colors.text} />
-          </TouchableOpacity>
         </View>
 
         <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Won</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Active Bids</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Listings</Text>
-          </View>
+          {isSeller ? (
+            <>
+              <TouchableOpacity
+                style={styles.statItem}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Auctions')}
+              >
+                <Text style={styles.statValue}>{activeCount}</Text>
+                <Text style={styles.statLabel}>Active</Text>
+              </TouchableOpacity>
+              <View style={styles.statDivider} />
+              <TouchableOpacity
+                style={styles.statItem}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Sales')}
+              >
+                <Text style={styles.statValue}>{soldCount}</Text>
+                <Text style={styles.statLabel}>Sold</Text>
+              </TouchableOpacity>
+              <View style={styles.statDivider} />
+              <TouchableOpacity
+                style={styles.statItem}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Wallet')}
+              >
+                <Text style={styles.statValue}>
+                  {formatCurrency(wallet?.balance || 0)}
+                </Text>
+                <Text style={styles.statLabel}>Wallet</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{buyerWonCount}</Text>
+                <Text style={styles.statLabel}>Won</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{buyerActiveBids}</Text>
+                <Text style={styles.statLabel}>Active Bids</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>
+                  {formatCurrency(wallet?.balance || 0)}
+                </Text>
+                <Text style={styles.statLabel}>Wallet</Text>
+              </View>
+            </>
+          )}
         </View>
 
         <View style={styles.verificationCard}>
           <View style={styles.verificationIcon}>
             <Ionicons
-              name={user?.is_verified ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+              name={
+                user?.is_verified
+                  ? 'checkmark-circle-outline'
+                  : 'alert-circle-outline'
+              }
               size={22}
               color={user?.is_verified ? colors.success : colors.warning}
             />
@@ -146,33 +290,34 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
             </Text>
             <Text style={styles.verificationSubtitle}>
               {user?.is_verified
-                ? 'Your account is fully verified'
+                ? isSeller
+                  ? 'Ready to list and sell gadgets'
+                  : 'Your account is fully verified'
                 : 'Complete verification to unlock all features'}
             </Text>
           </View>
-          {!user?.is_verified && (
-            <TouchableOpacity style={styles.verifyButton} activeOpacity={0.85}>
-              <Text style={styles.verifyButtonText}>Verify</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         <View style={styles.menuContainer}>
-          {menuItems.map((item, index) => (
+          {menuItems.map(item => (
             <TouchableOpacity
-              key={index}
+              key={item.title}
               style={styles.menuItem}
               onPress={item.onPress}
               activeOpacity={0.7}
             >
               <View style={styles.menuIcon}>
-                <Ionicons name={item.icon as any} size={20} color={colors.text} />
+                <Ionicons name={item.icon} size={20} color={colors.text} />
               </View>
               <View style={styles.menuContent}>
                 <Text style={styles.menuTitle}>{item.title}</Text>
                 <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={colors.textMuted}
+              />
             </TouchableOpacity>
           ))}
         </View>
@@ -266,19 +411,23 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 4,
   },
-  userEmail: {
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  editButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceLight,
-    justifyContent: 'center',
+  roleBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary + '14',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.primary + '33',
+  },
+  roleBadgeText: {
+    color: colors.primary,
+    fontSize: fonts.sizes.xs,
+    fontWeight: '700',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -297,7 +446,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: colors.text,
-    fontSize: fonts.sizes.xl,
+    fontSize: fonts.sizes.md,
     fontWeight: '800',
   },
   statLabel: {
@@ -343,16 +492,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 4,
     lineHeight: 20,
-  },
-  verifyButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-  },
-  verifyButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
   },
   menuContainer: {
     marginHorizontal: spacing.lg,
@@ -411,4 +550,3 @@ const styles = StyleSheet.create({
     height: 120,
   },
 });
-

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInputProps,
   ViewStyle,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks';
@@ -37,6 +38,30 @@ export const Input: React.FC<InputProps> = ({
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
   const [isFocused, setIsFocused] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const focusAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(focusAnim, {
+      toValue: isFocused ? 1 : 0,
+      duration: 160,
+      useNativeDriver: false,
+    }).start();
+  }, [isFocused, focusAnim]);
+
+  const borderColor = error
+    ? colors.error
+    : focusAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [colors.border, colors.primary],
+      });
+
+  const backgroundColor = focusAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [
+      mode === 'dark' ? colors.backgroundLight : colors.surfaceLight,
+      mode === 'dark' ? colors.surface : colors.backgroundLight,
+    ],
+  });
 
   const renderLeftIcon = () => {
     if (leftIcon) return <View style={styles.iconLeft}>{leftIcon}</View>;
@@ -57,12 +82,8 @@ export const Input: React.FC<InputProps> = ({
   return (
     <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <View
-        style={[
-          styles.inputContainer,
-          isFocused ? styles.focused : undefined,
-          error ? styles.errorBorder : undefined,
-        ]}
+      <Animated.View
+        style={[styles.inputContainer, { borderColor, backgroundColor }]}
       >
         {renderLeftIcon()}
         <TextInput
@@ -90,14 +111,14 @@ export const Input: React.FC<InputProps> = ({
             <Ionicons
               name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
               size={20}
-              color={colors.textMuted}
+              color={isFocused ? colors.primary : colors.textMuted}
             />
           </TouchableOpacity>
         )}
         {rightIcon && !showPasswordToggle && (
           <View style={styles.iconRight}>{rightIcon}</View>
         )}
-      </View>
+      </Animated.View>
       {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
@@ -111,32 +132,23 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
     label: {
       color: colors.text,
       fontSize: fonts.sizes.sm,
-      fontWeight: '600',
+      fontFamily: fonts.semiBold,
       marginBottom: spacing.sm,
       letterSpacing: 0.2,
     },
     inputContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor:
-        mode === 'dark' ? colors.backgroundLight : colors.surfaceLight,
-      borderRadius: borderRadius.lg,
+      minHeight: 54,
+      borderRadius: borderRadius.xl,
       borderWidth: 1.5,
-      borderColor: colors.border,
-    },
-    focused: {
-      borderColor: colors.primary,
-      backgroundColor:
-        mode === 'dark' ? colors.surface : colors.backgroundLight,
-    },
-    errorBorder: {
-      borderColor: colors.error,
     },
     input: {
       flex: 1,
       color: colors.text,
       fontSize: fonts.sizes.md,
-      paddingVertical: spacing.md + 2,
+      fontFamily: fonts.medium,
+      paddingVertical: spacing.md,
       paddingHorizontal: spacing.lg,
     },
     inputWithLeftIcon: {
@@ -154,6 +166,7 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
     errorText: {
       color: colors.error,
       fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
       marginTop: spacing.xs,
     },
   });

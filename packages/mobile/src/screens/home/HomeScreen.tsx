@@ -20,11 +20,12 @@ import {
 } from '../../constants';
 import {
   EmptyState,
-  LoadingScreen,
   BrandLogo,
   LiveAuctionCard,
   QuickActionGrid,
   QuickAction,
+  AuctionCardSkeleton,
+  FadeInView,
 } from '../../components';
 import { useTheme } from '../../hooks';
 import { useAuctionStore, useAuthStore, useWalletStore } from '../../store';
@@ -37,6 +38,9 @@ type RootStackParamList = {
   Search: undefined;
   Category: { category: string; label: string };
   Notifications: undefined;
+  Wallet: undefined;
+  MyBids: undefined;
+  Orders: undefined;
 };
 
 type HomeScreenProps = {
@@ -47,7 +51,9 @@ const LIGHT_CATEGORIES = [
   { id: 'all', label: 'All', icon: 'apps-outline' as const },
   ...GADGET_CATEGORIES.slice(0, 4).map(c => ({
     id: c.id,
-    label: c.label.replace('Smartphones', 'Phones').replace('Smartwatches', 'Watches'),
+    label: c.label
+      .replace('Smartphones', 'Phones')
+      .replace('Smartwatches', 'Watches'),
     icon: c.icon as keyof typeof Ionicons.glyphMap,
   })),
 ];
@@ -103,8 +109,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     navigation.navigate('AuctionDetail', { auctionId: auction.id });
   };
 
-  const navigateTab = (tab: string, screen?: string) => {
-    navigation.getParent()?.navigate(tab as never, screen ? { screen } : undefined);
+  const navigateTab = (screen: 'Wallet') => {
+    navigation.navigate(screen);
   };
 
   const quickActions: QuickAction[] = [
@@ -123,7 +129,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       subtitle: 'Track active bids',
       icon: 'hand-left-outline',
       color: colors.warning,
-      onPress: () => navigateTab('Profile', 'MyBids'),
+      onPress: () => navigation.navigate('MyBids'),
     },
     {
       id: 'orders',
@@ -131,7 +137,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       subtitle: 'Awaiting delivery',
       icon: 'cube-outline',
       color: colors.success,
-      onPress: () => navigateTab('Profile', 'Orders'),
+      onPress: () => navigation.navigate('Orders'),
     },
     {
       id: 'notifications',
@@ -144,7 +150,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   ];
 
   if (isLoading && auctions.length === 0) {
-    return <LoadingScreen message="Loading auctions..." />;
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.scrollContent}>
+          <View style={mode === 'dark' ? styles.darkHeader : styles.lightHeader}>
+            <BrandLogo size="sm" />
+          </View>
+          <View style={{ marginTop: spacing.lg }}>
+            {[0, 1, 2].map(i => (
+              <AuctionCardSkeleton key={i} />
+            ))}
+          </View>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (mode === 'dark') {
@@ -179,7 +198,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
           <View style={styles.greetingRow}>
             <Text style={styles.greeting}>
-              Good {new Date().getHours() < 12 ? 'morning' : 'evening'} 👋{' '}
+              Good {new Date().getHours() < 12 ? 'morning' : 'evening'}{' '}
               {user?.full_name || firstName}
             </Text>
             {user?.is_verified && (
@@ -245,12 +264,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           {liveAuctions.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitleDark}>Live Now</Text>
-              {liveAuctions.slice(0, 2).map(auction => (
-                <LiveAuctionCard
-                  key={auction.id}
-                  auction={auction}
-                  onPress={() => handleAuctionPress(auction)}
-                />
+              {liveAuctions.slice(0, 2).map((auction, i) => (
+                <FadeInView key={auction.id} delay={i * 90}>
+                  <LiveAuctionCard
+                    auction={auction}
+                    onPress={() => handleAuctionPress(auction)}
+                  />
+                </FadeInView>
               ))}
             </View>
           )}
@@ -310,7 +330,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           {[
             { value: '50K+', label: 'Bidders' },
             { value: '₦6.2B', label: 'Sold' },
-            { value: '4.9★', label: 'Rating' },
+            { value: '4.9', label: 'Rating' },
           ].map(stat => (
             <View key={stat.label} style={styles.statPill}>
               <Text style={styles.statValue}>{stat.value}</Text>
@@ -372,12 +392,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             message="Check back soon for new gadget auctions."
           />
         ) : (
-          liveAuctions.slice(0, 3).map(auction => (
-            <LiveAuctionCard
-              key={auction.id}
-              auction={auction}
-              onPress={() => handleAuctionPress(auction)}
-            />
+          liveAuctions.slice(0, 3).map((auction, i) => (
+            <FadeInView key={auction.id} delay={i * 90}>
+              <LiveAuctionCard
+                auction={auction}
+                onPress={() => handleAuctionPress(auction)}
+              />
+            </FadeInView>
           ))
         )}
 

@@ -1,6 +1,7 @@
 import http from 'http';
 import app from './app';
 import config from './config';
+import { validateEnvironment } from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/prisma';
 import { connectRedis, disconnectRedis } from './config/redis';
 import logger from './utils/logger';
@@ -16,6 +17,8 @@ let isShuttingDown = false;
 // Initialize connections and start server
 async function startServer() {
   try {
+    validateEnvironment();
+
     // Connect to database with Prisma
     await connectDatabase();
 

@@ -6,8 +6,11 @@
   "scripts": {
     "dev:backend": "pnpm --filter backend dev",
     "dev:mobile": "pnpm --filter mobile start",
+    "dev:admin": "pnpm --filter @gadget-bidding/admin-dashboard dev",
     "build:backend": "pnpm --filter backend build",
     "build:mobile": "pnpm --filter mobile build",
+    "build:admin": "pnpm --filter @gadget-bidding/admin-dashboard build",
+    "create-admin": "pnpm --filter @gadget-bidding/backend exec node scripts/create-admin.js",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"packages/**/*.{ts,tsx,js,jsx,json,md}\"",
     "type-check": "pnpm -r type-check",

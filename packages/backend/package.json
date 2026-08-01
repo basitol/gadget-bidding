@@ -13,7 +13,11 @@
     "migrate:create": "node scripts/create-migration.js",
     "migrate:up": "node scripts/run-migrations.js up",
     "migrate:down": "node scripts/run-migrations.js down",
-    "db:setup": "psql -f src/database/schema.sql"
+    "db:setup": "psql -f src/database/schema.sql",
+    "db:sync": "psql -f src/database/migrations/001_sync_prisma_schema.sql",
+    "prisma:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@gadget-bidding/shared": "workspace:*",

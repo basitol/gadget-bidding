@@ -166,6 +166,127 @@ export const createDepositTransaction = async (
   });
 };
 
+export type WalletFundingResult = {
+  alreadyProcessed: boolean;
+  amount: number;
+  currency: string;
+};
+
+/**
+ * Atomically verify and credit a wallet funding payment.
+ * Used by client verify endpoint and Paystack webhooks.
+ */
+export const processWalletFundingFromPaystack = async (params: {
+  userId: string;
+  reference: string;
+  amount: number;
+  gatewayResponse: Record<string, unknown>;
+  source: 'verify' | 'webhook';
+}): Promise<WalletFundingResult> => {
+  const { userId, reference, amount, gatewayResponse, source } = params;
+
+  return prisma.$transaction(async tx => {
+    const pending = await tx.paymentTransaction.findFirst({
+      where: { gatewayReference: reference },
+    });
+
+    if (!pending) {
+      throw new Error('Payment reference not found');
+    }
+
+    if (!pending.userId || pending.userId !== userId) {
+      throw new Error('Payment reference does not belong to this account');
+    }
+
+    const metadata = (pending.metadata as Record<string, unknown>) || {};
+    if (metadata.purpose && metadata.purpose !== 'wallet_funding') {
+      throw new Error('Invalid payment purpose');
+    }
+
+    const expectedAmount = toNumber(pending.amount);
+    if (Math.abs(expectedAmount - amount) > 0.01) {
+      throw new Error('Payment amount mismatch');
+    }
+
+    if (pending.status === 'success') {
+      return {
+        alreadyProcessed: true,
+        amount: expectedAmount,
+        currency: pending.currency || 'NGN',
+      };
+    }
+
+    const existingWalletTx = await tx.walletTransaction.findUnique({
+      where: { reference },
+    });
+
+    if (existingWalletTx) {
+      await tx.paymentTransaction.update({
+        where: { id: pending.id },
+        data: {
+          status: 'success',
+          gatewayResponse: gatewayResponse as object,
+          updatedAt: new Date(),
+        },
+      });
+      return {
+        alreadyProcessed: true,
+        amount: expectedAmount,
+        currency: pending.currency || 'NGN',
+      };
+    }
+
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+
+    const balanceBefore = toNumber(wallet.balance);
+    const balanceAfter = balanceBefore + amount;
+
+    await tx.wallet.update({
+      where: { id: wallet.id },
+      data: { balance: balanceAfter },
+    });
+
+    const walletTx = await tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        transactionType: 'deposit',
+        amount,
+        balanceBefore,
+        balanceAfter,
+        reference,
+        description: 'Wallet funded',
+        metadata: {
+          gateway: 'paystack',
+          payment_method: (gatewayResponse as { channel?: string }).channel,
+          source,
+        },
+        status: 'completed',
+      },
+    });
+
+    await tx.paymentTransaction.update({
+      where: { id: pending.id },
+      data: {
+        status: 'success',
+        gatewayResponse: gatewayResponse as object,
+        walletTransactionId: walletTx.id,
+        updatedAt: new Date(),
+      },
+    });
+
+    logger.info(`Wallet funded (${source}): ${userId} - ₦${amount}`);
+
+    return {
+      alreadyProcessed: false,
+      amount,
+      currency: pending.currency || 'NGN',
+    };
+  });
+};
+
 /**
  * Create a withdrawal transaction
  */

@@ -1,5 +1,8 @@
 import prisma from '../../config/prisma';
+import { Prisma } from '../../generated/prisma';
 import {
+  BID_DEFAULT_PENALTY_AMOUNT,
+  BID_PAYMENT_DEADLINE_HOURS,
   Order,
   OrderWithDetails,
   ShippingAddress,
@@ -8,7 +11,6 @@ import {
   PLATFORM_FEE_PERCENTAGE,
   PaystackInitializeResponse,
 } from '@gadget-bidding/shared';
-import * as walletService from '../wallet/wallet.service';
 import * as paystackService from '../payment/paystack.service';
 import * as notificationService from '../notification/notification.service';
 import logger from '../../utils/logger';
@@ -28,6 +30,46 @@ const generateOrderNumber = (): string => {
   return `GB-${timestamp}-${random}`;
 };
 
+const ORDER_PAYMENT_EXPIRY_HOURS = Number(
+  process.env.ORDER_PAYMENT_EXPIRY_HOURS || BID_PAYMENT_DEADLINE_HOURS
+);
+
+const formatDispute = (dispute: any) => ({
+  id: dispute.id,
+  order_id: dispute.orderId,
+  raised_by: dispute.raisedBy,
+  dispute_type: dispute.disputeType,
+  description: dispute.description,
+  evidence: dispute.evidence,
+  status: dispute.status,
+  resolution: dispute.resolution,
+  resolved_by: dispute.resolvedBy,
+  resolved_at: dispute.resolvedAt?.toISOString(),
+  created_at: dispute.createdAt?.toISOString(),
+  updated_at: dispute.updatedAt?.toISOString(),
+});
+
+const fulfillmentStatusLabel = (status: FulfillmentStatus): string => {
+  const labels: Record<FulfillmentStatus, string> = {
+    pending: 'Pending',
+    processing: 'Processing',
+    sent_to_backoffice: 'Sent to backoffice',
+    received_by_backoffice: 'Received by backoffice',
+    shipped: 'Shipped',
+    delivered: 'Delivered',
+    cancelled: 'Cancelled',
+  };
+
+  return labels[status] ?? 'Updated';
+};
+
+const readableActionLabel = (value: string): string =>
+  value
+    .split('_')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
 // Helper to transform Prisma order to shared Order type
 const transformOrder = (order: any): Order => ({
   id: order.id,
@@ -38,10 +80,17 @@ const transformOrder = (order: any): Order => ({
   total_amount: toNumber(order.totalAmount),
   platform_fee: toNumber(order.platformFee),
   seller_payout: toNumber(order.sellerPayout),
+  payout_status: order.payoutStatus,
+  payout_paid_at: order.payoutPaidAt?.toISOString(),
+  payout_reference: order.payoutReference,
   payment_status: order.paymentStatus as PaymentStatusType,
   fulfillment_status: order.fulfillmentStatus as FulfillmentStatus,
   shipping_address: order.shippingAddress,
   tracking_number: order.trackingNumber,
+  disputes: order.disputes?.map(formatDispute),
+  open_dispute: order.disputes?.some((d: any) =>
+    ['open', 'investigating'].includes(d.status)
+  ),
   created_at: order.createdAt?.toISOString(),
   updated_at: order.updatedAt?.toISOString(),
 });
@@ -71,7 +120,8 @@ export const createOrderFromAuction = async (
     });
 
     if (existingOrder) {
-      throw new Error('Order already exists for this auction');
+      logger.info(`Order already exists for auction ${auctionId}`);
+      return transformOrder(existingOrder);
     }
 
     // Calculate fees
@@ -88,15 +138,16 @@ export const createOrderFromAuction = async (
         totalAmount: finalPrice,
         platformFee,
         sellerPayout,
+        payoutStatus: 'pending',
         paymentStatus: 'pending',
         fulfillmentStatus: 'pending',
       },
     });
 
-    // Update auction status to completed
+    // Ensure auction points to the winner even when order creation is retried
     await tx.auction.update({
       where: { id: auctionId },
-      data: { status: 'ended' },
+      data: { status: 'ended', winnerId },
     });
 
     logger.info(`Order created: ${order.orderNumber} for auction ${auctionId}`);
@@ -132,6 +183,9 @@ export const getOrderById = async (
           fullName: true,
           phoneNumber: true,
         },
+      },
+      disputes: {
+        orderBy: { createdAt: 'desc' },
       },
     },
   });
@@ -170,6 +224,9 @@ export const getOrderByNumber = async (
           fullName: true,
           phoneNumber: true,
         },
+      },
+      disputes: {
+        orderBy: { createdAt: 'desc' },
       },
     },
   });
@@ -217,6 +274,9 @@ export const getBuyerOrders = async (
             fullName: true,
             phoneNumber: true,
           },
+        },
+        disputes: {
+          orderBy: { createdAt: 'desc' },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -269,6 +329,9 @@ export const getSellerOrders = async (
             phoneNumber: true,
           },
         },
+        disputes: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -283,6 +346,148 @@ export const getSellerOrders = async (
   };
 };
 
+const hasCompleteShippingAddress = (address: unknown): boolean => {
+  if (!address || typeof address !== 'object') return false;
+  const a = address as Record<string, unknown>;
+  return Boolean(
+    a.full_name && a.phone_number && a.address_line1 && a.city && a.state
+  );
+};
+
+export type SecondPlaceOfferResult = {
+  order: Order;
+  bidder: {
+    id: string;
+    fullName: string | null;
+    phoneNumber: string | null;
+    email: string | null;
+    amount: number;
+  };
+};
+
+export const offerOrderToSecondPlaceBidder = async (
+  orderId: string
+): Promise<SecondPlaceOfferResult> => {
+  const result = await prisma.$transaction(async tx => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: {
+        auction: {
+          include: { gadget: true },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (!order.auctionId || !order.buyerId) {
+      throw new Error('Order is missing auction or buyer details');
+    }
+
+    if (order.paymentStatus === 'paid') {
+      throw new Error('Paid orders cannot be reassigned');
+    }
+
+    const secondBid = await tx.bid.findFirst({
+      where: {
+        auctionId: order.auctionId,
+        bidderId: { not: order.buyerId },
+      },
+      include: {
+        bidder: {
+          select: {
+            id: true,
+            fullName: true,
+            phoneNumber: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: [{ amount: 'desc' }, { bidTime: 'asc' }],
+    });
+
+    if (!secondBid?.bidderId || !secondBid.bidder) {
+      throw new Error('No second-place bidder is available');
+    }
+
+    const secondAmount = toNumber(secondBid.amount);
+    const platformFee = (secondAmount * PLATFORM_FEE_PERCENTAGE) / 100;
+    const sellerPayout = secondAmount - platformFee;
+
+    await tx.bid.updateMany({
+      where: { auctionId: order.auctionId },
+      data: { isWinning: false },
+    });
+
+    await tx.bid.update({
+      where: { id: secondBid.id },
+      data: { status: 'won', isWinning: true },
+    });
+
+    await tx.auction.update({
+      where: { id: order.auctionId },
+      data: { winnerId: secondBid.bidderId },
+    });
+
+    const reassignedOrder = await tx.order.update({
+      where: { id: orderId },
+      data: {
+        buyerId: secondBid.bidderId,
+        totalAmount: secondAmount,
+        platformFee,
+        sellerPayout,
+        paymentStatus: 'pending',
+        fulfillmentStatus: 'pending',
+        shippingAddress: Prisma.JsonNull,
+        updatedAt: new Date(),
+      },
+    });
+
+    return {
+      order: transformOrder(reassignedOrder),
+      bidder: {
+        id: secondBid.bidder.id,
+        fullName: secondBid.bidder.fullName,
+        phoneNumber: secondBid.bidder.phoneNumber,
+        email: secondBid.bidder.email,
+        amount: secondAmount,
+      },
+      gadgetTitle: order.auction?.gadget?.title || 'Item',
+    };
+  });
+
+  await notificationService.createNotification(
+    result.bidder.id,
+    'auction_won',
+    'Second chance to buy',
+    `The winning bidder missed payment for "${result.gadgetTitle}". You are next in line at ₦${result.bidder.amount.toLocaleString()}. Complete payment within ${BID_PAYMENT_DEADLINE_HOURS} hours to secure it.`,
+    {
+      orderId: result.order.id,
+      orderNumber: result.order.order_number,
+      auctionId: result.order.auction_id,
+      amount: result.bidder.amount,
+    },
+    ['push', 'sms', 'email']
+  );
+
+  await notificationService.notifyAdmins(
+    'bid_defaulted',
+    'Second-place offer sent',
+    `${result.bidder.fullName || 'Second-place bidder'} was offered order #${result.order.order_number} at ₦${result.bidder.amount.toLocaleString()}.`,
+    {
+      orderId: result.order.id,
+      orderNumber: result.order.order_number,
+      auctionId: result.order.auction_id,
+      route: '/orders',
+      secondPlaceBidder: result.bidder,
+    }
+  );
+
+  return { order: result.order, bidder: result.bidder };
+};
+
 /**
  * Update shipping address
  */
@@ -295,6 +500,7 @@ export const updateShippingAddress = async (
     where: {
       id: orderId,
       buyerId,
+      paymentStatus: 'pending',
       fulfillmentStatus: 'pending',
     },
     data: {
@@ -303,7 +509,9 @@ export const updateShippingAddress = async (
   });
 
   if (order.count === 0) {
-    throw new Error('Order not found, unauthorized, or already processing');
+    throw new Error(
+      'Order not found, unauthorized, or payment already started'
+    );
   }
 
   const updatedOrder = await prisma.order.findUnique({
@@ -319,7 +527,7 @@ export const updateShippingAddress = async (
  * Confirm payment and process order
  */
 export const confirmPayment = async (orderId: string): Promise<Order> => {
-  return prisma.$transaction(async tx => {
+  const updated = await prisma.$transaction(async tx => {
     // Get order
     const order = await tx.order.findUnique({
       where: { id: orderId },
@@ -331,6 +539,12 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
 
     if (order.paymentStatus === 'paid') {
       throw new Error('Order already paid');
+    }
+
+    if (!hasCompleteShippingAddress(order.shippingAddress)) {
+      throw new Error(
+        'Please add a shipping address before paying for this order'
+      );
     }
 
     // Get winning bid
@@ -346,8 +560,61 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
       throw new Error('Winning bid not found');
     }
 
-    // Charge the held amount
-    await walletService.chargeHold(winningBid.id);
+    const winningBidWithHold = await tx.bid.findUnique({
+      where: { id: winningBid.id },
+      include: { bidHold: true },
+    });
+
+    const wallet = await tx.wallet.findUnique({
+      where: { userId: order.buyerId! },
+    });
+
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+
+    if (wallet.isLocked) {
+      throw new Error('Wallet is locked. Please contact support');
+    }
+
+    const balanceBefore = toNumber(wallet.balance);
+    const orderTotal = toNumber(order.totalAmount);
+
+    if (balanceBefore < orderTotal) {
+      throw new Error(
+        `Insufficient wallet balance. You need ₦${orderTotal.toLocaleString()} to pay for this order.`
+      );
+    }
+
+    const balanceAfter = balanceBefore - orderTotal;
+
+    await tx.wallet.update({
+      where: { id: wallet.id },
+      data: { balance: balanceAfter },
+    });
+
+    if (
+      winningBidWithHold?.bidHold &&
+      winningBidWithHold.bidHold.status === 'held'
+    ) {
+      await tx.bidHold.update({
+        where: { id: winningBidWithHold.bidHold.id },
+        data: { status: 'released', releasedAt: new Date() },
+      });
+    }
+
+    await tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        transactionType: 'purchase',
+        amount: orderTotal,
+        balanceBefore,
+        balanceAfter,
+        reference: `${order.orderNumber}-BUYER-PAYMENT`,
+        description: `Wallet payment for order ${order.orderNumber}`,
+        status: 'completed',
+      },
+    });
 
     // Update order payment status
     const updatedOrder = await tx.order.update({
@@ -362,6 +629,21 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
 
     return transformOrder(updatedOrder);
   });
+
+  notificationService
+    .notifyBackofficeOrderPaid(
+      updated.id,
+      updated.order_number,
+      updated.total_amount
+    )
+    .catch(error => {
+      logger.error(
+        'Failed to notify backoffice about confirmed payment:',
+        error
+      );
+    });
+
+  return updated;
 };
 
 /**
@@ -375,13 +657,15 @@ export const updateFulfillmentStatus = async (
 ): Promise<Order> => {
   const validTransitions: Record<FulfillmentStatus, FulfillmentStatus[]> = {
     pending: ['processing', 'cancelled'],
-    processing: ['shipped', 'cancelled'],
-    shipped: ['delivered'],
+    processing: ['sent_to_backoffice', 'cancelled'],
+    sent_to_backoffice: [],
+    received_by_backoffice: [],
+    shipped: [],
     delivered: [],
     cancelled: [],
   };
 
-  return prisma.$transaction(async tx => {
+  const updated = await prisma.$transaction(async tx => {
     // Get order
     const order = await tx.order.findFirst({
       where: { id: orderId, sellerId },
@@ -399,19 +683,10 @@ export const updateFulfillmentStatus = async (
 
     // Build update data
     const updateData: any = { fulfillmentStatus: status };
-    if (status === 'shipped' && trackingNumber) {
-      updateData.trackingNumber = trackingNumber;
-    }
-
     const updatedOrder = await tx.order.update({
       where: { id: orderId },
       data: updateData,
     });
-
-    // If delivered, credit seller
-    if (status === 'delivered') {
-      await creditSeller(tx, order);
-    }
 
     // If cancelled, refund buyer
     if (status === 'cancelled' && order.paymentStatus === 'paid') {
@@ -422,6 +697,231 @@ export const updateFulfillmentStatus = async (
 
     return transformOrder(updatedOrder);
   });
+
+  if (status === 'sent_to_backoffice') {
+    notificationService
+      .notifyBackofficeIntake(updated.id, updated.order_number)
+      .catch(err => {
+        logger.error('Failed to notify backoffice intake:', err);
+      });
+  } else {
+    notificationService
+      .notifyBackofficeFulfillmentUpdated(
+        updated.id,
+        updated.order_number,
+        fulfillmentStatusLabel(status)
+      )
+      .catch(err => {
+        logger.error('Failed to notify backoffice fulfillment update:', err);
+      });
+  }
+
+  return updated;
+};
+
+/**
+ * Admin override for order payment / fulfillment / tracking.
+ * Runs seller payout / buyer refund side-effects when status crosses those gates.
+ */
+export const adminUpdateOrder = async (
+  orderId: string,
+  updates: {
+    payment_status?: string;
+    fulfillment_status?: string;
+    tracking_number?: string | null;
+    payout_status?: string;
+    payout_reference?: string | null;
+  }
+): Promise<Order> => {
+  const allowedPayment = ['pending', 'paid', 'refunded'];
+  const allowedPayout = ['pending', 'ready', 'held', 'paid'];
+  const allowedFulfillment = [
+    'pending',
+    'processing',
+    'sent_to_backoffice',
+    'received_by_backoffice',
+    'shipped',
+    'delivered',
+    'cancelled',
+  ];
+
+  if (
+    updates.payment_status &&
+    !allowedPayment.includes(updates.payment_status)
+  ) {
+    throw new Error('Invalid payment status');
+  }
+  if (
+    updates.fulfillment_status &&
+    !allowedFulfillment.includes(updates.fulfillment_status)
+  ) {
+    throw new Error('Invalid fulfillment status');
+  }
+  if (updates.payout_status && !allowedPayout.includes(updates.payout_status)) {
+    throw new Error('Invalid payout status');
+  }
+
+  return prisma.$transaction(async tx => {
+    const order = await tx.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    const prevPayment = order.paymentStatus;
+    const prevFulfillment = order.fulfillmentStatus as FulfillmentStatus;
+    const nextPayment = updates.payment_status ?? prevPayment;
+    const prevPayout = order.payoutStatus || 'pending';
+    const nextPayout = updates.payout_status ?? prevPayout;
+    let nextFulfillment =
+      (updates.fulfillment_status as FulfillmentStatus) ?? prevFulfillment;
+
+    // Marking paid should move unpaid orders into processing unless overridden.
+    if (
+      updates.payment_status === 'paid' &&
+      prevPayment !== 'paid' &&
+      !updates.fulfillment_status &&
+      (prevFulfillment === 'pending' || !prevFulfillment)
+    ) {
+      nextFulfillment = 'processing';
+    }
+
+    if (
+      nextPayout === 'paid' &&
+      (nextPayment !== 'paid' || nextFulfillment !== 'delivered')
+    ) {
+      throw new Error(
+        'Only paid and delivered orders can be marked as paid out'
+      );
+    }
+
+    const data: Record<string, unknown> = {
+      paymentStatus: nextPayment,
+      fulfillmentStatus: nextFulfillment,
+      payoutStatus: nextPayout,
+      updatedAt: new Date(),
+    };
+
+    if (updates.tracking_number !== undefined) {
+      data.trackingNumber = updates.tracking_number || null;
+    }
+    if (updates.payout_reference !== undefined) {
+      data.payoutReference = updates.payout_reference || null;
+    }
+    if (updates.payout_status === 'paid' && prevPayout !== 'paid') {
+      data.payoutPaidAt = new Date();
+      if (!updates.payout_reference) {
+        data.payoutReference = `MANUAL-${order.orderNumber}`;
+      }
+    } else if (
+      updates.payout_status &&
+      updates.payout_status !== 'paid' &&
+      prevPayout === 'paid'
+    ) {
+      data.payoutPaidAt = null;
+    }
+
+    await tx.order.update({
+      where: { id: orderId },
+      data,
+    });
+
+    if (nextPayment === 'paid' && prevPayment !== 'paid') {
+      const winningBid = await tx.bid.findFirst({
+        where: {
+          auctionId: order.auctionId!,
+          bidderId: order.buyerId!,
+          status: 'won',
+        },
+        include: { bidHold: true },
+      });
+
+      if (winningBid?.bidHold?.status === 'held') {
+        const wallet = await tx.wallet.findUnique({
+          where: { id: winningBid.bidHold.walletId! },
+        });
+        const balance = toNumber(wallet?.balance);
+        const heldAmount = toNumber(winningBid.bidHold.amount);
+
+        await tx.bidHold.update({
+          where: { id: winningBid.bidHold.id },
+          data: { status: 'released', releasedAt: new Date() },
+        });
+
+        if (wallet) {
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              transactionType: 'bid_release',
+              amount: heldAmount,
+              balanceBefore: balance,
+              balanceAfter: balance,
+              description: `Released winning bid commitment after manual payment for order ${order.orderNumber}`,
+              status: 'completed',
+            },
+          });
+        }
+      }
+    }
+
+    // Move delivered paid orders into the payout queue unless admin overrides it
+    if (
+      nextFulfillment === 'delivered' &&
+      prevFulfillment !== 'delivered' &&
+      (nextPayment === 'paid' || prevPayment === 'paid') &&
+      !updates.payout_status
+    ) {
+      await markPayoutReady(tx, order);
+    }
+
+    // Credit seller once when admin marks payout paid
+    if (nextPayout === 'paid' && prevPayout !== 'paid') {
+      const existingPayout = await tx.walletTransaction.findFirst({
+        where: {
+          reference: order.orderNumber,
+          transactionType: 'sale',
+          status: 'completed',
+        },
+      });
+      if (!existingPayout) {
+        await creditSeller(tx, order);
+      }
+    }
+
+    // Refund buyer once when cancelling a paid order, or marking payment refunded
+    const cancelledPaid =
+      nextFulfillment === 'cancelled' &&
+      prevFulfillment !== 'cancelled' &&
+      prevPayment === 'paid';
+    const markedRefunded = nextPayment === 'refunded' && prevPayment === 'paid';
+
+    if (cancelledPaid || markedRefunded) {
+      const existingRefund = await tx.walletTransaction.findFirst({
+        where: {
+          reference: order.orderNumber,
+          transactionType: 'refund',
+          status: 'completed',
+        },
+      });
+      if (!existingRefund) {
+        await refundBuyer(tx, order);
+      } else if (markedRefunded) {
+        await tx.order.update({
+          where: { id: orderId },
+          data: { paymentStatus: 'refunded' },
+        });
+      }
+    }
+
+    const finalOrder = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+    });
+
+    logger.info(
+      `Admin updated order ${order.orderNumber}: payment ${prevPayment}->${finalOrder.paymentStatus}, fulfillment ${prevFulfillment}->${finalOrder.fulfillmentStatus}`
+    );
+
+    return transformOrder(finalOrder);
+  });
 };
 
 /**
@@ -431,7 +931,7 @@ export const confirmDelivery = async (
   orderId: string,
   buyerId: string
 ): Promise<Order> => {
-  return prisma.$transaction(async tx => {
+  const updated = await prisma.$transaction(async tx => {
     // Get order
     const order = await tx.order.findFirst({
       where: { id: orderId, buyerId },
@@ -451,17 +951,117 @@ export const confirmDelivery = async (
       data: { fulfillmentStatus: 'delivered' },
     });
 
-    // Credit seller
-    await creditSeller(tx, order);
+    // Move payout into the admin payout queue
+    await markPayoutReady(tx, order);
 
     logger.info(`Delivery confirmed for order: ${order.orderNumber}`);
 
     return transformOrder(updatedOrder);
   });
+
+  notificationService
+    .notifyBackofficeDeliveryConfirmed(updated.id, updated.order_number)
+    .catch(error => {
+      logger.error(
+        'Failed to notify backoffice about delivery confirmation:',
+        error
+      );
+    });
+
+  return updated;
+};
+
+export const createDispute = async (
+  orderId: string,
+  userId: string,
+  disputeType: string,
+  description: string
+) => {
+  const result = await prisma.$transaction(async tx => {
+    const order = await tx.order.findFirst({
+      where: {
+        id: orderId,
+        OR: [{ buyerId: userId }, { sellerId: userId }],
+      },
+      include: {
+        disputes: {
+          where: { status: { in: ['open', 'investigating'] } },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new Error('Order not found or unauthorized');
+    }
+
+    if (order.disputes.length > 0) {
+      throw new Error('This order already has an open dispute');
+    }
+
+    if (!['paid', 'completed'].includes(order.paymentStatus || '')) {
+      throw new Error('Only paid orders can be disputed');
+    }
+
+    const dispute = await tx.dispute.create({
+      data: {
+        orderId,
+        raisedBy: userId,
+        disputeType,
+        description,
+        status: 'open',
+      },
+    });
+
+    if ((order.payoutStatus || 'pending') !== 'paid') {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          payoutStatus: 'held',
+          updatedAt: new Date(),
+        },
+      });
+    }
+
+    logger.info(`Dispute opened for order ${order.orderNumber}`);
+
+    return {
+      dispute: formatDispute(dispute),
+      orderNumber: order.orderNumber,
+    };
+  });
+
+  notificationService
+    .notifyBackofficeDisputeOpened(
+      orderId,
+      result.orderNumber,
+      result.dispute.id,
+      readableActionLabel(disputeType)
+    )
+    .catch(error => {
+      logger.error('Failed to notify backoffice about dispute:', error);
+    });
+
+  return result.dispute;
 };
 
 /**
- * Credit seller after successful delivery
+ * Mark seller payout ready after successful delivery.
+ */
+const markPayoutReady = async (tx: any, order: any): Promise<void> => {
+  if ((order.payoutStatus || 'pending') !== 'pending') return;
+
+  await tx.order.update({
+    where: { id: order.id },
+    data: {
+      payoutStatus: 'ready',
+      updatedAt: new Date(),
+    },
+  });
+};
+
+/**
+ * Credit seller after admin marks payout paid.
  */
 const creditSeller = async (tx: any, order: any): Promise<void> => {
   // Get seller wallet
@@ -494,6 +1094,16 @@ const creditSeller = async (tx: any, order: any): Promise<void> => {
       reference: order.orderNumber,
       description: `Payout for order ${order.orderNumber}`,
       status: 'completed',
+    },
+  });
+
+  await tx.order.update({
+    where: { id: order.id },
+    data: {
+      payoutStatus: 'paid',
+      payoutPaidAt: new Date(),
+      payoutReference: order.payoutReference || `MANUAL-${order.orderNumber}`,
+      updatedAt: new Date(),
     },
   });
 
@@ -573,6 +1183,12 @@ export const initializeOrderPayment = async (
 
   if (order.paymentStatus === 'paid') {
     throw new Error('Order already paid');
+  }
+
+  if (!hasCompleteShippingAddress(order.shippingAddress)) {
+    throw new Error(
+      'Please add a shipping address before paying for this order'
+    );
   }
 
   const amount = toNumber(order.totalAmount);
@@ -695,7 +1311,14 @@ export const processOrderPayment = async (
     });
 
     if (winningBid?.bidHold && winningBid.bidHold.status === 'held') {
-      // Release the hold since payment was made via Paystack
+      const wallet = await tx.wallet.findUnique({
+        where: { userId: order.buyerId! },
+      });
+      const balance = toNumber(wallet?.balance);
+      const heldAmount = toNumber(winningBid.bidHold.amount);
+
+      // Release the hold since payment was made via Paystack.
+      // Bid holds reserve available balance; they do not deduct wallet balance.
       await tx.bidHold.update({
         where: { id: winningBid.bidHold.id },
         data: {
@@ -704,17 +1327,16 @@ export const processOrderPayment = async (
         },
       });
 
-      // Restore wallet balance
-      const wallet = await tx.wallet.findUnique({
-        where: { userId: order.buyerId! },
-      });
-
       if (wallet) {
-        const heldAmount = toNumber(winningBid.bidHold.amount);
-        await tx.wallet.update({
-          where: { id: wallet.id },
+        await tx.walletTransaction.create({
           data: {
-            balance: { increment: heldAmount },
+            walletId: wallet.id,
+            transactionType: 'bid_release',
+            amount: heldAmount,
+            balanceBefore: balance,
+            balanceAfter: balance,
+            description: `Released winning bid hold after external payment for order ${order.orderNumber}`,
+            status: 'completed',
           },
         });
 
@@ -755,6 +1377,12 @@ export const processOrderPayment = async (
           order.orderNumber,
           amount
         );
+
+        await notificationService.notifyBackofficeOrderPaid(
+          orderId,
+          order.orderNumber,
+          amount
+        );
       } catch (err) {
         logger.error('Failed to send payment notifications:', err);
       }
@@ -762,6 +1390,236 @@ export const processOrderPayment = async (
 
     return transformOrder(updatedOrder);
   });
+};
+
+/**
+ * Expire unpaid winner orders after the configured payment window.
+ * This prevents stuck pending orders from holding buyer wallet availability forever.
+ */
+export const expirePendingOrders = async (): Promise<number> => {
+  const expiryDate = new Date(
+    Date.now() - ORDER_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000
+  );
+
+  const expiredOrders = await prisma.order.findMany({
+    where: {
+      paymentStatus: 'pending',
+      fulfillmentStatus: 'pending',
+      createdAt: { lte: expiryDate },
+    },
+    select: {
+      id: true,
+      orderNumber: true,
+      auctionId: true,
+      buyerId: true,
+      totalAmount: true,
+    },
+    take: 50,
+  });
+
+  let expiredCount = 0;
+
+  for (const order of expiredOrders) {
+    try {
+      const result = await prisma.$transaction(async tx => {
+        const freshOrder = await tx.order.findFirst({
+          where: {
+            id: order.id,
+            paymentStatus: 'pending',
+            fulfillmentStatus: 'pending',
+          },
+        });
+
+        if (!freshOrder) return;
+
+        const auction = order.auctionId
+          ? await tx.auction.findUnique({
+              where: { id: order.auctionId },
+              include: { gadget: true },
+            })
+          : null;
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            fulfillmentStatus: 'cancelled',
+            updatedAt: new Date(),
+          },
+        });
+
+        let forfeitedAmount = 0;
+        let secondPlaceBidder:
+          | {
+              id: string;
+              fullName: string | null;
+              phoneNumber: string | null;
+              amount: number;
+            }
+          | undefined;
+
+        if (order.auctionId && order.buyerId) {
+          const winningBid = await tx.bid.findFirst({
+            where: {
+              auctionId: order.auctionId,
+              bidderId: order.buyerId,
+              status: 'won',
+            },
+            include: { bidHold: true },
+          });
+
+          if (winningBid?.bidHold?.status === 'held') {
+            const wallet = await tx.wallet.findUnique({
+              where: { id: winningBid.bidHold.walletId! },
+            });
+            const balance = toNumber(wallet?.balance);
+            const heldAmount = toNumber(winningBid.bidHold.amount);
+            const balanceAfter = balance - heldAmount;
+            forfeitedAmount = heldAmount;
+
+            await tx.bidHold.update({
+              where: { id: winningBid.bidHold.id },
+              data: { status: 'charged', releasedAt: new Date() },
+            });
+
+            if (wallet) {
+              await tx.wallet.update({
+                where: { id: wallet.id },
+                data: {
+                  balance: balanceAfter,
+                  isLocked: true,
+                },
+              });
+
+              await tx.walletTransaction.create({
+                data: {
+                  walletId: wallet.id,
+                  transactionType: 'fee',
+                  amount: heldAmount,
+                  balanceBefore: balance,
+                  balanceAfter,
+                  description: `Forfeited bid commitment for unpaid order ${order.orderNumber}`,
+                  status: 'completed',
+                },
+              });
+
+              await tx.walletTransaction.create({
+                data: {
+                  walletId: wallet.id,
+                  transactionType: 'fee',
+                  amount: BID_DEFAULT_PENALTY_AMOUNT,
+                  balanceBefore: balanceAfter,
+                  balanceAfter,
+                  description: `Outstanding reactivation penalty for unpaid order ${order.orderNumber}`,
+                  metadata: {
+                    orderId: order.id,
+                    orderNumber: order.orderNumber,
+                    penaltyReason: 'unpaid_winning_bid',
+                  },
+                  status: 'pending',
+                },
+              });
+            }
+          }
+
+          await tx.user.update({
+            where: { id: order.buyerId },
+            data: { isActive: false },
+          });
+
+          await tx.bid.updateMany({
+            where: {
+              auctionId: order.auctionId,
+              bidderId: order.buyerId,
+              status: 'won',
+            },
+            data: { status: 'withdrawn', isWinning: false },
+          });
+
+          const secondBid = await tx.bid.findFirst({
+            where: {
+              auctionId: order.auctionId,
+              bidderId: { not: order.buyerId },
+            },
+            include: {
+              bidder: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  phoneNumber: true,
+                },
+              },
+            },
+            orderBy: [{ amount: 'desc' }, { bidTime: 'asc' }],
+          });
+
+          if (secondBid?.bidder) {
+            secondPlaceBidder = {
+              id: secondBid.bidder.id,
+              fullName: secondBid.bidder.fullName,
+              phoneNumber: secondBid.bidder.phoneNumber,
+              amount: toNumber(secondBid.amount),
+            };
+          }
+        }
+
+        return {
+          gadgetTitle: auction?.gadget?.title || 'Item',
+          orderTotal: toNumber(order.totalAmount),
+          forfeitedAmount,
+          secondPlaceBidder,
+        };
+      });
+
+      expiredCount += 1;
+      logger.info(`Expired unpaid order ${order.orderNumber}`);
+
+      if (order.buyerId) {
+        notificationService
+          .createNotification(
+            order.buyerId,
+            'bid_defaulted',
+            'Winning bid payment missed',
+            `You missed the 24-hour payment window for order #${order.orderNumber}. Your ₦${(result?.forfeitedAmount || 0).toLocaleString()} commitment has been forfeited and your account is suspended. Contact support to pay the ₦${BID_DEFAULT_PENALTY_AMOUNT.toLocaleString()} penalty.`,
+            {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              penaltyAmount: BID_DEFAULT_PENALTY_AMOUNT,
+            },
+            ['push']
+          )
+          .catch(error => {
+            logger.error('Failed to notify defaulted buyer:', error);
+          });
+      }
+
+      notificationService
+        .notifyAdmins(
+          'bid_defaulted',
+          'Winning bidder missed payment',
+          `Order #${order.orderNumber} was not paid within 24 hours. The ₦${(result?.forfeitedAmount || 0).toLocaleString()} commitment was forfeited. ${result?.secondPlaceBidder ? 'The second-place offer is being created automatically.' : 'No second-place bidder is available.'}`,
+          {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            auctionId: order.auctionId,
+            route: '/orders',
+            secondPlaceBidder: result?.secondPlaceBidder,
+          }
+        )
+        .catch(error => {
+          logger.error('Failed to notify admins about bid default:', error);
+        });
+
+      if (result?.secondPlaceBidder) {
+        offerOrderToSecondPlaceBidder(order.id).catch(error => {
+          logger.error('Failed to create second-place offer:', error);
+        });
+      }
+    } catch (error) {
+      logger.error(`Failed to expire order ${order.orderNumber}:`, error);
+    }
+  }
+
+  return expiredCount;
 };
 
 /**
@@ -782,7 +1640,15 @@ export const getOrderStats = async (
       prisma.order.count({
         where: {
           OR: [{ buyerId: userId }, { sellerId: userId }],
-          fulfillmentStatus: { in: ['pending', 'processing', 'shipped'] },
+          fulfillmentStatus: {
+            in: [
+              'pending',
+              'processing',
+              'sent_to_backoffice',
+              'received_by_backoffice',
+              'shipped',
+            ],
+          },
         },
       }),
       prisma.order.count({
@@ -814,10 +1680,17 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
     total_amount: toNumber(order.totalAmount),
     platform_fee: toNumber(order.platformFee),
     seller_payout: toNumber(order.sellerPayout),
+    payout_status: order.payoutStatus,
+    payout_paid_at: order.payoutPaidAt?.toISOString(),
+    payout_reference: order.payoutReference,
     payment_status: order.paymentStatus,
     fulfillment_status: order.fulfillmentStatus,
     shipping_address: order.shippingAddress,
     tracking_number: order.trackingNumber,
+    disputes: order.disputes?.map(formatDispute),
+    open_dispute: order.disputes?.some((d: any) =>
+      ['open', 'investigating'].includes(d.status)
+    ),
     created_at: order.createdAt?.toISOString(),
     updated_at: order.updatedAt?.toISOString(),
     auction: order.auction
@@ -853,5 +1726,5 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
           phone_number: order.seller.phoneNumber,
         }
       : undefined,
-  } as OrderWithDetails;
+  } as unknown as OrderWithDetails;
 };

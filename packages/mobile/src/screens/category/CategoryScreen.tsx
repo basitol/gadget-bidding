@@ -10,10 +10,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { AuctionCard, EmptyState, LoadingScreen } from '../../components';
 import { auctionService } from '../../services';
 import { Auction } from '../../types';
+
+type IoniconName = Extract<keyof typeof Ionicons.glyphMap, string>;
 
 type HomeStackParamList = {
   HomeMain: undefined;
@@ -48,12 +51,14 @@ export const CategoryScreen: React.FC<CategoryScreenProps> = ({
       }
 
       try {
-        const response = await auctionService.getAuctions({
-          status: 'active',
-          category,
-          page: pageNum,
-          limit: 20,
-        });
+        const response = await auctionService.getAuctions(
+          {
+            status: 'active',
+            category,
+          },
+          pageNum,
+          20
+        );
 
         if (pageNum === 1) {
           setAuctions(response.data);
@@ -61,7 +66,7 @@ export const CategoryScreen: React.FC<CategoryScreenProps> = ({
           setAuctions(prev => [...prev, ...response.data]);
         }
 
-        setHasMore(response.pagination.has_next_page);
+        setHasMore(pageNum < response.pagination.total_pages);
         setPage(pageNum);
       } catch (error) {
         console.error('Failed to load category auctions:', error);
@@ -87,20 +92,20 @@ export const CategoryScreen: React.FC<CategoryScreenProps> = ({
     }
   };
 
-  const getCategoryEmoji = (cat: string): string => {
-    const emojis: Record<string, string> = {
-      smartphones: '📱',
-      laptops: '💻',
-      tablets: '📲',
-      smartwatches: '⌚',
-      gaming_consoles: '🎮',
-      cameras: '📷',
-      accessories: '🎧',
-      audio: '🔊',
-      tvs: '📺',
-      default: '📦',
+  const getCategoryIcon = (cat: string): IoniconName => {
+    const icons: Record<string, IoniconName> = {
+      smartphones: 'phone-portrait-outline',
+      laptops: 'laptop-outline',
+      tablets: 'tablet-portrait-outline',
+      smartwatches: 'watch-outline',
+      gaming_consoles: 'game-controller-outline',
+      cameras: 'camera-outline',
+      accessories: 'headset-outline',
+      audio: 'volume-high-outline',
+      tvs: 'tv-outline',
+      default: 'cube-outline',
     };
-    return emojis[cat.toLowerCase()] || emojis.default;
+    return icons[cat.toLowerCase()] || icons.default;
   };
 
   const renderAuction = ({ item }: { item: Auction }) => (
@@ -124,10 +129,16 @@ export const CategoryScreen: React.FC<CategoryScreenProps> = ({
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.titleContainer}>
-          <Text style={styles.categoryEmoji}>{getCategoryEmoji(category)}</Text>
+          <View style={styles.categoryIconWrap}>
+            <Ionicons
+              name={getCategoryIcon(category)}
+              size={22}
+              color={colors.primary}
+            />
+          </View>
           <Text style={styles.title}>{label}</Text>
         </View>
         <View style={styles.placeholder} />
@@ -142,7 +153,7 @@ export const CategoryScreen: React.FC<CategoryScreenProps> = ({
 
       {auctions.length === 0 ? (
         <EmptyState
-          icon={getCategoryEmoji(category)}
+          icon={getCategoryIcon(category)}
           title={`No ${label} Auctions`}
           message={`There are no active auctions in ${label} category right now. Check back later!`}
           actionLabel="Browse All"
@@ -201,17 +212,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  backIcon: {
-    fontSize: fonts.sizes.xl,
-    color: colors.text,
-  },
   titleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  categoryEmoji: {
-    fontSize: fonts.sizes.xxl,
+  categoryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: fonts.sizes.xl,

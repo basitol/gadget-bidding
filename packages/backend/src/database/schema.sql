@@ -85,7 +85,7 @@ CREATE INDEX idx_wallets_user ON wallets(user_id);
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wallet_id UUID REFERENCES wallets(id) ON DELETE CASCADE,
-    transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('deposit', 'withdrawal', 'bid_hold', 'bid_release', 'payment', 'refund')),
+    transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('deposit', 'withdrawal', 'bid_hold', 'bid_release', 'purchase', 'sale', 'refund', 'fee')),
     amount DECIMAL(15, 2) NOT NULL,
     balance_before DECIMAL(15, 2) NOT NULL,
     balance_after DECIMAL(15, 2) NOT NULL,
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS gadgets (
     description TEXT NOT NULL,
     brand VARCHAR(100),
     model VARCHAR(100),
-    condition VARCHAR(20) NOT NULL CHECK (condition IN ('new', 'like_new', 'good', 'fair')),
+    condition VARCHAR(20) NOT NULL CHECK (condition IN ('new', 'like_new', 'excellent', 'good', 'fair', 'for_parts')),
     specifications JSONB,
     images TEXT[] NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'listed', 'sold')),
@@ -182,7 +182,7 @@ CREATE TABLE IF NOT EXISTS auctions (
     buy_now_price DECIMAL(15, 2),
     start_time TIMESTAMP NOT NULL,
     end_time TIMESTAMP NOT NULL,
-    status VARCHAR(20) DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'active', 'ended', 'cancelled', 'completed')),
+    status VARCHAR(20) DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'active', 'ended', 'cancelled')),
     winner_id UUID REFERENCES users(id),
     total_bids INTEGER DEFAULT 0,
     auto_extend_enabled BOOLEAN DEFAULT true,
@@ -252,8 +252,11 @@ CREATE TABLE IF NOT EXISTS orders (
     total_amount DECIMAL(15, 2) NOT NULL,
     platform_fee DECIMAL(15, 2) DEFAULT 0.00,
     seller_payout DECIMAL(15, 2) NOT NULL,
+    payout_status VARCHAR(20) DEFAULT 'pending' CHECK (payout_status IN ('pending', 'ready', 'held', 'paid')),
+    payout_paid_at TIMESTAMP,
+    payout_reference VARCHAR(100),
     payment_status VARCHAR(20) DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid', 'refunded')),
-    fulfillment_status VARCHAR(20) DEFAULT 'pending' CHECK (fulfillment_status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')),
+    fulfillment_status VARCHAR(50) DEFAULT 'pending' CHECK (fulfillment_status IN ('pending', 'processing', 'sent_to_backoffice', 'received_by_backoffice', 'shipped', 'delivered', 'cancelled')),
     shipping_address JSONB,
     tracking_number VARCHAR(100),
     created_at TIMESTAMP DEFAULT NOW(),
@@ -263,6 +266,7 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX idx_orders_buyer ON orders(buyer_id, payment_status);
 CREATE INDEX idx_orders_seller ON orders(seller_id, fulfillment_status);
 CREATE INDEX idx_orders_order_number ON orders(order_number);
+CREATE INDEX idx_orders_payout ON orders(payout_status, fulfillment_status);
 CREATE INDEX idx_orders_status ON orders(payment_status, fulfillment_status);
 
 -- ============================================================================

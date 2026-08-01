@@ -24,6 +24,10 @@ export const validateRegistration: ValidationChain[] = [
     .withMessage(
       'Password must contain at least one uppercase letter, one lowercase letter, and one number'
     ),
+  body('account_type')
+    .optional()
+    .isIn(['buyer', 'seller'])
+    .withMessage('Account type must be buyer or seller'),
 ];
 
 /**
@@ -35,6 +39,10 @@ export const validateLogin: ValidationChain[] = [
     .matches(/^\+?[0-9]{10,15}$/)
     .withMessage('Invalid phone number format'),
   body('password').notEmpty().withMessage('Password is required'),
+  body('account_type')
+    .optional()
+    .isIn(['buyer', 'seller'])
+    .withMessage('Account type must be buyer or seller'),
 ];
 
 /**

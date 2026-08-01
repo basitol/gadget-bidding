@@ -39,6 +39,9 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<Auction[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
@@ -49,14 +52,26 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
         setResults([]);
         setHasSearched(false);
         setIsSearching(false);
+        setPage(1);
+        setHasMore(false);
         return;
       }
 
       setIsSearching(true);
       try {
-        const response = await auctionService.searchAuctions(query.trim());
+        const response = await auctionService.searchAuctions(
+          query.trim(),
+          1,
+          20
+        );
         setResults(response.data || []);
         setHasSearched(true);
+        setPage(1);
+        const totalPages =
+          (response.pagination as any)?.totalPages ||
+          response.pagination?.total_pages ||
+          1;
+        setHasMore(1 < totalPages);
 
         // Add to recent searches
         setRecentSearches(prev => {
@@ -74,6 +89,33 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
     }, 500),
     []
   );
+
+  const handleLoadMore = async () => {
+    if (!searchQuery.trim() || isSearching || isLoadingMore || !hasMore) {
+      return;
+    }
+    setIsLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const response = await auctionService.searchAuctions(
+        searchQuery.trim(),
+        nextPage,
+        20
+      );
+      const batch = response.data || [];
+      setResults(prev => [...prev, ...batch]);
+      setPage(nextPage);
+      const totalPages =
+        (response.pagination as any)?.totalPages ||
+        response.pagination?.total_pages ||
+        1;
+      setHasMore(nextPage < totalPages);
+    } catch (error) {
+      console.error('Search load more failed:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const handleSearchChange = (text: string) => {
     setSearchQuery(text);
@@ -165,10 +207,21 @@ export const SearchScreen: React.FC<SearchScreenProps> = ({ navigation }) => {
             renderItem={renderAuction}
             contentContainerStyle={styles.resultsContent}
             showsVerticalScrollIndicator={false}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.4}
             ListHeaderComponent={
               <Text style={styles.resultsCount}>
-                {results.length} result{results.length !== 1 ? 's' : ''} found
+                {results.length} result{results.length !== 1 ? 's' : ''}
+                {hasMore ? '+' : ''} found
               </Text>
+            }
+            ListFooterComponent={
+              isLoadingMore ? (
+                <ActivityIndicator
+                  style={{ marginVertical: spacing.lg }}
+                  color={colors.primary}
+                />
+              ) : null
             }
           />
         ) : (
@@ -363,9 +416,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.xs,
-  },
-  categoryEmoji: {
-    fontSize: fonts.sizes.xxl,
   },
   categoryLabel: {
     color: colors.textSecondary,

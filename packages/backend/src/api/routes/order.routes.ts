@@ -143,4 +143,17 @@ router.post(
   orderController.confirmDelivery
 );
 
+/**
+ * @route   POST /api/v1/orders/:orderId/disputes
+ * @desc    Open dispute for an order
+ * @access  Private (Buyer or seller)
+ */
+router.post(
+  '/:orderId/disputes',
+  authenticate,
+  orderValidator.validateDisputeCreate,
+  handleValidationErrors,
+  orderController.createDispute
+);
+
 export default router;

@@ -26,16 +26,22 @@ export default function App() {
     return null;
   }
 
-  Text.defaultProps = Text.defaultProps || {};
-  Text.defaultProps.style = [
+  const defaultText = Text as typeof Text & {
+    defaultProps?: { style?: unknown };
+  };
+  defaultText.defaultProps = defaultText.defaultProps || {};
+  defaultText.defaultProps.style = [
     { fontFamily: 'Inter_400Regular' },
-    Text.defaultProps.style,
+    defaultText.defaultProps.style,
   ];
 
-  TextInput.defaultProps = TextInput.defaultProps || {};
-  TextInput.defaultProps.style = [
+  const defaultTextInput = TextInput as typeof TextInput & {
+    defaultProps?: { style?: unknown };
+  };
+  defaultTextInput.defaultProps = defaultTextInput.defaultProps || {};
+  defaultTextInput.defaultProps.style = [
     { fontFamily: 'Inter_400Regular' },
-    TextInput.defaultProps.style,
+    defaultTextInput.defaultProps.style,
   ];
 
   return (

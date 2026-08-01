@@ -15,9 +15,31 @@ const api: AxiosInstance = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+/** Auth routes that return 401 for bad credentials — never attach/refresh tokens */
+const isPublicAuthRequest = (url?: string): boolean => {
+  if (!url) return false;
+  return [
+    '/auth/login',
+    '/auth/register',
+    '/auth/verify-otp',
+    '/auth/resend-otp',
+    '/auth/refresh-token',
+  ].some(path => url.includes(path));
+};
+
+// Request interceptor to add auth token (skip public auth routes)
 api.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    // Let React Native set multipart boundary for FormData uploads
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      if (config.headers) {
+        delete config.headers['Content-Type'];
+      }
+    }
+
+    if (isPublicAuthRequest(config.url)) {
+      return config;
+    }
     try {
       const token = await SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
       if (token && config.headers) {
@@ -57,7 +79,11 @@ api.interceptors.response.use(
       _retry?: boolean;
     };
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isPublicAuthRequest(originalRequest.url)
+    ) {
       if (isRefreshing) {
         // If already refreshing, queue this request
         return new Promise((resolve, reject) => {
@@ -145,13 +171,48 @@ export default api;
 
 // Helper to extract error message
 export const getErrorMessage = (error: unknown): string => {
+  const sanitizeMessage = (message?: string): string | undefined => {
+    if (!message) return undefined;
+
+    if (
+      message.includes('gadgets_condition_check') ||
+      message.includes('violates check constraint')
+    ) {
+      return 'Please choose a supported gadget condition and try again.';
+    }
+
+    return message;
+  };
+
   if (axios.isAxiosError(error)) {
+    const data = error.response?.data as
+      | {
+          error?: string;
+          message?: string;
+          errors?: Record<string, string[]>;
+        }
+      | undefined;
+
+    // Surface the first field-level validation error if present
+    if (data?.errors) {
+      const firstField = Object.values(data.errors).find(
+        messages => Array.isArray(messages) && messages.length > 0
+      );
+      if (firstField?.[0]) {
+        return sanitizeMessage(firstField[0]) || firstField[0];
+      }
+    }
+
+    // Backend sends { success: false, error: "..." }; keep `message` as fallback
     return (
-      error.response?.data?.message || error.message || 'An error occurred'
+      sanitizeMessage(data?.error) ||
+      sanitizeMessage(data?.message) ||
+      sanitizeMessage(error.message) ||
+      'An error occurred'
     );
   }
   if (error instanceof Error) {
-    return error.message;
+    return sanitizeMessage(error.message) || error.message;
   }
   return 'An unexpected error occurred';
 };

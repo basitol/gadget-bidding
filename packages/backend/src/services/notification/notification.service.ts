@@ -90,7 +90,8 @@ export const getUserNotifications = async (
 }> => {
   const offset = (page - 1) * limit;
 
-  let whereClause = 'WHERE user_id = $1';
+  let whereClause =
+    "WHERE user_id = $1 AND notification_type != 'bid_placed_admin'";
   if (unreadOnly) {
     whereClause += ' AND is_read = false';
   }
@@ -104,7 +105,10 @@ export const getUserNotifications = async (
 
   // Get unread count
   const unreadResult = await query(
-    'SELECT COUNT(*) as unread FROM notifications WHERE user_id = $1 AND is_read = false',
+    `SELECT COUNT(*) as unread FROM notifications
+     WHERE user_id = $1
+       AND is_read = false
+       AND notification_type != 'bid_placed_admin'`,
     [userId]
   );
   const unreadCount = parseInt(unreadResult[0].unread);
@@ -169,9 +173,178 @@ export const deleteNotification = async (
   return result.length > 0;
 };
 
+/**
+ * Notify all active admins.
+ */
+export const notifyAdmins = async (
+  type: NotificationType,
+  title: string,
+  message: string,
+  data?: Record<string, any>
+): Promise<void> => {
+  const admins = await query(
+    `SELECT id FROM users
+     WHERE role = 'admin' AND is_active = true`
+  );
+
+  await Promise.all(
+    admins.map(admin =>
+      createNotification(admin.id, type, title, message, data, ['push'])
+    )
+  );
+};
+
 // ============================================================================
 // Notification Templates
 // ============================================================================
+
+/**
+ * Notify backoffice that seller sent/dropped an item to operations.
+ */
+export const notifyBackofficeIntake = async (
+  orderId: string,
+  orderNumber: string
+): Promise<void> => {
+  await notifyAdmins(
+    'backoffice_intake',
+    'Item sent to backoffice',
+    `Order #${orderNumber} is ready for backoffice receiving.`,
+    { orderId, orderNumber, route: '/backoffice' }
+  );
+};
+
+/**
+ * Notify backoffice that a seller created an auction.
+ */
+export const notifyBackofficeAuctionCreated = async (
+  auctionId: string,
+  gadgetTitle: string
+): Promise<void> => {
+  await notifyAdmins(
+    'auction_created',
+    'New auction created',
+    `"${gadgetTitle}" was listed for auction by a seller.`,
+    { auctionId, route: '/auctions' }
+  );
+};
+
+/**
+ * Notify backoffice that a seller submitted a gadget for review.
+ */
+export const notifyBackofficeGadgetSubmitted = async (
+  gadgetId: string,
+  gadgetTitle: string
+): Promise<void> => {
+  await notifyAdmins(
+    'gadget_submitted',
+    'New gadget submitted',
+    `"${gadgetTitle}" is waiting for admin review.`,
+    { gadgetId, route: '/gadgets' }
+  );
+};
+
+/**
+ * Notify backoffice that a buyer used buy now.
+ */
+export const notifyBackofficeBuyNowUsed = async (
+  auctionId: string,
+  bidId: string,
+  amount: number,
+  orderNumber?: string
+): Promise<void> => {
+  await notifyAdmins(
+    'buy_now_used',
+    'Buy now used',
+    `A buyer used buy now for ₦${amount.toLocaleString()}${orderNumber ? ` on order #${orderNumber}` : ''}.`,
+    { auctionId, bidId, orderNumber, amount, route: '/orders' }
+  );
+};
+
+/**
+ * Notify backoffice that an order payment was completed.
+ */
+export const notifyBackofficeOrderPaid = async (
+  orderId: string,
+  orderNumber: string,
+  amount: number
+): Promise<void> => {
+  await notifyAdmins(
+    'order_paid_admin',
+    'Order payment completed',
+    `Order #${orderNumber} was paid for ₦${amount.toLocaleString()}.`,
+    { orderId, orderNumber, amount, route: '/orders' }
+  );
+};
+
+/**
+ * Notify backoffice about seller fulfillment updates.
+ */
+export const notifyBackofficeFulfillmentUpdated = async (
+  orderId: string,
+  orderNumber: string,
+  statusLabel: string
+): Promise<void> => {
+  await notifyAdmins(
+    'fulfillment_updated',
+    'Seller updated fulfillment',
+    `Order #${orderNumber} is now ${statusLabel}.`,
+    { orderId, orderNumber, status: statusLabel, route: '/backoffice' }
+  );
+};
+
+/**
+ * Notify backoffice that a buyer confirmed delivery.
+ */
+export const notifyBackofficeDeliveryConfirmed = async (
+  orderId: string,
+  orderNumber: string
+): Promise<void> => {
+  await notifyAdmins(
+    'delivery_confirmed_admin',
+    'Delivery confirmed',
+    `Buyer confirmed delivery for order #${orderNumber}.`,
+    { orderId, orderNumber, route: '/backoffice' }
+  );
+};
+
+/**
+ * Notify backoffice that a dispute was opened.
+ */
+export const notifyBackofficeDisputeOpened = async (
+  orderId: string,
+  orderNumber: string,
+  disputeId: string,
+  disputeLabel: string
+): Promise<void> => {
+  await notifyAdmins(
+    'dispute_opened',
+    'New dispute opened',
+    `A ${disputeLabel} dispute was opened for order #${orderNumber}.`,
+    {
+      orderId,
+      orderNumber,
+      disputeId,
+      disputeType: disputeLabel,
+      route: '/orders',
+    }
+  );
+};
+
+/**
+ * Notify backoffice that a seller sent a support message.
+ */
+export const notifyBackofficeSupportMessage = async (
+  threadId: string,
+  sellerName: string,
+  messagePreview: string
+): Promise<void> => {
+  await notifyAdmins(
+    'support_message',
+    'New support message',
+    `${sellerName} sent a message: ${messagePreview}`,
+    { threadId, route: '/support' }
+  );
+};
 
 /**
  * Notify user they've been outbid

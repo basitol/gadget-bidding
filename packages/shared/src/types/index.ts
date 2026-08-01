@@ -2,7 +2,9 @@
 // User Types
 // ============================================================================
 
-export type UserRole = 'user' | 'seller' | 'admin';
+export type UserRole = 'bidder' | 'seller' | 'admin';
+
+export type AccountType = 'buyer' | 'seller';
 
 export interface User {
   id: string;
@@ -22,11 +24,13 @@ export interface UserRegistration {
   full_name: string;
   email?: string;
   password: string;
+  account_type?: AccountType;
 }
 
 export interface UserLogin {
   phone_number: string;
   password: string;
+  account_type?: AccountType;
 }
 
 export interface OTPVerification {
@@ -49,8 +53,10 @@ export type TransactionType =
   | 'withdrawal'
   | 'bid_hold'
   | 'bid_release'
-  | 'payment'
-  | 'refund';
+  | 'purchase'
+  | 'sale'
+  | 'refund'
+  | 'fee';
 
 export type TransactionStatus = 'pending' | 'completed' | 'failed';
 
@@ -121,7 +127,13 @@ export interface PaystackInitializeResponse {
 // Gadget Types
 // ============================================================================
 
-export type GadgetCondition = 'new' | 'like_new' | 'good' | 'fair';
+export type GadgetCondition =
+  | 'new'
+  | 'like_new'
+  | 'excellent'
+  | 'good'
+  | 'fair'
+  | 'for_parts';
 
 export type GadgetStatus =
   | 'pending'
@@ -149,7 +161,7 @@ export interface Gadget {
   brand?: string;
   model?: string;
   condition: GadgetCondition;
-  specifications?: Record<string, any>;
+  specifications?: Record<string, unknown>;
   images: string[];
   status: GadgetStatus;
   rejection_reason?: string;
@@ -161,10 +173,10 @@ export interface CreateGadgetRequest {
   category_id: string;
   title: string;
   description: string;
-  brand?: string;
-  model?: string;
+  brand: string;
+  model: string;
   condition: GadgetCondition;
-  specifications?: Record<string, any>;
+  specifications?: Record<string, unknown>;
   images: string[];
 }
 
@@ -172,12 +184,7 @@ export interface CreateGadgetRequest {
 // Auction Types
 // ============================================================================
 
-export type AuctionStatus =
-  | 'scheduled'
-  | 'active'
-  | 'ended'
-  | 'cancelled'
-  | 'completed';
+export type AuctionStatus = 'scheduled' | 'active' | 'ended' | 'cancelled';
 
 export interface Auction {
   id: string;
@@ -259,9 +266,13 @@ export interface BidHold {
 
 export type PaymentStatusType = 'pending' | 'paid' | 'refunded';
 
+export type PayoutStatus = 'pending' | 'ready' | 'held' | 'paid';
+
 export type FulfillmentStatus =
   | 'pending'
   | 'processing'
+  | 'sent_to_backoffice'
+  | 'received_by_backoffice'
   | 'shipped'
   | 'delivered'
   | 'cancelled';
@@ -277,6 +288,15 @@ export interface ShippingAddress {
   country: string;
 }
 
+export interface UserAddress extends ShippingAddress {
+  id: string;
+  user_id: string;
+  label: string;
+  is_default: boolean;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
 export interface Order {
   id: string;
   auction_id: string;
@@ -286,10 +306,15 @@ export interface Order {
   total_amount: number;
   platform_fee: number;
   seller_payout: number;
+  payout_status?: PayoutStatus;
+  payout_paid_at?: string;
+  payout_reference?: string;
   payment_status: PaymentStatusType;
   fulfillment_status: FulfillmentStatus;
   shipping_address?: ShippingAddress;
   tracking_number?: string;
+  disputes?: Dispute[];
+  open_dispute?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -310,13 +335,24 @@ export type NotificationType =
   | 'outbid'
   | 'auction_won'
   | 'auction_lost'
+  | 'auction_created'
   | 'auction_ending_soon'
+  | 'bid_defaulted'
+  | 'backoffice_intake'
+  | 'gadget_submitted'
+  | 'buy_now_used'
+  | 'order_paid_admin'
+  | 'fulfillment_updated'
+  | 'delivery_confirmed_admin'
+  | 'dispute_opened'
+  | 'support_message'
   | 'payment_received'
   | 'payment_failed'
   | 'payment_initiated'
   | 'order_created'
   | 'order_shipped'
-  | 'order_delivered';
+  | 'order_delivered'
+  | 'system';
 
 export type NotificationChannel = 'push' | 'sms' | 'email';
 
@@ -464,7 +500,10 @@ export const DEFAULT_BID_INCREMENT = 100; // ₦100
 export const DEFAULT_AUCTION_DURATION_HOURS = 24;
 export const AUTO_EXTEND_MINUTES = 5;
 export const PLATFORM_FEE_PERCENTAGE = 5; // 5% platform fee
-export const MIN_WALLET_BALANCE = 0;
+export const BID_COMMITMENT_AMOUNT = 1000; // ₦1,000 commitment hold to bid
+export const BID_DEFAULT_PENALTY_AMOUNT = 5000; // ₦5,000 reactivation penalty
+export const BID_PAYMENT_DEADLINE_HOURS = 24;
+export const MIN_WALLET_BALANCE = BID_COMMITMENT_AMOUNT;
 
 // Nigerian payment gateway limits
 export const PAYSTACK_MIN_AMOUNT = 100; // ₦100
