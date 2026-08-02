@@ -31,6 +31,7 @@
     "@gadget-bidding/shared": "workspace:*",
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
+    "@prisma/client-runtime-utils": "^7.3.0",
     "@socket.io/redis-adapter": "^8.2.1",
     "axios": "^1.6.5",
     "bcrypt": "^6.0.0",
