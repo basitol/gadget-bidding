@@ -8,6 +8,7 @@ import * as gadgetService from '../../services/gadget/gadget.service';
 import * as orderService from '../../services/order/order.service';
 import * as auctionService from '../../services/auction/auction.service';
 import * as supportService from '../../services/support/support.service';
+import * as riskService from '../../services/risk/risk.service';
 
 const toNumber = (value: unknown): number => {
   if (value == null) return 0;
@@ -778,6 +779,9 @@ export const getUsers = async (req: Request, res: Response) => {
       }),
       prisma.user.count({ where }),
     ]);
+    const riskFlagsByUserId = await riskService.getActiveRiskFlagsForUsers(
+      users.map(user => user.id)
+    );
 
     sendPaginated(
       res,
@@ -800,6 +804,8 @@ export const getUsers = async (req: Request, res: Response) => {
               created_at: u.wallet.transactions[0].createdAt?.toISOString(),
             }
           : null,
+        risk_flags: riskFlagsByUserId[u.id] || [],
+        risk_flag_count: riskFlagsByUserId[u.id]?.length || 0,
         counts: {
           gadgets: u._count.gadgets,
           auctions: u._count.sellerAuctions,
@@ -865,6 +871,7 @@ export const getSellerProfile = async (req: Request, res: Response) => {
       latestAuctions,
       latestSales,
       latestDisputes,
+      riskFlags,
     ] = await Promise.all([
       prisma.gadget.count({ where: { sellerId: id } }),
       prisma.gadget.count({ where: { sellerId: id, status: 'pending' } }),
@@ -960,6 +967,7 @@ export const getSellerProfile = async (req: Request, res: Response) => {
         orderBy: { createdAt: 'desc' },
         take: 6,
       }),
+      riskService.getActiveRiskFlagsForUsers([id]),
     ]);
 
     sendSuccess(res, {
@@ -978,6 +986,7 @@ export const getSellerProfile = async (req: Request, res: Response) => {
           currency: user.wallet?.currency || 'NGN',
           is_locked: Boolean(user.wallet?.isLocked),
         },
+        risk_flags: riskFlags[id] || [],
       },
       stats: {
         total_gadgets: totalGadgets,

@@ -3,12 +3,13 @@ import * as authController from '../controllers/auth.controller';
 import * as authValidator from '../validators/auth.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
-import { authRateLimiter } from '../middlewares/security.middleware';
+import {
+  authRateLimiter,
+  authSessionRateLimiter,
+  otpRateLimiter,
+} from '../middlewares/security.middleware';
 
 const router: Router = Router();
-
-// Stricter rate limit on all auth routes
-router.use(authRateLimiter);
 
 /**
  * @route   POST /api/v1/auth/register
@@ -17,6 +18,7 @@ router.use(authRateLimiter);
  */
 router.post(
   '/register',
+  authRateLimiter,
   authValidator.validateRegistration,
   handleValidationErrors,
   authController.register
@@ -29,6 +31,7 @@ router.post(
  */
 router.post(
   '/verify-otp',
+  otpRateLimiter,
   authValidator.validateOTPVerification,
   handleValidationErrors,
   authController.verifyOTP
@@ -41,6 +44,7 @@ router.post(
  */
 router.post(
   '/login',
+  authRateLimiter,
   authValidator.validateLogin,
   handleValidationErrors,
   authController.login
@@ -53,6 +57,7 @@ router.post(
  */
 router.post(
   '/refresh-token',
+  authSessionRateLimiter,
   authValidator.validateRefreshToken,
   handleValidationErrors,
   authController.refreshToken
@@ -65,6 +70,7 @@ router.post(
  */
 router.post(
   '/logout',
+  authSessionRateLimiter,
   authValidator.validateRefreshToken,
   handleValidationErrors,
   authController.logout
@@ -77,6 +83,7 @@ router.post(
  */
 router.post(
   '/resend-otp',
+  otpRateLimiter,
   authValidator.validateResendOTP,
   handleValidationErrors,
   authController.resendOTP

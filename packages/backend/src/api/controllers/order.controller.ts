@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as orderService from '../../services/order/order.service';
+import * as riskService from '../../services/risk/risk.service';
+import * as auditService from '../../services/audit/audit.service';
 import logger from '../../utils/logger';
 
 const hideBuyerAddress = <T extends { shipping_address?: unknown }>(
@@ -343,6 +345,22 @@ export const verifyPayment = async (req: Request, res: Response) => {
     sendSuccess(res, order, 'Payment verified successfully');
   } catch (error: any) {
     logger.error('Verify order payment error:', error);
+    auditService.recordPaymentVerificationFailed(
+      req,
+      typeof req.query.reference === 'string' ? req.query.reference : undefined,
+      error.message || 'Failed to verify payment'
+    );
+    riskService
+      .recordPaymentFailure(
+        req.user?.user_id,
+        typeof req.query.reference === 'string'
+          ? req.query.reference
+          : undefined,
+        error.message || 'Failed to verify payment'
+      )
+      .catch(err => {
+        logger.error('Failed to record order payment risk:', err);
+      });
     sendError(res, error.message || 'Failed to verify payment', 400);
   }
 };

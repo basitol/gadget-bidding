@@ -7,7 +7,7 @@ import {
   ShoppingBag,
   Store,
 } from 'lucide-react';
-import { AdminSellerProfile, adminApi } from '@/api';
+import { AdminSellerProfile, RiskFlag, adminApi } from '@/api';
 import { label, money, when } from '@/lib/format';
 import { mediaUrl } from '@/lib/media';
 import {
@@ -44,6 +44,38 @@ type UsersPageProps = {
   title?: string;
   description?: string;
 };
+
+const riskTone = (severity?: string) => {
+  if (severity === 'critical' || severity === 'high') return 'danger';
+  if (severity === 'medium') return 'warn';
+  return 'neutral';
+};
+
+function RiskFlags({
+  flags,
+  compact = false,
+}: {
+  flags?: RiskFlag[];
+  compact?: boolean;
+}) {
+  if (!flags?.length) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {flags.map(flag => (
+        <Badge
+          key={flag.type}
+          tone={riskTone(flag.severity)}
+          className={compact ? 'text-[11px]' : undefined}
+          title={flag.reason}
+        >
+          {flag.label}
+          {flag.signal_count > 1 ? ` · ${flag.signal_count}` : ''}
+        </Badge>
+      ))}
+    </div>
+  );
+}
 
 export function UsersPage({
   fixedRole,
@@ -321,6 +353,7 @@ export function UsersPage({
                         {u.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </div>
+                    <RiskFlags flags={u.risk_flags} compact />
                   </TableCell>
                   <TableCell>
                     <SelectField
@@ -536,6 +569,7 @@ function SellerProfileDialog({
                         {profile.user.wallet.is_locked ? 'locked' : 'open'}
                       </Badge>
                     </div>
+                    <RiskFlags flags={profile.user.risk_flags} compact />
                   </div>
                 </div>
                 <div className="rounded-2xl bg-white/10 px-4 py-3 text-right ring-1 ring-white/15">

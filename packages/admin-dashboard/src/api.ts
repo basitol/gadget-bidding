@@ -31,6 +31,16 @@ export type AdminNotification = {
   created_at?: string;
 };
 
+export type RiskFlag = {
+  type: string;
+  label: string;
+  severity: 'medium' | 'high' | 'critical';
+  reason: string;
+  signal_count: number;
+  last_signal_at?: string | null;
+  created_at?: string | null;
+};
+
 export type AdminSellerProfile = {
   user: {
     id: string;
@@ -47,6 +57,7 @@ export type AdminSellerProfile = {
       currency: string;
       is_locked: boolean;
     };
+    risk_flags?: RiskFlag[];
   };
   stats: Record<string, number>;
   latest_gadgets: Array<{

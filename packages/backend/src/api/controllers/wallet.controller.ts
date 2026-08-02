@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as walletService from '../../services/wallet/wallet.service';
 import * as paystackService from '../../services/payment/paystack.service';
+import * as riskService from '../../services/risk/risk.service';
+import * as auditService from '../../services/audit/audit.service';
 import { query } from '../../config/database';
 import logger from '../../utils/logger';
 import { safeErrorMessage, USER_ERRORS } from '../../utils/errors';
@@ -17,7 +19,9 @@ export const getBalance = async (req: Request, res: Response) => {
     }
 
     const balance = await walletService.getWalletBalance(req.user.user_id);
-    const availableBalance = await walletService.getAvailableBalance(req.user.user_id);
+    const availableBalance = await walletService.getAvailableBalance(
+      req.user.user_id
+    );
     const wallet = await walletService.getUserWallet(req.user.user_id);
 
     sendSuccess(res, {
@@ -94,13 +98,21 @@ export const fundWallet = async (req: Request, res: Response) => {
       ]
     );
 
-    sendSuccess(res, {
-      authorization_url: paymentData.authorization_url,
-      reference: paymentData.reference,
-    }, 'Payment initialized successfully');
+    sendSuccess(
+      res,
+      {
+        authorization_url: paymentData.authorization_url,
+        reference: paymentData.reference,
+      },
+      'Payment initialized successfully'
+    );
   } catch (error: unknown) {
     logger.error('Fund wallet error:', error);
-    sendError(res, safeErrorMessage(error, 'Failed to initialize payment'), 500);
+    sendError(
+      res,
+      safeErrorMessage(error, 'Failed to initialize payment'),
+      500
+    );
   }
 };
 
@@ -122,6 +134,20 @@ export const verifyPayment = async (req: Request, res: Response) => {
     const verification = await paystackService.verifyPayment(reference);
 
     if (!verification.status) {
+      auditService.recordPaymentVerificationFailed(
+        req,
+        reference,
+        USER_ERRORS.PAYMENT_FAILED
+      );
+      riskService
+        .recordPaymentFailure(
+          req.user.user_id,
+          reference,
+          USER_ERRORS.PAYMENT_FAILED
+        )
+        .catch(err => {
+          logger.error('Failed to record payment risk:', err);
+        });
       return sendError(res, USER_ERRORS.PAYMENT_FAILED, 400);
     }
 
@@ -144,6 +170,20 @@ export const verifyPayment = async (req: Request, res: Response) => {
     logger.error('Verify payment error:', error);
     const message =
       error instanceof Error ? error.message : USER_ERRORS.PAYMENT_FAILED;
+    auditService.recordPaymentVerificationFailed(
+      req,
+      req.query.reference as string,
+      message
+    );
+    riskService
+      .recordPaymentFailure(
+        req.user?.user_id,
+        req.query.reference as string,
+        message
+      )
+      .catch(err => {
+        logger.error('Failed to record payment risk:', err);
+      });
     if (message === 'Payment reference not found') {
       return sendError(res, USER_ERRORS.PAYMENT_NOT_FOUND, 404);
     }

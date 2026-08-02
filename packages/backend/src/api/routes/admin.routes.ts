@@ -1,10 +1,28 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import * as adminController from '../controllers/admin.controller';
 import { authenticate, adminOnly } from '../middlewares/auth.middleware';
+import { adminMutationRateLimiter } from '../middlewares/security.middleware';
+import * as auditService from '../../services/audit/audit.service';
 
 const router: Router = Router();
 
 router.use(authenticate, adminOnly);
+router.use(adminMutationRateLimiter);
+router.use((req: Request, _res: Response, next: NextFunction) => {
+  if (!['GET', 'HEAD'].includes(req.method)) {
+    auditService.recordAuditEventSafe({
+      req,
+      action: 'admin_mutation_attempt',
+      resourceType: 'admin',
+      changes: {
+        method: req.method,
+        path: req.originalUrl,
+        params: req.params,
+      },
+    });
+  }
+  next();
+});
 
 router.get('/stats', adminController.getAdminStats);
 router.get('/activity', adminController.getActivity);

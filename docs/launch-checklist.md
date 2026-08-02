@@ -7,6 +7,7 @@
 - Wallet order payment: require full order balance, deduct total amount once, release bid commitment hold, and reject locked wallets.
 - Refunds: cancel paid order, credit buyer wallet once, prevent duplicate refund transactions, and hold seller payout.
 - Seller payout: delivered paid order moves to ready payout, admin payout paid credits seller once, and duplicate payout attempts are blocked.
+- Paystack sandbox: complete `docs/paystack-sandbox-runbook.md` for wallet funding, order payment, duplicate webhook replay, invalid signature rejection, and Paystack delivery logs.
 
 ## Backoffice Operations
 
@@ -27,8 +28,8 @@
 
 ## Production Readiness
 
-- Environment: verify `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`, `FRONTEND_URL`, mobile API URL, and socket URL.
-- Webhooks: verify Paystack signature in production and confirm webhook URL points to the production backend.
+- Environment: run the production env audit and verify `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, Paystack live keys/webhook URL, `FRONTEND_URL`, `MOBILE_APP_URL`, mobile API URL, and socket URL.
+- Webhooks: verify Paystack signature in production, replay a signed staging webhook, and confirm webhook URL points to the production backend.
 - Admins: create at least two admin accounts and remove test admin credentials.
 - Backups: schedule automated PostgreSQL backups and test one restore before launch.
 - Logging: confirm API errors, Paystack events, webhook failures, auction expiry, order expiry, and payout actions are logged.

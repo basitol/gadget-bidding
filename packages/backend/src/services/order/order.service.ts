@@ -13,6 +13,7 @@ import {
 } from '@gadget-bidding/shared';
 import * as paystackService from '../payment/paystack.service';
 import * as notificationService from '../notification/notification.service';
+import * as riskService from '../risk/risk.service';
 import logger from '../../utils/logger';
 
 // Helper to convert Prisma Decimal to number
@@ -1042,6 +1043,10 @@ export const createDispute = async (
       logger.error('Failed to notify backoffice about dispute:', error);
     });
 
+  riskService.recordDisputeOpened(userId, result.dispute.id).catch(error => {
+    logger.error('Failed to record dispute risk:', error);
+  });
+
   return result.dispute;
 };
 
@@ -1574,6 +1579,12 @@ export const expirePendingOrders = async (): Promise<number> => {
       logger.info(`Expired unpaid order ${order.orderNumber}`);
 
       if (order.buyerId) {
+        riskService
+          .recordMissedBidPayment(order.buyerId, order.id, order.orderNumber)
+          .catch(error => {
+            logger.error('Failed to record missed bid payment risk:', error);
+          });
+
         notificationService
           .createNotification(
             order.buyerId,

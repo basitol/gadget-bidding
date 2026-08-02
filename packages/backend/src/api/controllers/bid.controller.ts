@@ -8,6 +8,7 @@ import {
   emitToAuction,
   emitToUser,
 } from '../../services/socket/socket.service';
+import * as auditService from '../../services/audit/audit.service';
 import logger from '../../utils/logger';
 
 /**
@@ -56,6 +57,11 @@ export const placeBid = async (req: Request, res: Response) => {
     sendSuccess(res, bid, 'Bid placed successfully', 201);
   } catch (error: any) {
     logger.error('Place bid error:', error);
+    auditService.recordBidFailed(
+      req,
+      'bid',
+      error.message || 'Failed to place bid'
+    );
     sendError(res, error.message || 'Failed to place bid', 400);
   }
 };
@@ -126,6 +132,11 @@ export const buyNow = async (req: Request, res: Response) => {
     );
   } catch (error: any) {
     logger.error('Buy now error:', error);
+    auditService.recordBidFailed(
+      req,
+      'buy_now',
+      error.message || 'Failed to complete purchase'
+    );
     sendError(res, error.message || 'Failed to complete purchase', 400);
   }
 };

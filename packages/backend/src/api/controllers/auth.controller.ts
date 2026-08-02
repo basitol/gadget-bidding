@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../../utils/response';
 import * as authService from '../../services/auth/auth.service';
+import * as riskService from '../../services/risk/risk.service';
+import * as auditService from '../../services/audit/audit.service';
 import logger from '../../utils/logger';
 
 /**
@@ -50,6 +52,18 @@ export const verifyOTP = async (req: Request, res: Response) => {
     sendSuccess(res, tokens, 'Phone number verified successfully');
   } catch (error: any) {
     logger.error('OTP verification error:', error);
+    auditService
+      .recordFailedOtp(
+        req,
+        req.body?.verification_id,
+        error.message || 'OTP verification failed'
+      )
+      .catch(err => {
+        logger.error('Failed to record OTP audit:', err);
+      });
+    riskService.recordFailedOtp(req.body?.verification_id).catch(err => {
+      logger.error('Failed to record OTP risk:', err);
+    });
     sendError(res, error.message || 'OTP verification failed', 400);
   }
 };
@@ -71,6 +85,15 @@ export const login = async (req: Request, res: Response) => {
     sendSuccess(res, tokens, 'Login successful');
   } catch (error: any) {
     logger.error('Login error:', error);
+    auditService
+      .recordFailedLogin(
+        req,
+        req.body?.phone_number,
+        error.message || 'Login failed'
+      )
+      .catch(err => {
+        logger.error('Failed to record login audit:', err);
+      });
     sendError(res, error.message || 'Login failed', 401);
   }
 };
@@ -119,11 +142,7 @@ export const resendOTP = async (req: Request, res: Response) => {
 
     const result = await authService.resendOTP(phone_number);
 
-    sendSuccess(
-      res,
-      result,
-      'OTP sent successfully. Please check your phone'
-    );
+    sendSuccess(res, result, 'OTP sent successfully. Please check your phone');
   } catch (error: any) {
     logger.error('Resend OTP error:', error);
     sendError(res, error.message || 'Failed to resend OTP', 400);

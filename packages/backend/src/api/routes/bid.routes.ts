@@ -3,6 +3,7 @@ import * as bidController from '../controllers/bid.controller';
 import * as bidValidator from '../validators/bid.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
+import { bidRateLimiter } from '../middlewares/security.middleware';
 
 const router: Router = Router();
 
@@ -57,6 +58,7 @@ router.get(
  */
 router.post(
   '/',
+  bidRateLimiter,
   authenticate,
   bidValidator.validatePlaceBid,
   handleValidationErrors,
@@ -70,6 +72,7 @@ router.post(
  */
 router.post(
   '/buy-now/:auctionId',
+  bidRateLimiter,
   authenticate,
   bidValidator.validateBuyNow,
   handleValidationErrors,

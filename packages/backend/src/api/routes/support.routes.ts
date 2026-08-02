@@ -3,7 +3,7 @@ import { body, param, query } from 'express-validator';
 import * as supportController from '../controllers/support.controller';
 import { authenticate, sellerOnly } from '../middlewares/auth.middleware';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
-import { authRateLimiter } from '../middlewares/security.middleware';
+import { supportMessageRateLimiter } from '../middlewares/security.middleware';
 
 const router: Router = Router();
 
@@ -24,7 +24,7 @@ router.get(
 
 router.post(
   '/threads/:id/messages',
-  authRateLimiter,
+  supportMessageRateLimiter,
   [
     param('id').isUUID(),
     body('body').isString().trim().isLength({ min: 1, max: 2000 }),

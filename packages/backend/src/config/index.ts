@@ -86,6 +86,16 @@ interface Config {
   rateLimitMaxRequests: number;
   rateLimitReadMaxRequests: number;
   rateLimitWriteMaxRequests: number;
+  rateLimitAuthMaxRequests: number;
+  rateLimitAuthSessionMaxRequests: number;
+  rateLimitOtpMaxRequests: number;
+  rateLimitBidMaxRequests: number;
+  rateLimitWalletFundingMaxRequests: number;
+  rateLimitWalletWithdrawalMaxRequests: number;
+  rateLimitPaymentVerificationMaxRequests: number;
+  rateLimitSupportMessageMaxRequests: number;
+  rateLimitNotificationMutationMaxRequests: number;
+  rateLimitAdminMutationMaxRequests: number;
 
   // Platform Settings
   platformFeePercentage: number;
@@ -185,6 +195,46 @@ const config: Config = {
   ),
   rateLimitWriteMaxRequests: parseInt(
     process.env.RATE_LIMIT_WRITE_MAX_REQUESTS || '300',
+    10
+  ),
+  rateLimitAuthMaxRequests: parseInt(
+    process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || '20',
+    10
+  ),
+  rateLimitAuthSessionMaxRequests: parseInt(
+    process.env.RATE_LIMIT_AUTH_SESSION_MAX_REQUESTS || '120',
+    10
+  ),
+  rateLimitOtpMaxRequests: parseInt(
+    process.env.RATE_LIMIT_OTP_MAX_REQUESTS || '6',
+    10
+  ),
+  rateLimitBidMaxRequests: parseInt(
+    process.env.RATE_LIMIT_BID_MAX_REQUESTS || '60',
+    10
+  ),
+  rateLimitWalletFundingMaxRequests: parseInt(
+    process.env.RATE_LIMIT_WALLET_FUNDING_MAX_REQUESTS || '10',
+    10
+  ),
+  rateLimitWalletWithdrawalMaxRequests: parseInt(
+    process.env.RATE_LIMIT_WALLET_WITHDRAWAL_MAX_REQUESTS || '10',
+    10
+  ),
+  rateLimitPaymentVerificationMaxRequests: parseInt(
+    process.env.RATE_LIMIT_PAYMENT_VERIFICATION_MAX_REQUESTS || '60',
+    10
+  ),
+  rateLimitSupportMessageMaxRequests: parseInt(
+    process.env.RATE_LIMIT_SUPPORT_MESSAGE_MAX_REQUESTS || '30',
+    10
+  ),
+  rateLimitNotificationMutationMaxRequests: parseInt(
+    process.env.RATE_LIMIT_NOTIFICATION_MUTATION_MAX_REQUESTS || '120',
+    10
+  ),
+  rateLimitAdminMutationMaxRequests: parseInt(
+    process.env.RATE_LIMIT_ADMIN_MUTATION_MAX_REQUESTS || '120',
     10
   ),
 

@@ -3,6 +3,7 @@ import * as notificationController from '../controllers/notification.controller'
 import { authenticate } from '../middlewares/auth.middleware';
 import { param, query } from 'express-validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
+import { notificationMutationRateLimiter } from '../middlewares/security.middleware';
 
 const router: Router = Router();
 
@@ -39,7 +40,12 @@ router.get(
  * @desc    Mark all notifications as read
  * @access  Private
  */
-router.put('/read-all', authenticate, notificationController.markAllAsRead);
+router.put(
+  '/read-all',
+  notificationMutationRateLimiter,
+  authenticate,
+  notificationController.markAllAsRead
+);
 
 /**
  * @route   PUT /api/v1/notifications/:notificationId/read
@@ -48,6 +54,7 @@ router.put('/read-all', authenticate, notificationController.markAllAsRead);
  */
 router.put(
   '/:notificationId/read',
+  notificationMutationRateLimiter,
   authenticate,
   [param('notificationId').isUUID().withMessage('Invalid notification ID')],
   handleValidationErrors,
@@ -61,6 +68,7 @@ router.put(
  */
 router.delete(
   '/:notificationId',
+  notificationMutationRateLimiter,
   authenticate,
   [param('notificationId').isUUID().withMessage('Invalid notification ID')],
   handleValidationErrors,

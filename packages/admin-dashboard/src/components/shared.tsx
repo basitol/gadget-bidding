@@ -65,15 +65,18 @@ export function StatusBadge({
   children,
   tone = 'neutral',
   className,
+  title,
 }: {
   children: ReactNode;
   tone?: Tone;
   className?: string;
+  title?: string;
 }) {
   return (
     <ShadcnBadge
       variant="secondary"
       className={cn(toneClass[tone], className)}
+      title={title}
     >
       {children}
     </ShadcnBadge>
@@ -91,11 +94,33 @@ export type SelectOption = {
 
 const defaultOptionColor = (value: string) => {
   const v = value.toLowerCase();
-  if (['paid', 'approved', 'active', 'delivered', 'success', 'resolved', 'true'].includes(v))
+  if (
+    [
+      'paid',
+      'approved',
+      'active',
+      'delivered',
+      'success',
+      'resolved',
+      'true',
+    ].includes(v)
+  )
     return 'bg-emerald-500';
-  if (['pending', 'scheduled', 'processing', 'investigating', 'warn'].includes(v))
+  if (
+    ['pending', 'scheduled', 'processing', 'investigating', 'warn'].includes(v)
+  )
     return 'bg-amber-400';
-  if (['rejected', 'cancelled', 'failed', 'open', 'disputed', 'refunded', 'false'].includes(v))
+  if (
+    [
+      'rejected',
+      'cancelled',
+      'failed',
+      'open',
+      'disputed',
+      'refunded',
+      'false',
+    ].includes(v)
+  )
     return 'bg-rose-500';
   if (['shipped', 'listed', 'info', 'bidder'].includes(v)) return 'bg-sky-500';
   if (['seller', 'admin'].includes(v)) return 'bg-violet-500';
@@ -126,7 +151,10 @@ export function SelectField({
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent position="popper" className="z-[100] bg-white dark:bg-popover">
+      <SelectContent
+        position="popper"
+        className="z-[100] bg-white dark:bg-popover"
+      >
         {options.map(opt => (
           <SelectItem key={opt.value} value={opt.value}>
             <span className="flex items-center gap-2">

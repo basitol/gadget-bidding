@@ -3,7 +3,11 @@ import * as walletController from '../controllers/wallet.controller';
 import * as walletValidator from '../validators/wallet.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
-import { paymentRateLimiter } from '../middlewares/security.middleware';
+import {
+  paymentVerificationRateLimiter,
+  walletFundingRateLimiter,
+  walletWithdrawalRateLimiter,
+} from '../middlewares/security.middleware';
 
 const router: Router = Router();
 
@@ -41,7 +45,7 @@ router.get(
  */
 router.post(
   '/fund',
-  paymentRateLimiter,
+  walletFundingRateLimiter,
   authenticate,
   walletValidator.validateFundWallet,
   handleValidationErrors,
@@ -55,7 +59,7 @@ router.post(
  */
 router.get(
   '/verify-payment',
-  paymentRateLimiter,
+  paymentVerificationRateLimiter,
   authenticate,
   walletValidator.validateVerifyPayment,
   handleValidationErrors,
@@ -69,7 +73,7 @@ router.get(
  */
 router.post(
   '/withdraw',
-  paymentRateLimiter,
+  walletWithdrawalRateLimiter,
   authenticate,
   walletValidator.validateWithdraw,
   handleValidationErrors,

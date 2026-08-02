@@ -17,7 +17,15 @@
     "db:sync": "psql -f src/database/migrations/001_sync_prisma_schema.sql",
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:migrate": "prisma migrate deploy"
+    "db:migrate": "prisma migrate deploy",
+    "db:validate:empty": "bash scripts/db-validate-empty.sh",
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:restore": "bash scripts/db-restore.sh",
+    "test:payments:e2e": "bash scripts/payment-e2e.sh",
+    "smoke:admin": "node scripts/admin-smoke.js",
+    "env:audit": "pnpm build && node scripts/env-audit.js",
+    "webhook:replay:paystack": "node scripts/paystack-webhook-replay.js",
+    "seed:staging": "ts-node src/scripts/seed-staging.ts"
   },
   "dependencies": {
     "@gadget-bidding/shared": "workspace:*",

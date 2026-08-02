@@ -7,107 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// Prisma enums document allowed VARCHAR values stored in PostgreSQL (see schema.sql CHECK constraints).
-
-// ============== ENUMS ==============
-
-enum UserRole {
-  bidder
-  seller
-  admin
-
-  @@map("user_role")
-}
-
-enum AuctionStatus {
-  scheduled
-  active
-  ended
-  cancelled
-
-  @@map("auction_status")
-}
-
-enum GadgetStatus {
-  pending
-  approved
-  rejected
-  listed
-  sold
-
-  @@map("gadget_status")
-}
-
-enum GadgetCondition {
-  new
-  like_new
-  excellent
-  good
-  fair
-  for_parts
-
-  @@map("gadget_condition")
-}
-
-enum BidStatus {
-  active
-  outbid
-  withdrawn
-  won
-
-  @@map("bid_status")
-}
-
-enum BidHoldStatus {
-  held
-  released
-  charged
-
-  @@map("bid_hold_status")
-}
-
-enum PaymentStatus {
-  pending
-  completed
-  failed
-  refunded
-
-  @@map("payment_status")
-}
-
-enum FulfillmentStatus {
-  pending
-  processing
-  sent_to_backoffice
-  received_by_backoffice
-  shipped
-  delivered
-  cancelled
-
-  @@map("fulfillment_status")
-}
-
-enum TransactionType {
-  deposit
-  withdrawal
-  bid_hold
-  bid_release
-  purchase
-  sale
-  refund
-  fee
-
-  @@map("transaction_type")
-}
-
-enum TransactionStatus {
-  pending
-  completed
-  failed
-
-  @@map("transaction_status")
-}
-
 // ============== MODELS ==============
 
 model User {
@@ -138,8 +37,10 @@ model User {
   verifications       UserVerification[]
   paymentTransactions PaymentTransaction[]
   auditLogs           AuditLog[]
+  riskFlags           UserRiskFlag[]
   supportThreads      SupportThread[]      @relation("SellerSupportThreads")
   supportMessages     SupportMessage[]
+  addresses           UserAddress[]
 
   @@index([phoneNumber], map: "idx_users_phone")
   @@index([role], map: "idx_users_role")
@@ -156,7 +57,7 @@ model Wallet {
   updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  user         User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   transactions WalletTransaction[]
   bidHolds     BidHold[]
 
@@ -178,7 +79,7 @@ model WalletTransaction {
   createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
   // Relations
-  wallet              Wallet?              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet              Wallet?              @relation(fields: [walletId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   paymentTransactions PaymentTransaction[]
 
   @@index([status], map: "idx_wallet_transactions_status")
@@ -219,8 +120,8 @@ model Gadget {
   updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  seller   User?           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  category GadgetCategory? @relation(fields: [categoryId], references: [id])
+  seller   User?           @relation(fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  category GadgetCategory? @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   auction  Auction?
 
   @@index([categoryId], map: "idx_gadgets_category")
@@ -249,9 +150,9 @@ model Auction {
   updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  gadget Gadget? @relation(fields: [gadgetId], references: [id], onDelete: Cascade)
-  seller User?   @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
-  winner User?   @relation("WonAuctions", fields: [winnerId], references: [id])
+  gadget Gadget? @relation(fields: [gadgetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  seller User?   @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  winner User?   @relation("WonAuctions", fields: [winnerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   bids   Bid[]
   order  Order?
 
@@ -271,8 +172,8 @@ model Bid {
   status    String?   @default("active") @db.VarChar(20)
 
   // Relations
-  auction Auction? @relation(fields: [auctionId], references: [id], onDelete: Cascade)
-  bidder  User?    @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+  auction Auction? @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  bidder  User?    @relation(fields: [bidderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   bidHold BidHold?
 
   @@unique([auctionId, bidderId, amount], map: "unique_bid_per_user_price")
@@ -292,8 +193,8 @@ model BidHold {
   createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
   // Relations
-  bid    Bid?    @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  wallet Wallet? @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  bid    Bid?    @relation(fields: [bidId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  wallet Wallet? @relation(fields: [walletId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([bidId], map: "idx_bid_holds_bid")
   @@index([walletId, status], map: "idx_bid_holds_wallet")
@@ -320,9 +221,9 @@ model Order {
   updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  auction  Auction?  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
-  buyer    User?     @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade)
-  seller   User?     @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade)
+  auction  Auction?  @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  buyer    User?     @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  seller   User?     @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   disputes Dispute[]
 
   @@index([buyerId, paymentStatus], map: "idx_orders_buyer")
@@ -348,9 +249,9 @@ model Dispute {
   updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  order    Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  raiser   User?  @relation("RaisedDisputes", fields: [raisedBy], references: [id], onDelete: Cascade)
-  resolver User?  @relation("ResolvedDisputes", fields: [resolvedBy], references: [id])
+  order    Order? @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  raiser   User?  @relation("RaisedDisputes", fields: [raisedBy], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  resolver User?  @relation("ResolvedDisputes", fields: [resolvedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([orderId], map: "idx_disputes_order")
   @@index([raisedBy], map: "idx_disputes_raised_by")
@@ -371,7 +272,7 @@ model Notification {
   createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
   // Relations
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([notificationType], map: "idx_notifications_type")
   @@index([userId, isRead, createdAt(sort: Desc)], map: "idx_notifications_user")
@@ -388,7 +289,7 @@ model RefreshToken {
   createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
   // Relations
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId], map: "idx_refresh_tokens_user")
   @@map("refresh_tokens")
@@ -404,10 +305,32 @@ model UserVerification {
   createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
   // Relations
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId], map: "idx_user_verifications_user")
   @@map("user_verifications")
+}
+
+model UserAddress {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  label        String    @default("Delivery address") @db.VarChar(80)
+  fullName     String    @map("full_name") @db.VarChar(100)
+  phoneNumber  String    @map("phone_number") @db.VarChar(20)
+  addressLine1 String    @map("address_line1") @db.VarChar(200)
+  addressLine2 String?   @map("address_line2") @db.VarChar(200)
+  city         String    @db.VarChar(100)
+  state        String    @db.VarChar(100)
+  postalCode   String?   @map("postal_code") @db.VarChar(20)
+  country      String    @default("Nigeria") @db.VarChar(100)
+  isDefault    Boolean   @default(false) @map("is_default")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_user_addresses_user")
+  @@map("user_addresses")
 }
 
 model PaymentTransaction {
@@ -426,8 +349,8 @@ model PaymentTransaction {
   updatedAt           DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  walletTransaction WalletTransaction? @relation(fields: [walletTransactionId], references: [id])
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  walletTransaction WalletTransaction? @relation(fields: [walletTransactionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([status, createdAt(sort: Desc)], map: "idx_payment_transactions_status")
   @@index([userId], map: "idx_payment_transactions_user")
@@ -446,12 +369,32 @@ model AuditLog {
   createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
   // Relations
-  user User? @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([action, createdAt(sort: Desc)], map: "idx_audit_logs_action")
   @@index([resourceType, resourceId], map: "idx_audit_logs_resource")
   @@index([userId, createdAt(sort: Desc)], map: "idx_audit_logs_user")
   @@map("audit_logs")
+}
+
+model UserRiskFlag {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  flagType     String    @map("flag_type") @db.VarChar(50)
+  severity     String    @default("medium") @db.VarChar(20)
+  reason       String
+  signalCount  Int       @default(1) @map("signal_count")
+  lastSignalAt DateTime  @default(now()) @map("last_signal_at") @db.Timestamp(6)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamp(6)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, flagType], map: "user_risk_flags_user_id_flag_type_key")
+  @@index([userId, resolvedAt, lastSignalAt(sort: Desc)], map: "idx_user_risk_flags_user")
+  @@index([flagType, resolvedAt, lastSignalAt(sort: Desc)], map: "idx_user_risk_flags_type")
+  @@map("user_risk_flags")
 }
 
 model SupportThread {

@@ -3,6 +3,10 @@ import * as orderController from '../controllers/order.controller';
 import * as orderValidator from '../validators/order.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
+import {
+  paymentVerificationRateLimiter,
+  walletFundingRateLimiter,
+} from '../middlewares/security.middleware';
 
 const router: Router = Router();
 
@@ -85,6 +89,7 @@ router.put(
  */
 router.post(
   '/:orderId/confirm-payment',
+  paymentVerificationRateLimiter,
   authenticate,
   orderValidator.validateOrderId,
   handleValidationErrors,
@@ -98,6 +103,7 @@ router.post(
  */
 router.post(
   '/:orderId/payment/initialize',
+  walletFundingRateLimiter,
   authenticate,
   orderValidator.validateOrderId,
   handleValidationErrors,
@@ -111,6 +117,7 @@ router.post(
  */
 router.get(
   '/:orderId/payment/verify',
+  paymentVerificationRateLimiter,
   authenticate,
   orderValidator.validateOrderId,
   handleValidationErrors,
