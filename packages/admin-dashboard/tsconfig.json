@@ -18,7 +18,9 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@gadget-bidding/shared": ["../shared/src/index.ts"],
+      "@gadget-bidding/shared/*": ["../shared/src/*"]
     }
   },
   "include": ["src"]
