@@ -64,7 +64,12 @@ export const disconnectDatabase = async (): Promise<void> => {
 
 // Transaction helper with proper typing
 export const transaction = async <T>(
-  fn: (tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>) => Promise<T>
+  fn: (
+    tx: Omit<
+      PrismaClient,
+      '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+    >
+  ) => Promise<T>
 ): Promise<T> => {
   return prisma.$transaction(fn);
 };
