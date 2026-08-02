@@ -109,11 +109,38 @@ function requireProductionValue(
   }
 }
 
+function requirePaystackKey(
+  errors: string[],
+  name: string,
+  value: string,
+  expectedPrefix: 'sk' | 'pk'
+) {
+  requireProductionValue(errors, name, value);
+  if (!value || isPlaceholder(value)) return;
+
+  const allowedPrefixes =
+    config.appEnv === 'production'
+      ? [`${expectedPrefix}_live_`]
+      : [`${expectedPrefix}_test_`, `${expectedPrefix}_live_`];
+
+  if (!allowedPrefixes.some(prefix => value.startsWith(prefix))) {
+    errors.push(
+      config.appEnv === 'production'
+        ? `${name} must use a Paystack live key in production`
+        : `${name} must use a Paystack test or live key in ${config.appEnv}`
+    );
+  }
+}
+
 /**
  * Validate environment and secrets before the server accepts traffic.
  */
 export function validateEnvironment(): void {
   const errors: string[] = [];
+
+  if (!['development', 'staging', 'production', 'test'].includes(config.appEnv)) {
+    errors.push('APP_ENV must be one of development, staging, production, test');
+  }
 
   if (!config.database.url) {
     errors.push(
@@ -143,21 +170,17 @@ export function validateEnvironment(): void {
     requireProductionValue(errors, 'REDIS_URL', config.redis.url, {
       noLocal: true,
     });
-    requireProductionValue(
+    requirePaystackKey(
       errors,
       'PAYSTACK_SECRET_KEY',
       config.paystack.secretKey,
-      {
-        livePaystackSecret: true,
-      }
+      'sk'
     );
-    requireProductionValue(
+    requirePaystackKey(
       errors,
       'PAYSTACK_PUBLIC_KEY',
       config.paystack.publicKey,
-      {
-        livePaystackPublic: true,
-      }
+      'pk'
     );
     requireProductionValue(
       errors,

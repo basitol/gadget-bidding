@@ -6,6 +6,7 @@ const backendEnvPath = path.resolve(__dirname, '../../.env');
 dotenv.config({ path: backendEnvPath });
 
 const isProduction = process.env.NODE_ENV === 'production';
+const appEnv = process.env.APP_ENV || process.env.NODE_ENV || 'development';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -17,6 +18,7 @@ function requireEnv(name: string): string {
 
 interface Config {
   // Server
+  appEnv: string;
   nodeEnv: string;
   port: number;
   apiVersion: string;
@@ -115,6 +117,7 @@ interface Config {
 
 const config: Config = {
   // Server
+  appEnv,
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
   apiVersion: process.env.API_VERSION || 'v1',

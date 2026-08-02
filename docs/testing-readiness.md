@@ -14,6 +14,15 @@ pnpm db:migrate
 pnpm env:audit
 ```
 
+### Render build settings
+
+Use these on Render for the backend service:
+
+- Build command: `pnpm install --frozen-lockfile && pnpm --filter @gadget-bidding/shared build && pnpm prisma:generate && pnpm build`
+- Start command: `pnpm db:migrate && pnpm start`
+
+Do not run `corepack enable` in Render. It attempts to write into `/usr/bin` and fails on the Render filesystem.
+
 If this is a brand-new database, also run the empty DB validation from `docs/db-readiness.md` against a throwaway database before touching the staging DB.
 
 ## 2. Seed known test accounts

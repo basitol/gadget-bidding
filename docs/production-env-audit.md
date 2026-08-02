@@ -4,14 +4,18 @@ The backend now fails startup in production when launch-critical environment val
 
 ## Strict production checks
 
-When `NODE_ENV=production`, `validateEnvironment()` enforces:
+When `NODE_ENV=production`, `validateEnvironment()` enforces production-grade infrastructure rules. `APP_ENV` controls the deployment target:
+
+- `APP_ENV=staging` allows Paystack sandbox keys (`sk_test_...`, `pk_test_...`) for Render staging.
+- `APP_ENV=production` requires Paystack live keys (`sk_live_...`, `pk_live_...`) for real users.
+
+The shared checks are:
 
 - `DATABASE_URL` is set and does not point to localhost or private LAN addresses.
 - `REDIS_URL` is set and does not point to localhost or private LAN addresses.
 - `JWT_SECRET` and `JWT_REFRESH_SECRET` are both strong random values of at least 48 characters.
 - JWT access and refresh secrets are different.
-- `PAYSTACK_SECRET_KEY` starts with `sk_live_`.
-- `PAYSTACK_PUBLIC_KEY` starts with `pk_live_`.
+- `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` match the selected `APP_ENV`.
 - `PAYSTACK_WEBHOOK_URL` is HTTPS, non-local, and ends with `/webhooks/paystack`.
 - `FRONTEND_URL` is HTTPS and non-local.
 - `MOBILE_APP_URL` is a valid app URL scheme or HTTPS URL and is not the local default.
@@ -33,6 +37,7 @@ Generate separate values for `JWT_SECRET` and `JWT_REFRESH_SECRET`.
 
 ```env
 NODE_ENV=production
+APP_ENV=production
 DATABASE_URL=postgresql://gadgetbid_app:...@db.example.com:5432/gadget_bidding
 REDIS_URL=rediss://default:...@redis.example.com:6379
 JWT_SECRET=<48+ char random secret>
@@ -41,6 +46,27 @@ PAYSTACK_SECRET_KEY=sk_live_...
 PAYSTACK_PUBLIC_KEY=pk_live_...
 PAYSTACK_WEBHOOK_URL=https://api.gadgetbid.ng/api/v1/webhooks/paystack
 FRONTEND_URL=https://admin.gadgetbid.ng
+MOBILE_APP_URL=gadgetbid://
+TERMII_API_KEY=...
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+LOG_LEVEL=info
+```
+
+## Expected Render staging examples
+
+```env
+NODE_ENV=production
+APP_ENV=staging
+DATABASE_URL=postgresql://...
+REDIS_URL=rediss://...
+JWT_SECRET=<48+ char random secret>
+JWT_REFRESH_SECRET=<different 48+ char random secret>
+PAYSTACK_SECRET_KEY=sk_test_...
+PAYSTACK_PUBLIC_KEY=pk_test_...
+PAYSTACK_WEBHOOK_URL=https://gadgetbid-api-staging.onrender.com/api/v1/webhooks/paystack
+FRONTEND_URL=https://gadgetbid-admin-staging.onrender.com
 MOBILE_APP_URL=gadgetbid://
 TERMII_API_KEY=...
 CLOUDINARY_CLOUD_NAME=...

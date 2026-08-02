@@ -32,7 +32,8 @@ DATABASE_URL=postgresql://abdulbasitquadri@localhost:5432/gadget_bidding
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Production gadget image storage                                       |
 | `FRONTEND_URL`                                                           | HTTPS admin/frontend URL for CORS                                     |
 | `MOBILE_APP_URL`                                                         | Production app deep link or HTTPS app URL for CORS/socket origin      |
-| `NODE_ENV=production`                                                    | Enables strict validation and hardened defaults                       |
+| `NODE_ENV=production`                                                    | Enables strict validation and hardened runtime behavior               |
+| `APP_ENV=staging` or `APP_ENV=production`                                | Selects staging or live payment-key validation                        |
 
 Generate strong secrets:
 
@@ -75,10 +76,11 @@ Tune via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX_REQUESTS` in `.env`.
 ## Production checklist
 
 - [ ] `NODE_ENV=production`
+- [ ] `APP_ENV=production` for live launch, or `APP_ENV=staging` for Render staging
 - [ ] Strong, different `JWT_SECRET` and `JWT_REFRESH_SECRET` (48+ chars)
 - [ ] HTTPS terminated at load balancer / reverse proxy
 - [ ] `FRONTEND_URL` and `MOBILE_APP_URL` set for CORS and Socket.io
-- [ ] Paystack keys are live keys and webhook URL points to HTTPS `/api/v1/webhooks/paystack`
+- [ ] Paystack keys match `APP_ENV`; staging uses sandbox keys and production uses live keys
 - [ ] Cloudinary credentials are configured; production does not rely on local disk uploads
 - [ ] Redis and PostgreSQL not publicly exposed
 - [ ] Log level `info` or `warn`; no OTP or tokens in logs
