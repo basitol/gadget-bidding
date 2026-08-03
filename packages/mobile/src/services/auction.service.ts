@@ -26,6 +26,12 @@ export interface CreateGadgetData {
   condition: string;
   images: string[];
   specifications?: Record<string, unknown>;
+  auction_starting_price?: number;
+  auction_reserve_price?: number;
+  auction_buy_now_price?: number;
+  auction_bid_increment?: number;
+  auction_duration_hours?: number;
+  auction_start_now?: boolean;
 }
 
 export interface CreateAuctionData {

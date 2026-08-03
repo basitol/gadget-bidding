@@ -115,10 +115,16 @@ model Gadget {
   condition       String    @db.VarChar(20)
   specifications  Json?
   images          String[]
-  status          String?   @default("pending") @db.VarChar(20)
-  rejectionReason String?   @map("rejection_reason")
-  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+  status               String?   @default("pending") @db.VarChar(20)
+  rejectionReason      String?   @map("rejection_reason")
+  auctionStartingPrice Decimal?  @map("auction_starting_price") @db.Decimal(15, 2)
+  auctionReservePrice  Decimal?  @map("auction_reserve_price") @db.Decimal(15, 2)
+  auctionBuyNowPrice   Decimal?  @map("auction_buy_now_price") @db.Decimal(15, 2)
+  auctionBidIncrement  Decimal?  @map("auction_bid_increment") @db.Decimal(15, 2)
+  auctionDurationHours Int?      @map("auction_duration_hours")
+  auctionStartNow      Boolean?  @default(true) @map("auction_start_now")
+  createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
   seller   User?           @relation(fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)

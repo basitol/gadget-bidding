@@ -159,6 +159,12 @@ CREATE TABLE IF NOT EXISTS gadgets (
     images TEXT[] NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'listed', 'sold')),
     rejection_reason TEXT,
+    auction_starting_price DECIMAL(15, 2),
+    auction_reserve_price DECIMAL(15, 2),
+    auction_buy_now_price DECIMAL(15, 2),
+    auction_bid_increment DECIMAL(15, 2),
+    auction_duration_hours INT,
+    auction_start_now BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

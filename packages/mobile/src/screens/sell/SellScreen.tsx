@@ -30,9 +30,7 @@ export const SellScreen: React.FC<SellScreenProps> = ({ navigation }) => {
     fetchDashboard,
   } = useSellerDashboardStore();
 
-  const readyGadgets = dashboard?.ready_gadgets || [];
   const pendingGadgets = dashboard?.pending_gadgets || [];
-  const readyCount = dashboard?.stats.ready_gadgets || 0;
   const pendingCount = dashboard?.stats.pending_gadgets || 0;
 
   useFocusEffect(
@@ -91,7 +89,8 @@ export const SellScreen: React.FC<SellScreenProps> = ({ navigation }) => {
                 : ''}
             </Text>
             <Text style={styles.sectionSubtitle}>
-              An admin will review these before you can auction
+              An admin will review these. Once approved, your auction goes live
+              automatically.
             </Text>
             {pendingGadgets.map(gadget => (
               <View key={gadget.id} style={styles.readyCard}>
@@ -127,60 +126,6 @@ export const SellScreen: React.FC<SellScreenProps> = ({ navigation }) => {
           </View>
         )}
 
-        {readyGadgets.length > 0 && (
-          <View style={styles.readySection}>
-            <Text style={styles.sectionTitle}>
-              Ready to publish
-              {readyCount > readyGadgets.length
-                ? ` (${readyGadgets.length} of ${readyCount})`
-                : ''}
-            </Text>
-            <Text style={styles.sectionSubtitle}>
-              Finish these listings by creating an auction
-            </Text>
-            {readyGadgets.map(gadget => (
-              <TouchableOpacity
-                key={gadget.id}
-                style={styles.readyCard}
-                activeOpacity={0.85}
-                onPress={() => {
-                  navigation.navigate('CreateAuction', {
-                    gadgetId: gadget.id,
-                  });
-                }}
-              >
-                {gadget.images?.[0] ? (
-                  <Image
-                    source={{ uri: mediaUrl(gadget.images[0]) }}
-                    style={styles.readyImage}
-                  />
-                ) : (
-                  <View style={[styles.readyImage, styles.readyImagePlaceholder]}>
-                    <Ionicons
-                      name="image-outline"
-                      size={22}
-                      color={colors.textMuted}
-                    />
-                  </View>
-                )}
-                <View style={styles.readyContent}>
-                  <Text style={styles.readyTitle} numberOfLines={1}>
-                    {gadget.title}
-                  </Text>
-                  <Text style={styles.readyStatus}>
-                    Approved · Tap to create auction
-                  </Text>
-                </View>
-                <Ionicons
-                  name="arrow-forward-circle"
-                  size={24}
-                  color={colors.primary}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
         <View style={styles.actionsContainer}>
           <TouchableOpacity
             style={styles.actionCard}
@@ -193,7 +138,7 @@ export const SellScreen: React.FC<SellScreenProps> = ({ navigation }) => {
             <View style={styles.actionContent}>
               <Text style={styles.actionTitle}>List New Gadget</Text>
               <Text style={styles.actionDescription}>
-                Create a new listing and start an auction
+                Add all listing and auction details in one step
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.primary} />

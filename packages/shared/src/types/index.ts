@@ -179,6 +179,14 @@ export interface CreateGadgetRequest {
   condition: GadgetCondition;
   specifications?: Record<string, unknown>;
   images: string[];
+  // Auction configuration captured at listing time; the auction is created
+  // automatically when an admin approves the listing.
+  auction_starting_price?: number;
+  auction_reserve_price?: number;
+  auction_buy_now_price?: number;
+  auction_bid_increment?: number;
+  auction_duration_hours?: number;
+  auction_start_now?: boolean;
 }
 
 // ============================================================================

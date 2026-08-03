@@ -244,6 +244,41 @@ export const notifyBackofficeGadgetSubmitted = async (
 };
 
 /**
+ * Notify a seller that their approved listing has gone live as an auction.
+ */
+export const notifySellerListingLive = async (
+  sellerId: string,
+  gadgetTitle: string
+): Promise<void> => {
+  await createNotification(
+    sellerId,
+    'auction_created',
+    'Your listing is live!',
+    `"${gadgetTitle}" has been approved and is now live for bidding.`,
+    {},
+    ['push', 'sms']
+  );
+};
+
+/**
+ * Notify a seller that their listing was rejected.
+ */
+export const notifySellerListingRejected = async (
+  sellerId: string,
+  gadgetTitle: string,
+  reason: string
+): Promise<void> => {
+  await createNotification(
+    sellerId,
+    'system',
+    'Listing not approved',
+    `"${gadgetTitle}" was rejected: ${reason}`,
+    {},
+    ['push', 'sms']
+  );
+};
+
+/**
  * Notify backoffice that a buyer used buy now.
  */
 export const notifyBackofficeBuyNowUsed = async (

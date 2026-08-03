@@ -54,6 +54,42 @@ export const validateCreateGadget: ValidationChain[] = [
       }
       return true;
     }),
+  body('auction_starting_price')
+    .optional()
+    .isFloat({ min: 1000 })
+    .withMessage('Starting price must be at least ₦1,000'),
+  body('auction_reserve_price')
+    .optional()
+    .isFloat({ min: 1000 })
+    .withMessage('Reserve price must be at least ₦1,000')
+    .custom((value, { req }) => {
+      if (value != null && req.body.auction_starting_price != null && value < req.body.auction_starting_price) {
+        throw new Error('Reserve price must be higher than starting price');
+      }
+      return true;
+    }),
+  body('auction_buy_now_price')
+    .optional()
+    .isFloat({ min: 1000 })
+    .withMessage('Buy Now price must be at least ₦1,000')
+    .custom((value, { req }) => {
+      if (value != null && req.body.auction_starting_price != null && value <= req.body.auction_starting_price) {
+        throw new Error('Buy Now price must be higher than starting price');
+      }
+      return true;
+    }),
+  body('auction_bid_increment')
+    .optional()
+    .isFloat({ min: 500 })
+    .withMessage('Bid increment must be at least ₦500'),
+  body('auction_duration_hours')
+    .optional()
+    .isInt({ min: 1, max: 168 })
+    .withMessage('Auction duration must be between 1 and 168 hours'),
+  body('auction_start_now')
+    .optional()
+    .isBoolean()
+    .withMessage('auction_start_now must be a boolean'),
 ];
 
 /**

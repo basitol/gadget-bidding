@@ -33,8 +33,28 @@ import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Button, Input } from '../../components';
 import { auctionService, GadgetCategory } from '../../services';
 import { toJpegUri } from '../../utils/images';
+import { formatCurrency } from '../../utils';
+import { PLATFORM_FEE_PERCENTAGE } from '@gadget-bidding/shared';
 
 const MAX_PHOTOS = 5;
+
+const DURATION_OPTIONS = [
+  { id: '1', label: '1 Day', hours: 24 },
+  { id: '3', label: '3 Days', hours: 72 },
+  { id: '5', label: '5 Days', hours: 120 },
+  { id: '7', label: '7 Days', hours: 168 },
+];
+
+const formatMoneyInput = (value: string): string => {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('en-NG');
+};
+
+const parseMoneyInput = (value: string): number => {
+  const digits = value.replace(/\D/g, '');
+  return digits ? Number(digits) : NaN;
+};
 
 type CreateGadgetScreenProps = {
   navigation: any;
@@ -164,6 +184,12 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
   const [chipRegion, setChipRegion] = useState('');
   const [simConfig, setSimConfig] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  const [startingPrice, setStartingPrice] = useState('');
+  const [reservePrice, setReservePrice] = useState('');
+  const [buyNowPrice, setBuyNowPrice] = useState('');
+  const [bidIncrement, setBidIncrement] = useState('2000');
+  const [duration, setDuration] = useState('3');
+  const [startNow, setStartNow] = useState(true);
   const [categories, setCategories] = useState<GadgetCategory[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -172,6 +198,19 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
     () => categories.find(c => c.id === categoryId),
     [categories, categoryId]
   );
+
+  const startingAmount = parseMoneyInput(startingPrice);
+  const reserveAmount = parseMoneyInput(reservePrice);
+  const buyNowAmount = parseMoneyInput(buyNowPrice);
+  const expectedSaleAmount = !isNaN(buyNowAmount)
+    ? buyNowAmount
+    : !isNaN(reserveAmount)
+      ? reserveAmount
+      : !isNaN(startingAmount)
+        ? startingAmount
+        : 0;
+  const estimatedFee = (expectedSaleAmount * PLATFORM_FEE_PERCENTAGE) / 100;
+  const estimatedPayout = Math.max(0, expectedSaleAmount - estimatedFee);
 
   const showApplePhone = isApplePhoneListing(
     selectedCategory?.name,
@@ -238,6 +277,33 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
       if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
         newErrors.cycleCount = 'Cycle count must be a whole number';
       }
+    }
+
+    const startPrice = parseMoneyInput(startingPrice);
+    const reserve = parseMoneyInput(reservePrice);
+    const buyNow = parseMoneyInput(buyNowPrice);
+    const increment = parseMoneyInput(bidIncrement);
+
+    if (!startingPrice || isNaN(startPrice) || startPrice < 1000) {
+      newErrors.startingPrice = 'Starting price must be at least ₦1,000';
+    }
+
+    if (reservePrice && !isNaN(reserve) && reserve < startPrice) {
+      newErrors.reservePrice =
+        'Reserve price must be higher than starting price';
+    }
+
+    if (buyNowPrice && !isNaN(buyNow) && buyNow <= startPrice) {
+      newErrors.buyNowPrice =
+        'Buy Now price must be higher than starting price';
+    }
+
+    if (!bidIncrement || isNaN(increment) || increment < 500) {
+      newErrors.bidIncrement = 'Bid increment must be at least ₦500';
+    }
+
+    if (!duration) {
+      newErrors.duration = 'Please select auction duration';
     }
 
     setErrors(newErrors);
@@ -377,7 +443,7 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
       const resolvedImages = await auctionService.resolveImageUrls(images);
       const specifications = buildSpecifications();
 
-      const response = await auctionService.createGadget({
+      await auctionService.createGadget({
         title: title.trim(),
         description: description.trim(),
         category_id: categoryId,
@@ -387,22 +453,25 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
         images: resolvedImages,
         specifications:
           Object.keys(specifications).length > 0 ? specifications : undefined,
+        auction_starting_price: parseMoneyInput(startingPrice),
+        auction_reserve_price: reservePrice
+          ? parseMoneyInput(reservePrice)
+          : undefined,
+        auction_buy_now_price: buyNowPrice
+          ? parseMoneyInput(buyNowPrice)
+          : undefined,
+        auction_bid_increment: parseMoneyInput(bidIncrement),
+        auction_duration_hours:
+          DURATION_OPTIONS.find(d => d.id === duration)?.hours ?? 72,
+        auction_start_now: startNow,
       });
 
       Alert.alert(
-        'Success',
-        'Gadget created successfully! Now create an auction for it.',
+        'Submitted for review',
+        'Your gadget was listed successfully. An admin will review it and your auction will go live once approved.',
         [
           {
-            text: 'Create Auction',
-            onPress: () =>
-              navigation.navigate('CreateAuction', {
-                gadgetId: response.data.id,
-              }),
-          },
-          {
-            text: 'Later',
-            style: 'cancel',
+            text: 'Done',
             onPress: () => navigation.goBack(),
           },
         ]
@@ -741,9 +810,224 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
           )}
         </View>
 
+        {/* Pricing */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Pricing</Text>
+          <Text style={styles.sectionSubtitle}>
+            Set your auction prices in Naira (₦)
+          </Text>
+
+          <Input
+            label="Starting Price *"
+            placeholder="e.g., 50,000"
+            value={startingPrice}
+            onChangeText={value => setStartingPrice(formatMoneyInput(value))}
+            keyboardType="number-pad"
+            error={errors.startingPrice}
+            leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
+          />
+
+          <Input
+            label="Reserve Price (Optional)"
+            placeholder="Minimum price to sell"
+            value={reservePrice}
+            onChangeText={value => setReservePrice(formatMoneyInput(value))}
+            keyboardType="number-pad"
+            error={errors.reservePrice}
+            leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
+          />
+
+          <Input
+            label="Buy Now Price (Optional)"
+            placeholder="Instant purchase price"
+            value={buyNowPrice}
+            onChangeText={value => setBuyNowPrice(formatMoneyInput(value))}
+            keyboardType="number-pad"
+            error={errors.buyNowPrice}
+            leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
+          />
+
+          <Input
+            label="Minimum Bid Increment *"
+            placeholder="e.g., 2000"
+            value={bidIncrement}
+            onChangeText={value => setBidIncrement(formatMoneyInput(value))}
+            keyboardType="number-pad"
+            error={errors.bidIncrement}
+            leftIcon={<Text style={styles.currencyIcon}>₦</Text>}
+          />
+
+          {expectedSaleAmount > 0 ? (
+            <View style={styles.feePreviewCard}>
+              <View style={styles.feePreviewHeader}>
+                <Text style={styles.feePreviewTitle}>
+                  Seller payout estimate
+                </Text>
+                <Text style={styles.feePreviewBadge}>
+                  {PLATFORM_FEE_PERCENTAGE}% fee
+                </Text>
+              </View>
+              <View style={styles.feePreviewRow}>
+                <Text style={styles.feePreviewLabel}>Estimated sale</Text>
+                <Text style={styles.feePreviewValue}>
+                  {formatCurrency(expectedSaleAmount)}
+                </Text>
+              </View>
+              <View style={styles.feePreviewRow}>
+                <Text style={styles.feePreviewLabel}>Platform fee</Text>
+                <Text style={styles.feePreviewValueMuted}>
+                  -{formatCurrency(estimatedFee)}
+                </Text>
+              </View>
+              <View style={styles.feeDivider} />
+              <View style={styles.feePreviewRow}>
+                <Text style={styles.feePreviewNetLabel}>You receive</Text>
+                <Text style={styles.feePreviewNetValue}>
+                  {formatCurrency(estimatedPayout)}
+                </Text>
+              </View>
+              <Text style={styles.feePreviewNote}>
+                Final payout is calculated from the winning bid or buy-now
+                price.
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Duration */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Duration</Text>
+          <Text style={styles.sectionSubtitle}>
+            How long should the auction run?
+          </Text>
+
+          <View style={styles.durationGrid}>
+            {DURATION_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.id}
+                style={[
+                  styles.durationItem,
+                  duration === opt.id ? styles.durationItemSelected : undefined,
+                ]}
+                onPress={() => setDuration(opt.id)}
+              >
+                <Text
+                  style={[
+                    styles.durationText,
+                    duration === opt.id
+                      ? styles.durationTextSelected
+                      : undefined,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {errors.duration && (
+            <Text style={styles.errorText}>{errors.duration}</Text>
+          )}
+        </View>
+
+        {/* Start Time */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Start Time</Text>
+
+          <TouchableOpacity
+            style={[
+              styles.startOption,
+              startNow ? styles.startOptionSelected : undefined,
+            ]}
+            onPress={() => setStartNow(true)}
+          >
+            <View style={styles.radioOuter}>
+              {startNow && <View style={styles.radioInner} />}
+            </View>
+            <View style={styles.startOptionContent}>
+              <Text
+                style={[
+                  styles.startOptionTitle,
+                  startNow ? styles.startOptionTitleSelected : undefined,
+                ]}
+              >
+                Start Immediately
+              </Text>
+              <Text style={styles.startOptionSubtitle}>
+                Auction goes live as soon as an admin approves it
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.startOption,
+              !startNow ? styles.startOptionSelected : undefined,
+            ]}
+            onPress={() => setStartNow(false)}
+          >
+            <View style={styles.radioOuter}>
+              {!startNow && <View style={styles.radioInner} />}
+            </View>
+            <View style={styles.startOptionContent}>
+              <Text
+                style={[
+                  styles.startOptionTitle,
+                  !startNow ? styles.startOptionTitleSelected : undefined,
+                ]}
+              >
+                Schedule for Later
+              </Text>
+              <Text style={styles.startOptionSubtitle}>
+                Auction starts the day after it's approved
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Summary */}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Listing Summary</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Starting Price</Text>
+            <Text style={styles.summaryValue}>
+              {startingPrice
+                ? formatCurrency(parseMoneyInput(startingPrice))
+                : '—'}
+            </Text>
+          </View>
+          {reservePrice && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Reserve Price</Text>
+              <Text style={styles.summaryValue}>
+                {formatCurrency(parseMoneyInput(reservePrice))}
+              </Text>
+            </View>
+          )}
+          {buyNowPrice && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Buy Now Price</Text>
+              <Text style={styles.summaryValue}>
+                {formatCurrency(parseMoneyInput(buyNowPrice))}
+              </Text>
+            </View>
+          )}
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Duration</Text>
+            <Text style={styles.summaryValue}>
+              {DURATION_OPTIONS.find(d => d.id === duration)?.label || '—'}
+            </Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Starts</Text>
+            <Text style={styles.summaryValue}>
+              {startNow ? 'After approval' : 'Day after approval'}
+            </Text>
+          </View>
+        </View>
+
         <View style={styles.submitContainer}>
           <Button
-            title="Continue to Auction"
+            title="Submit for Review"
             onPress={handleSubmit}
             loading={isLoading}
             fullWidth
@@ -983,6 +1267,182 @@ const styles = StyleSheet.create({
     fontSize: fonts.sizes.sm,
     marginTop: 2,
   },
+  currencyIcon: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.md,
+    fontWeight: '600',
+  },
+  feePreviewCard: {
+    marginTop: spacing.sm,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    backgroundColor: colors.primary + '10',
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  feePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  feePreviewTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontFamily: fonts.semiBold,
+  },
+  feePreviewBadge: {
+    color: colors.primary,
+    backgroundColor: colors.primary + '18',
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    fontSize: fonts.sizes.xs,
+    fontFamily: fonts.semiBold,
+    overflow: 'hidden',
+  },
+  feePreviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  feePreviewLabel: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.sm,
+    fontFamily: fonts.medium,
+  },
+  feePreviewValue: {
+    color: colors.text,
+    fontSize: fonts.sizes.sm,
+    fontFamily: fonts.semiBold,
+  },
+  feePreviewValueMuted: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.sm,
+    fontFamily: fonts.semiBold,
+  },
+  feeDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.primary + '25',
+  },
+  feePreviewNetLabel: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontFamily: fonts.semiBold,
+  },
+  feePreviewNetValue: {
+    color: colors.primary,
+    fontSize: fonts.sizes.lg,
+    fontFamily: fonts.bold,
+  },
+  feePreviewNote: {
+    color: colors.textMuted,
+    fontSize: fonts.sizes.xs,
+    fontFamily: fonts.regular,
+    lineHeight: 18,
+  },
+  durationGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  durationItem: {
+    flex: 1,
+    minWidth: '45%',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  durationItemSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  durationText: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.md,
+    fontWeight: '500',
+  },
+  durationTextSelected: {
+    color: colors.text,
+  },
+  startOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  startOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  radioOuter: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.primary,
+  },
+  startOptionContent: {
+    flex: 1,
+  },
+  startOptionTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontWeight: '500',
+  },
+  startOptionTitleSelected: {
+    color: colors.primary,
+  },
+  startOptionSubtitle: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.sm,
+    marginTop: 2,
+  },
+  summaryCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  summaryTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontWeight: '700',
+    marginBottom: spacing.md,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  summaryLabel: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.md,
+  },
+  summaryValue: {
+    color: colors.text,
+    fontSize: fonts.sizes.md,
+    fontWeight: '500',
+  },
   submitContainer: {
     marginTop: spacing.lg,
   },
@@ -990,5 +1450,4 @@ const styles = StyleSheet.create({
     height: 100,
   },
 });
-
 export default CreateGadgetScreen;

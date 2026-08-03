@@ -1,4 +1,5 @@
 import { query, transaction } from '../../config/database';
+import config from '../../config';
 import {
   Gadget,
   CreateGadgetRequest,
@@ -19,8 +20,10 @@ export const createGadget = async (
 
   const result = await query(
     `INSERT INTO gadgets
-     (seller_id, category_id, title, description, brand, model, condition, specifications, images, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     (seller_id, category_id, title, description, brand, model, condition, specifications, images, status,
+      auction_starting_price, auction_reserve_price, auction_buy_now_price, auction_bid_increment,
+      auction_duration_hours, auction_start_now)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING *`,
     [
       sellerId,
@@ -33,6 +36,12 @@ export const createGadget = async (
       JSON.stringify(data.specifications || {}),
       normalizeMediaPaths(data.images),
       initialStatus,
+      data.auction_starting_price ?? null,
+      data.auction_reserve_price ?? null,
+      data.auction_buy_now_price ?? null,
+      data.auction_bid_increment ?? null,
+      data.auction_duration_hours ?? null,
+      data.auction_start_now ?? true,
     ]
   );
 
@@ -290,24 +299,92 @@ export const deleteGadget = async (
 };
 
 /**
- * Approve gadget (admin only)
+ * Approve gadget (admin only). When the listing carries auction configuration,
+ * the auction is created and goes live as part of the same transaction and the
+ * gadget is marked 'listed' so it becomes visible on the public feed.
  */
 export const approveGadget = async (gadgetId: string): Promise<Gadget> => {
-  const result = await query(
-    `UPDATE gadgets
-     SET status = 'approved', updated_at = NOW()
-     WHERE id = $1 AND status = 'pending'
-     RETURNING *`,
-    [gadgetId]
+  const gadget = await transaction(async client => {
+    const gadgetResult = await client.query(
+      `SELECT * FROM gadgets WHERE id = $1 AND status = 'pending'`,
+      [gadgetId]
+    );
+
+    if (gadgetResult.rows.length === 0) {
+      throw new Error('Gadget not found or already processed');
+    }
+
+    const existing = gadgetResult.rows[0];
+
+    // Auction config captured at listing time -> create the auction and go live
+    const hasAuctionConfig =
+      existing.auction_starting_price != null &&
+      existing.auction_duration_hours != null;
+
+    if (hasAuctionConfig) {
+      const startNow = existing.auction_start_now !== false;
+      const startTime = startNow
+        ? new Date()
+        : new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const endTime = new Date(
+        startTime.getTime() +
+          Number(existing.auction_duration_hours) * 60 * 60 * 1000
+      );
+
+      await client.query(
+        `INSERT INTO auctions
+         (gadget_id, seller_id, starting_price, reserve_price, current_price,
+          bid_increment, buy_now_price, start_time, end_time, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          existing.id,
+          existing.seller_id,
+          existing.auction_starting_price,
+          existing.auction_reserve_price || null,
+          existing.auction_starting_price,
+          existing.auction_bid_increment ?? config.minBidIncrement,
+          existing.auction_buy_now_price || null,
+          startTime,
+          endTime,
+          startNow ? 'active' : 'scheduled',
+        ]
+      );
+
+      await client.query(
+        `UPDATE gadgets
+         SET status = 'listed', updated_at = NOW()
+         WHERE id = $1`,
+        [gadgetId]
+      );
+    } else {
+      await client.query(
+        `UPDATE gadgets
+         SET status = 'approved', updated_at = NOW()
+         WHERE id = $1`,
+        [gadgetId]
+      );
+    }
+
+    const updated = await client.query('SELECT * FROM gadgets WHERE id = $1', [
+      gadgetId,
+    ]);
+
+    return updated.rows[0];
+  });
+
+  logger.info(
+    `Gadget approved: ${gadgetId}${gadget.status === 'listed' ? ' (auction live)' : ''}`
   );
 
-  if (result.length === 0) {
-    throw new Error('Gadget not found or already processed');
+  if (gadget.status === 'listed') {
+    notificationService
+      .notifySellerListingLive(gadget.seller_id, gadget.title)
+      .catch(error => {
+        logger.error('Failed to notify seller about live listing:', error);
+      });
   }
 
-  logger.info(`Gadget approved: ${gadgetId}`);
-
-  return result[0];
+  return gadget;
 };
 
 /**
@@ -330,6 +407,12 @@ export const rejectGadget = async (
   }
 
   logger.info(`Gadget rejected: ${gadgetId}`);
+
+  notificationService
+    .notifySellerListingRejected(result[0].seller_id, result[0].title, reason)
+    .catch(error => {
+      logger.error('Failed to notify seller about rejected listing:', error);
+    });
 
   return result[0];
 };
