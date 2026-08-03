@@ -1,5 +1,6 @@
 import prisma from '../../config/prisma';
 import { Wallet, WalletTransaction } from '@gadget-bidding/shared';
+import { applyBalanceDelta } from '../../utils/wallet-balance';
 import logger from '../../utils/logger';
 
 // Helper to convert Prisma Decimal to number
@@ -127,7 +128,7 @@ export const createDepositTransaction = async (
   metadata?: Record<string, any>
 ): Promise<WalletTransaction> => {
   return prisma.$transaction(async tx => {
-    // Get wallet (Prisma handles locking with serializable isolation)
+    // Get wallet
     const wallet = await tx.wallet.findUnique({
       where: { userId },
     });
@@ -136,14 +137,12 @@ export const createDepositTransaction = async (
       throw new Error('Wallet not found');
     }
 
-    const balanceBefore = toNumber(wallet.balance);
-    const balanceAfter = balanceBefore + amount;
-
-    // Update wallet balance
-    await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: balanceAfter },
-    });
+    // Apply the credit atomically so concurrent deposits cannot lose updates
+    const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+      tx,
+      wallet.id,
+      amount
+    );
 
     // Create transaction record
     const transaction = await tx.walletTransaction.create({
@@ -241,13 +240,11 @@ export const processWalletFundingFromPaystack = async (params: {
       throw new Error('Wallet not found');
     }
 
-    const balanceBefore = toNumber(wallet.balance);
-    const balanceAfter = balanceBefore + amount;
-
-    await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: balanceAfter },
-    });
+    const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+      tx,
+      wallet.id,
+      amount
+    );
 
     const walletTx = await tx.walletTransaction.create({
       data: {
@@ -316,12 +313,12 @@ export const createWithdrawalTransaction = async (
       throw new Error('Wallet is locked. Please contact support');
     }
 
-    const balanceBefore = toNumber(wallet.balance);
+    const readBalance = toNumber(wallet.balance);
     const heldAmount = wallet.bidHolds.reduce(
       (sum, hold) => sum + toNumber(hold.amount),
       0
     );
-    const availableBalance = balanceBefore - heldAmount;
+    const availableBalance = readBalance - heldAmount;
 
     if (availableBalance < amount) {
       throw new Error(
@@ -329,13 +326,12 @@ export const createWithdrawalTransaction = async (
       );
     }
 
-    const balanceAfter = balanceBefore - amount;
-
-    // Update wallet balance
-    await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: balanceAfter },
-    });
+    const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+      tx,
+      wallet.id,
+      -amount,
+      `Insufficient available balance. Available: ₦${availableBalance.toFixed(2)}`
+    );
 
     // Create transaction record
     const transaction = await tx.walletTransaction.create({
@@ -485,15 +481,13 @@ export const chargeHold = async (bidId: string): Promise<void> => {
       throw new Error('Wallet not found');
     }
 
-    const balanceBefore = toNumber(wallet.balance);
     const holdAmount = toNumber(hold.amount);
-    const balanceAfter = balanceBefore - holdAmount;
 
-    // Update wallet balance
-    await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: balanceAfter },
-    });
+    const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+      tx,
+      wallet.id,
+      -holdAmount
+    );
 
     // Mark hold as charged
     await tx.bidHold.update({

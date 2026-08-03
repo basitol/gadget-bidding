@@ -14,6 +14,7 @@ import {
 import * as paystackService from '../payment/paystack.service';
 import * as notificationService from '../notification/notification.service';
 import * as riskService from '../risk/risk.service';
+import { applyBalanceDelta } from '../../utils/wallet-balance';
 import logger from '../../utils/logger';
 
 // Helper to convert Prisma Decimal to number
@@ -595,7 +596,7 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
       throw new Error('Wallet is locked. Please contact support');
     }
 
-    const balanceBefore = toNumber(wallet.balance);
+    const readBalance = toNumber(wallet.balance);
     const orderTotal = toNumber(order.totalAmount);
 
     // Other active holds stay escrowed, so they must not be spendable here.
@@ -607,7 +608,7 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
       return sum + toNumber(hold.amount);
     }, 0);
 
-    const availableBalance = balanceBefore - otherHeldAmount;
+    const availableBalance = readBalance - otherHeldAmount;
 
     if (availableBalance < orderTotal) {
       throw new Error(
@@ -615,12 +616,12 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
       );
     }
 
-    const balanceAfter = balanceBefore - orderTotal;
-
-    await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: balanceAfter },
-    });
+    const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+      tx,
+      wallet.id,
+      -orderTotal,
+      `Insufficient available balance. You need ₦${orderTotal.toLocaleString()} to pay for this order.`
+    );
 
     if (
       winningBidWithHold?.bidHold &&
@@ -1106,15 +1107,13 @@ const creditSeller = async (tx: any, order: any): Promise<void> => {
     throw new Error('Seller wallet not found');
   }
 
-  const balanceBefore = toNumber(wallet.balance);
   const sellerPayout = toNumber(order.sellerPayout);
-  const balanceAfter = balanceBefore + sellerPayout;
 
-  // Update wallet balance
-  await tx.wallet.update({
-    where: { id: wallet.id },
-    data: { balance: balanceAfter },
-  });
+  const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+    tx,
+    wallet.id,
+    sellerPayout
+  );
 
   // Create transaction record
   await tx.walletTransaction.create({
@@ -1158,15 +1157,13 @@ const refundBuyer = async (tx: any, order: any): Promise<void> => {
     throw new Error('Buyer wallet not found');
   }
 
-  const balanceBefore = toNumber(wallet.balance);
   const totalAmount = toNumber(order.totalAmount);
-  const balanceAfter = balanceBefore + totalAmount;
 
-  // Update wallet balance
-  await tx.wallet.update({
-    where: { id: wallet.id },
-    data: { balance: balanceAfter },
-  });
+  const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+    tx,
+    wallet.id,
+    totalAmount
+  );
 
   // Update order payment status
   await tx.order.update({
@@ -1543,9 +1540,7 @@ export const expirePendingOrders = async (): Promise<number> => {
             const wallet = await tx.wallet.findUnique({
               where: { id: winningBid.bidHold.walletId! },
             });
-            const balance = toNumber(wallet?.balance);
             const heldAmount = toNumber(winningBid.bidHold.amount);
-            const balanceAfter = balance - heldAmount;
             forfeitedAmount = heldAmount;
 
             await tx.bidHold.update({
@@ -1554,12 +1549,15 @@ export const expirePendingOrders = async (): Promise<number> => {
             });
 
             if (wallet) {
+              const { balanceBefore, balanceAfter } = await applyBalanceDelta(
+                tx,
+                wallet.id,
+                -heldAmount
+              );
+
               await tx.wallet.update({
                 where: { id: wallet.id },
-                data: {
-                  balance: balanceAfter,
-                  isLocked: true,
-                },
+                data: { isLocked: true },
               });
 
               await tx.walletTransaction.create({
@@ -1567,7 +1565,7 @@ export const expirePendingOrders = async (): Promise<number> => {
                   walletId: wallet.id,
                   transactionType: 'fee',
                   amount: heldAmount,
-                  balanceBefore: balance,
+                  balanceBefore,
                   balanceAfter,
                   description: `Forfeited bid commitment for unpaid order ${order.orderNumber}`,
                   status: 'completed',
