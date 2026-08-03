@@ -32,6 +32,7 @@ export interface CreateGadgetData {
   auction_bid_increment?: number;
   auction_duration_hours?: number;
   auction_start_now?: boolean;
+  status?: string;
 }
 
 export interface CreateAuctionData {
@@ -55,6 +56,7 @@ export interface SellerDashboard {
   };
   pending_gadgets: Gadget[];
   ready_gadgets: Gadget[];
+  rejected_gadgets: Gadget[];
 }
 
 class AuctionService {

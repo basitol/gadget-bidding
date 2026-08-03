@@ -32,6 +32,7 @@ export const SellScreen: React.FC<SellScreenProps> = ({ navigation }) => {
 
   const pendingGadgets = dashboard?.pending_gadgets || [];
   const pendingCount = dashboard?.stats.pending_gadgets || 0;
+  const rejectedGadgets = dashboard?.rejected_gadgets || [];
 
   useFocusEffect(
     useCallback(() => {
@@ -121,6 +122,55 @@ export const SellScreen: React.FC<SellScreenProps> = ({ navigation }) => {
                   size={22}
                   color={colors.warning}
                 />
+              </View>
+            ))}
+          </View>
+        )}
+
+        {rejectedGadgets.length > 0 && (
+          <View style={styles.rejectedSection}>
+            <Text style={styles.sectionTitle}>
+              Needs attention
+              {rejectedGadgets.length > 1 ? ` (${rejectedGadgets.length})` : ''}
+            </Text>
+            <Text style={styles.sectionSubtitle}>
+              These listings were not approved. Review the reason and resubmit
+              after making changes.
+            </Text>
+            {rejectedGadgets.map(gadget => (
+              <View key={gadget.id} style={styles.rejectedCard}>
+                {gadget.images?.[0] ? (
+                  <Image
+                    source={{ uri: mediaUrl(gadget.images[0]) }}
+                    style={styles.readyImage}
+                  />
+                ) : (
+                  <View style={[styles.readyImage, styles.readyImagePlaceholder]}>
+                    <Ionicons
+                      name="image-outline"
+                      size={22}
+                      color={colors.textMuted}
+                    />
+                  </View>
+                )}
+                <View style={styles.readyContent}>
+                  <Text style={styles.readyTitle} numberOfLines={1}>
+                    {gadget.title}
+                  </Text>
+                  <Text style={styles.rejectedReason} numberOfLines={3}>
+                    {gadget.rejection_reason ||
+                      'Your listing was not approved.'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.resubmitButton}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    navigation.navigate('CreateGadget', { gadget })
+                  }
+                >
+                  <Text style={styles.resubmitButtonText}>Edit</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -281,6 +331,38 @@ const styles = StyleSheet.create({
   readySection: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
+  },
+  rejectedSection: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  rejectedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.error + '55',
+    gap: spacing.md,
+  },
+  rejectedReason: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.xs,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  resubmitButton: {
+    backgroundColor: colors.error + '18',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  resubmitButtonText: {
+    color: colors.error,
+    fontSize: fonts.sizes.sm,
+    fontWeight: '700',
   },
   sectionTitle: {
     color: colors.text,

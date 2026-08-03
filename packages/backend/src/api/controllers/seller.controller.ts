@@ -17,6 +17,7 @@ export const getDashboard = async (req: Request, res: Response) => {
       salesStatsResult,
       pendingGadgets,
       readyGadgets,
+      rejectedGadgets,
     ] = await Promise.all([
       query(
         `SELECT
@@ -70,6 +71,14 @@ export const getDashboard = async (req: Request, res: Response) => {
          LIMIT 6`,
         [sellerId]
       ),
+      query(
+        `SELECT id, title, status, images, rejection_reason, created_at
+         FROM gadgets
+         WHERE seller_id = $1 AND status = 'rejected'
+         ORDER BY updated_at DESC
+         LIMIT 6`,
+        [sellerId]
+      ),
     ]);
 
     sendSuccess(res, {
@@ -83,6 +92,7 @@ export const getDashboard = async (req: Request, res: Response) => {
       },
       pending_gadgets: pendingGadgets,
       ready_gadgets: readyGadgets,
+      rejected_gadgets: rejectedGadgets,
     });
   } catch (error: any) {
     logger.error('Get seller dashboard error:', error);

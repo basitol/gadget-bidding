@@ -32,6 +32,7 @@ import {
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Button, Input } from '../../components';
 import { auctionService, GadgetCategory } from '../../services';
+import { Gadget } from '../../types';
 import { toJpegUri } from '../../utils/images';
 import { formatCurrency } from '../../utils';
 import { PLATFORM_FEE_PERCENTAGE } from '@gadget-bidding/shared';
@@ -58,6 +59,7 @@ const parseMoneyInput = (value: string): number => {
 
 type CreateGadgetScreenProps = {
   navigation: any;
+  route?: any;
 };
 
 const CONDITIONS = [
@@ -162,14 +164,22 @@ function MultiChipGroup({
 
 export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
   navigation,
+  route,
 }) => {
-  const [title, setTitle] = useState('');
+  const editingGadget = route?.params?.gadget as
+    | (Partial<Gadget> & { id: string })
+    | undefined;
+  const isEditing = Boolean(editingGadget);
+
+  const [title, setTitle] = useState(editingGadget?.title || '');
   const [titleTouched, setTitleTouched] = useState(false);
-  const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [brand, setBrand] = useState('');
-  const [model, setModel] = useState('');
-  const [condition, setCondition] = useState('');
+  const [description, setDescription] = useState(
+    editingGadget?.description || ''
+  );
+  const [categoryId, setCategoryId] = useState(editingGadget?.category_id || '');
+  const [brand, setBrand] = useState(editingGadget?.brand || '');
+  const [model, setModel] = useState(editingGadget?.model || '');
+  const [condition, setCondition] = useState(editingGadget?.condition || '');
   const [color, setColor] = useState('');
   const [storage, setStorage] = useState('');
   const [ram, setRam] = useState('');
@@ -183,13 +193,35 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
   const [unlockStatus, setUnlockStatus] = useState('');
   const [chipRegion, setChipRegion] = useState('');
   const [simConfig, setSimConfig] = useState('');
-  const [images, setImages] = useState<string[]>([]);
-  const [startingPrice, setStartingPrice] = useState('');
-  const [reservePrice, setReservePrice] = useState('');
-  const [buyNowPrice, setBuyNowPrice] = useState('');
-  const [bidIncrement, setBidIncrement] = useState('2000');
-  const [duration, setDuration] = useState('3');
-  const [startNow, setStartNow] = useState(true);
+  const [images, setImages] = useState<string[]>(editingGadget?.images || []);
+  const [startingPrice, setStartingPrice] = useState(
+    editingGadget?.auction_starting_price
+      ? String(editingGadget.auction_starting_price)
+      : ''
+  );
+  const [reservePrice, setReservePrice] = useState(
+    editingGadget?.auction_reserve_price
+      ? String(editingGadget.auction_reserve_price)
+      : ''
+  );
+  const [buyNowPrice, setBuyNowPrice] = useState(
+    editingGadget?.auction_buy_now_price
+      ? String(editingGadget.auction_buy_now_price)
+      : ''
+  );
+  const [bidIncrement, setBidIncrement] = useState(
+    editingGadget?.auction_bid_increment
+      ? String(editingGadget.auction_bid_increment)
+      : '2000'
+  );
+  const [duration, setDuration] = useState(
+    editingGadget?.auction_duration_hours
+      ? String(editingGadget.auction_duration_hours)
+      : '3'
+  );
+  const [startNow, setStartNow] = useState(
+    editingGadget?.auction_start_now ?? true
+  );
   const [categories, setCategories] = useState<GadgetCategory[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -233,6 +265,74 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
     const suggested = suggestListingTitle(brand, model, storage);
     if (suggested) setTitle(suggested);
   }, [brand, model, storage, titleTouched]);
+
+  useEffect(() => {
+    if (!isEditing || !editingGadget) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await auctionService.getGadget(editingGadget.id);
+        const g = response.data;
+        if (cancelled || !g) return;
+
+        const specs = g.specifications || {};
+        setTitle(g.title || '');
+        setDescription(g.description || '');
+        setCategoryId(g.category_id || '');
+        setBrand(g.brand || '');
+        setModel(g.model || '');
+        setCondition(g.condition || '');
+        setColor(typeof specs.color === 'string' ? specs.color : '');
+        setStorage(typeof specs.storage === 'string' ? specs.storage : '');
+        setRam(typeof specs.ram === 'string' ? specs.ram : '');
+        setWarranty(typeof specs.warranty === 'string' ? specs.warranty : '');
+        setIncluded(
+          Array.isArray(specs.included) ? specs.included.map(String) : []
+        );
+        setBatteryHealth(
+          typeof specs.battery_health === 'number'
+            ? String(specs.battery_health)
+            : ''
+        );
+        setCycleCount(
+          typeof specs.cycle_count === 'number' ? String(specs.cycle_count) : ''
+        );
+        setIcloudStatus(
+          typeof specs.icloud_status === 'string' ? specs.icloud_status : ''
+        );
+        setMdmStatus(typeof specs.mdm_status === 'string' ? specs.mdm_status : '');
+        setImeiBlacklist(
+          typeof specs.imei_blacklist === 'string' ? specs.imei_blacklist : ''
+        );
+        setUnlockStatus(
+          typeof specs.unlock_status === 'string' ? specs.unlock_status : ''
+        );
+        setChipRegion(
+          typeof specs.chip_region === 'string' ? specs.chip_region : ''
+        );
+        setSimConfig(typeof specs.sim_config === 'string' ? specs.sim_config : '');
+        if (g.images?.length) setImages(g.images);
+        if (g.auction_starting_price)
+          setStartingPrice(String(g.auction_starting_price));
+        if (g.auction_reserve_price)
+          setReservePrice(String(g.auction_reserve_price));
+        if (g.auction_buy_now_price)
+          setBuyNowPrice(String(g.auction_buy_now_price));
+        if (g.auction_bid_increment)
+          setBidIncrement(String(g.auction_bid_increment));
+        if (g.auction_duration_hours)
+          setDuration(String(g.auction_duration_hours));
+        setStartNow(g.auction_start_now ?? true);
+      } catch (error) {
+        console.error('Failed to load gadget for editing:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, editingGadget]);
 
   const loadCategories = async () => {
     try {
@@ -442,8 +542,7 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
     try {
       const resolvedImages = await auctionService.resolveImageUrls(images);
       const specifications = buildSpecifications();
-
-      await auctionService.createGadget({
+      const payload = {
         title: title.trim(),
         description: description.trim(),
         category_id: categoryId,
@@ -464,7 +563,27 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
         auction_duration_hours:
           DURATION_OPTIONS.find(d => d.id === duration)?.hours ?? 72,
         auction_start_now: startNow,
-      });
+      };
+
+      if (isEditing && editingGadget) {
+        await auctionService.updateGadget(editingGadget.id, {
+          ...payload,
+          status: 'pending',
+        });
+        Alert.alert(
+          'Resubmitted for review',
+          'Your updated gadget was submitted for review. An admin will review it and your auction will go live once approved.',
+          [
+            {
+              text: 'Done',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+        return;
+      }
+
+      await auctionService.createGadget(payload);
 
       Alert.alert(
         'Submitted for review',
@@ -492,7 +611,9 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>List Gadget</Text>
+        <Text style={styles.title}>
+          {isEditing ? 'Edit Gadget' : 'List Gadget'}
+        </Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -1027,7 +1148,7 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
 
         <View style={styles.submitContainer}>
           <Button
-            title="Submit for Review"
+            title={isEditing ? 'Resubmit for Review' : 'Submit for Review'}
             onPress={handleSubmit}
             loading={isLoading}
             fullWidth

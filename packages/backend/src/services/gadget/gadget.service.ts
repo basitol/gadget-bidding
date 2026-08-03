@@ -205,6 +205,12 @@ export const updateGadget = async (
       paramIndex++;
     }
 
+    if (updates.category_id) {
+      updateFields.push(`category_id = $${paramIndex}`);
+      values.push(updates.category_id);
+      paramIndex++;
+    }
+
     if (updates.description) {
       updateFields.push(`description = $${paramIndex}`);
       values.push(updates.description);
@@ -241,12 +247,49 @@ export const updateGadget = async (
       paramIndex++;
     }
 
+    if (updates.auction_starting_price !== undefined) {
+      updateFields.push(`auction_starting_price = $${paramIndex}`);
+      values.push(updates.auction_starting_price);
+      paramIndex++;
+    }
+
+    if (updates.auction_reserve_price !== undefined) {
+      updateFields.push(`auction_reserve_price = $${paramIndex}`);
+      values.push(updates.auction_reserve_price);
+      paramIndex++;
+    }
+
+    if (updates.auction_buy_now_price !== undefined) {
+      updateFields.push(`auction_buy_now_price = $${paramIndex}`);
+      values.push(updates.auction_buy_now_price);
+      paramIndex++;
+    }
+
+    if (updates.auction_bid_increment !== undefined) {
+      updateFields.push(`auction_bid_increment = $${paramIndex}`);
+      values.push(updates.auction_bid_increment);
+      paramIndex++;
+    }
+
+    if (updates.auction_duration_hours !== undefined) {
+      updateFields.push(`auction_duration_hours = $${paramIndex}`);
+      values.push(updates.auction_duration_hours);
+      paramIndex++;
+    }
+
+    if (updates.auction_start_now !== undefined) {
+      updateFields.push(`auction_start_now = $${paramIndex}`);
+      values.push(updates.auction_start_now);
+      paramIndex++;
+    }
+
     if (updateFields.length === 0) {
       throw new Error('No fields to update');
     }
 
     // Reset to pending status when updated
     updateFields.push(`status = 'pending'`);
+    updateFields.push(`rejection_reason = NULL`);
     updateFields.push(`updated_at = NOW()`);
 
     values.push(gadgetId, sellerId);
