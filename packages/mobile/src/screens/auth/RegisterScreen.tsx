@@ -87,6 +87,10 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       newErrors.email = 'Enter a valid email address';
     }
 
+    if (!email.trim()) {
+      newErrors.email = 'Email is required';
+    }
+
     const passwordValidation = isValidPassword(password);
     if (!password) {
       newErrors.password = 'Password is required';
@@ -125,6 +129,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
       navigation.navigate('OtpVerification', {
         phone_number: formattedPhone,
+        email: email.trim(),
         verification_id,
         isNewUser: true,
         interfaceType,
@@ -189,7 +194,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       />
 
       <Input
-        label="Email (optional)"
+        label="Email"
         placeholder="john@example.com"
         value={email}
         onChangeText={setEmail}

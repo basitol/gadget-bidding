@@ -75,6 +75,12 @@ interface Config {
     apiUrl: string;
   };
 
+  // Email (Resend)
+  email: {
+    resendApiKey: string;
+    from: string;
+  };
+
   // Cloudinary
   cloudinary: {
     cloudName: string;
@@ -177,6 +183,12 @@ const config: Config = {
     apiKey: process.env.TERMII_API_KEY || '',
     senderId: process.env.TERMII_SENDER_ID || 'N-Alert',
     apiUrl: process.env.TERMII_API_URL || 'https://v3.api.termii.com/api',
+  },
+
+  // Email (Resend)
+  email: {
+    resendApiKey: process.env.RESEND_API_KEY || '',
+    from: process.env.EMAIL_FROM || 'GadgetBid <noreply@gadgetbid.ng>',
   },
 
   // Cloudinary

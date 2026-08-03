@@ -3,6 +3,7 @@ import { hashPassword, comparePassword } from '../../utils/password';
 import { generateAccessToken, generateRefreshToken } from '../../utils/jwt';
 import { generateOTP, getOTPExpiry, isOTPExpired } from '../../utils/otp';
 import { sendOTPSMS } from '../notification/sms.service';
+import { sendOTPEmail } from '../notification/email.service';
 import config from '../../config';
 import {
   User,
@@ -90,10 +91,16 @@ export const registerUser = async (
       },
     });
 
-    // Send OTP via SMS (don't block on this)
-    sendOTPSMS(data.phone_number, otp).catch(err => {
-      logger.error('Failed to send OTP SMS:', err);
-    });
+    // Send OTP via email when available, otherwise SMS (don't block on this)
+    if (user.email) {
+      sendOTPEmail(user.email, otp).catch(err => {
+        logger.error('Failed to send OTP email:', err);
+      });
+    } else {
+      sendOTPSMS(user.phoneNumber, otp).catch(err => {
+        logger.error('Failed to send OTP SMS:', err);
+      });
+    }
 
     if (config.nodeEnv === 'development') {
       logger.info(`[DEV] OTP for ${data.phone_number}: ${otp}`);
@@ -380,10 +387,16 @@ export const resendOTP = async (
       },
     });
 
-    // Send OTP via SMS (don't block on this)
-    sendOTPSMS(phoneNumber, otp).catch(err => {
-      logger.error('Failed to send OTP SMS:', err);
-    });
+    // Send OTP via email when available, otherwise SMS (don't block on this)
+    if (user.email) {
+      sendOTPEmail(user.email, otp).catch(err => {
+        logger.error('Failed to send OTP email:', err);
+      });
+    } else {
+      sendOTPSMS(phoneNumber, otp).catch(err => {
+        logger.error('Failed to send OTP SMS:', err);
+      });
+    }
 
     if (config.nodeEnv === 'development') {
       logger.info(`[DEV] OTP for ${phoneNumber}: ${otp}`);

@@ -19,7 +19,6 @@ import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
 import { authService } from '../../services';
-import { formatPhoneNumber } from '../../utils';
 
 type OtpVerificationScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'OtpVerification'>;
@@ -32,7 +31,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   navigation,
   route,
 }) => {
-  const { phone_number, verification_id, isNewUser, interfaceType } =
+  const { phone_number, email, verification_id, isNewUser, interfaceType } =
     route.params;
   const { mode, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
@@ -138,7 +137,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
       inputRefs.current[0]?.focus();
       Alert.alert(
         'OTP Sent',
-        'A new verification code has been sent to your phone'
+        'A new verification code has been sent to your email'
       );
     } catch {
       Alert.alert('Error', 'Failed to resend OTP. Please try again.');
@@ -150,18 +149,18 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   return (
     <AuthLayout
       onBack={() => navigation.goBack()}
-      title="Verify your phone"
-      subtitle="Enter the 6-digit code we sent to your number"
+      title="Verify your email"
+      subtitle="Enter the 6-digit code we sent to your inbox"
     >
       <View style={styles.phoneBadge}>
         <LinearGradient
           colors={[colors.primary + '22', colors.secondary + '18']}
           style={styles.phoneIconWrap}
         >
-          <Ionicons name="chatbox-ellipses-outline" size={28} color={colors.primary} />
+          <Ionicons name="mail-outline" size={28} color={colors.primary} />
         </LinearGradient>
         <Text style={styles.phoneLabel}>Sent to</Text>
-        <Text style={styles.phoneNumber}>{formatPhoneNumber(phone_number)}</Text>
+        <Text style={styles.phoneNumber}>{email}</Text>
       </View>
 
       <View style={styles.otpContainer}>

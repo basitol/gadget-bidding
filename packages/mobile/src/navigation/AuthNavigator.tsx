@@ -15,6 +15,7 @@ export type AuthStackParamList = {
   Register: { interfaceType: AppInterfaceType };
   OtpVerification: {
     phone_number: string;
+    email: string;
     verification_id: string;
     isNewUser: boolean;
     interfaceType: AppInterfaceType;

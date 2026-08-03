@@ -220,6 +220,7 @@ export function validateEnvironment(): void {
       );
     }
     requireProductionValue(errors, 'TERMII_API_KEY', config.termii.apiKey);
+    requireProductionValue(errors, 'RESEND_API_KEY', config.email.resendApiKey);
 
     const hasCloudinary =
       Boolean(config.cloudinary.cloudName) ||
