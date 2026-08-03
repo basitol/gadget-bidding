@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -62,6 +63,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const { register, isLoading, error, clearError } = useAuthStore();
@@ -96,6 +98,10 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       newErrors.confirmPassword = 'Passwords do not match';
     }
 
+    if (!acceptedTerms) {
+      newErrors.terms = 'You must accept the Terms of Service and Privacy Policy';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -112,6 +118,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           full_name: fullName.trim(),
           password,
           email: email || undefined,
+          accepted_terms: acceptedTerms,
         },
         interfaceType
       );
@@ -142,11 +149,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             linkText={copy.signInLabel}
             onPress={() => navigation.navigate('Login', { interfaceType })}
           />
-          <Text style={styles.terms}>
-            By creating an account, you agree to our{' '}
-            <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>
-          </Text>
         </>
       }
     >
@@ -227,6 +229,45 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
       <PasswordRequirements password={password} />
 
+      <View style={styles.consentRow}>
+        <TouchableOpacity
+          style={styles.checkboxTouchable}
+          onPress={() => setAcceptedTerms(prev => !prev)}
+          activeOpacity={0.7}
+          hitSlop={8}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: acceptedTerms }}
+        >
+          <View
+            style={[
+              styles.checkbox,
+              acceptedTerms && styles.checkboxChecked,
+            ]}
+          >
+            {acceptedTerms && (
+              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+            )}
+          </View>
+        </TouchableOpacity>
+        <Text style={styles.consentText}>
+          I agree to the{' '}
+          <Text
+            style={styles.termsLink}
+            onPress={() => navigation.navigate('Policy')}
+          >
+            Terms of Service
+          </Text>{' '}
+          and{' '}
+          <Text
+            style={styles.termsLink}
+            onPress={() => navigation.navigate('Policy')}
+          >
+            Privacy Policy
+          </Text>
+        </Text>
+      </View>
+      {errors.terms && <Text style={styles.termsError}>{errors.terms}</Text>}
+
       <Button
         title="Create account"
         onPress={handleRegister}
@@ -278,16 +319,42 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: fonts.sizes.sm,
       textAlign: 'center',
     },
-    terms: {
-      color: colors.textMuted,
-      fontSize: fonts.sizes.sm,
-      textAlign: 'center',
-      marginTop: spacing.lg,
-      lineHeight: 20,
-      paddingHorizontal: spacing.md,
-    },
     termsLink: {
       color: colors.primary,
       fontWeight: '600',
+    },
+    consentRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    checkboxTouchable: {
+      marginTop: 2,
+    },
+    checkbox: {
+      width: 22,
+      height: 22,
+      borderRadius: borderRadius.sm,
+      borderWidth: 2,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    checkboxChecked: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    consentText: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: fonts.sizes.sm,
+      lineHeight: 20,
+    },
+    termsError: {
+      color: colors.error,
+      fontSize: fonts.sizes.sm,
+      marginTop: spacing.xs,
     },
   });

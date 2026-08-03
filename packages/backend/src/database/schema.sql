@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(20) DEFAULT 'bidder' CHECK (role IN ('bidder', 'seller', 'admin')),
     is_verified BOOLEAN DEFAULT false,
     is_active BOOLEAN DEFAULT true,
+    accepted_terms_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

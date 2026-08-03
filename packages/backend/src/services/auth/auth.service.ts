@@ -23,6 +23,12 @@ export const registerUser = async (
   data: UserRegistration
 ): Promise<{ user: User; verification_id: string }> => {
   return prisma.$transaction(async tx => {
+    if (data.accepted_terms !== true) {
+      throw new Error(
+        'You must accept the Terms of Service and Privacy Policy to create an account'
+      );
+    }
+
     // Check if user already exists
     const existingUser = await tx.user.findFirst({
       where: {
@@ -48,6 +54,7 @@ export const registerUser = async (
         fullName: data.full_name,
         passwordHash,
         role: roleForAccountType(data.account_type),
+        acceptedTermsAt: new Date(),
         wallet: {
           create: {
             balance: 1000, // Starting balance for testing

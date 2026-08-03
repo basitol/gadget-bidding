@@ -6,6 +6,7 @@ import {
   RegisterScreen,
   OtpVerificationScreen,
 } from '../screens/auth';
+import { PolicyScreen } from '../screens/profile';
 import { AppInterfaceType } from '../utils/roles';
 
 export type AuthStackParamList = {
@@ -18,6 +19,7 @@ export type AuthStackParamList = {
     isNewUser: boolean;
     interfaceType: AppInterfaceType;
   };
+  Policy: undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -38,6 +40,7 @@ export const AuthNavigator: React.FC = () => {
         name="OtpVerification"
         component={OtpVerificationScreen as any}
       />
+      <Stack.Screen name="Policy" component={PolicyScreen as any} />
     </Stack.Navigator>
   );
 };

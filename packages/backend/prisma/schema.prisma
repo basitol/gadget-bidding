@@ -19,6 +19,7 @@ model User {
   role         String    @default("bidder") @db.VarChar(20)
   isVerified   Boolean?  @default(false) @map("is_verified")
   isActive     Boolean?  @default(true) @map("is_active")
+  acceptedTermsAt DateTime? @map("accepted_terms_at") @db.Timestamp(6)
   createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 

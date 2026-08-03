@@ -23,6 +23,7 @@ interface AuthState {
       full_name: string;
       password: string;
       email?: string;
+      accepted_terms?: boolean;
     },
     interfaceType: AppInterfaceType
   ) => Promise<string>;

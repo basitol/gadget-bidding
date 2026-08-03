@@ -28,6 +28,11 @@ export const validateRegistration: ValidationChain[] = [
     .optional()
     .isIn(['buyer', 'seller'])
     .withMessage('Account type must be buyer or seller'),
+  body('accepted_terms')
+    .isBoolean({ loose: true })
+    .withMessage('You must accept the Terms of Service and Privacy Policy')
+    .custom(value => value === true)
+    .withMessage('You must accept the Terms of Service and Privacy Policy'),
 ];
 
 /**

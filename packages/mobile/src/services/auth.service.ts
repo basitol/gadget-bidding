@@ -10,6 +10,7 @@ export interface RegisterData {
   password: string;
   email?: string;
   account_type: AppInterfaceType;
+  accepted_terms?: boolean;
 }
 
 export interface LoginData {

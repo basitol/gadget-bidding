@@ -25,6 +25,7 @@ export interface UserRegistration {
   email?: string;
   password: string;
   account_type?: AccountType;
+  accepted_terms?: boolean;
 }
 
 export interface UserLogin {

@@ -11,7 +11,8 @@ import logger from '../../utils/logger';
  */
 export const register = async (req: Request, res: Response) => {
   try {
-    const { phone_number, email, full_name, password, account_type } = req.body;
+    const { phone_number, email, full_name, password, account_type, accepted_terms } =
+      req.body;
 
     const result = await authService.registerUser({
       phone_number,
@@ -19,6 +20,7 @@ export const register = async (req: Request, res: Response) => {
       full_name,
       password,
       account_type,
+      accepted_terms,
     });
 
     sendSuccess(
