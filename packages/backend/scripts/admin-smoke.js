@@ -67,8 +67,27 @@ const expectPaginated = (name, payload) => {
   );
 };
 
+const expectOptionalArray = (name, value) => {
+  assert(Array.isArray(value), `${name} is not an array`);
+};
+
 const smoke = async () => {
   const startedAt = Date.now();
+
+  process.stdout.write('• API health check ... ');
+  const health = await request('/api/v1/health');
+  assert(health.status, 'Health check did not return status');
+  assert(Array.isArray(health.checks), 'Health check did not return checks[]');
+  process.stdout.write('ok\n');
+
+  process.stdout.write('• API routes manifest ... ');
+  const routes = await request('/api/v1/routes');
+  assert(Array.isArray(routes.routes), 'Routes manifest did not return routes[]');
+  assert(
+    routes.routes.some(route => route.name === 'admin'),
+    'Routes manifest did not include admin route'
+  );
+  process.stdout.write('ok\n');
 
   process.stdout.write('• Admin login ... ');
   const login = await request('/auth/login', {
@@ -128,6 +147,37 @@ const smoke = async () => {
     process.stdout.write('ok\n');
   }
 
+  process.stdout.write('• Filtered users page ... ');
+  const sellers = await request('/admin/users?page=1&limit=5&role=seller', {}, token);
+  expectPaginated('filtered users', sellers);
+  assert(
+    sellers.data.every(user => user.role === 'seller'),
+    'Filtered users page returned a non-seller user'
+  );
+  process.stdout.write('ok\n');
+
+  process.stdout.write('• Filtered gadgets page ... ');
+  const pendingGadgets = await request(
+    '/admin/gadgets?page=1&limit=5&status=pending',
+    {},
+    token
+  );
+  expectPaginated('filtered gadgets', pendingGadgets);
+  assert(
+    pendingGadgets.data.every(gadget => gadget.status === 'pending'),
+    'Filtered gadgets page returned a non-pending gadget'
+  );
+  process.stdout.write('ok\n');
+
+  process.stdout.write('• Filtered orders page ... ');
+  const pendingOrders = await request(
+    '/admin/orders?page=1&limit=5&payment_status=pending',
+    {},
+    token
+  );
+  expectPaginated('filtered orders', pendingOrders);
+  process.stdout.write('ok\n');
+
   process.stdout.write('• Notification unread count ... ');
   const unread = await request('/notifications/unread-count', {}, token);
   assert(
@@ -153,6 +203,7 @@ const smoke = async () => {
       Array.isArray(profile.data?.latest_gadgets),
       'Seller profile latest_gadgets missing'
     );
+    expectOptionalArray('seller profile risk_flags', profile.data?.user?.risk_flags);
     process.stdout.write('ok\n');
   } else {
     process.stdout.write(
@@ -169,12 +220,25 @@ const smoke = async () => {
       token
     );
     expectPaginated('support messages', messages);
+    assert(
+      Array.isArray(messages.data),
+      'Support messages did not return an array'
+    );
     process.stdout.write('ok\n');
   } else {
     process.stdout.write(
       '• Support messages page ... skipped (no support thread)\n'
     );
   }
+
+  process.stdout.write('• Notification payload shape ... ');
+  const notifications = pageResults.get('notifications')?.data || [];
+  notifications.forEach(notification => {
+    assert(notification.id, 'Notification id missing');
+    assert(notification.title, 'Notification title missing');
+    assert(notification.message, 'Notification message missing');
+  });
+  process.stdout.write('ok\n');
 
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
   process.stdout.write(`Admin launch smoke passed in ${elapsed}s\n`);

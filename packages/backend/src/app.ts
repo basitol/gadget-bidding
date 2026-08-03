@@ -6,6 +6,8 @@ import path from 'path';
 import config from './config';
 import logger from './utils/logger';
 import { sendError } from './utils/response';
+import { prisma } from './config/prisma';
+import redisClient from './config/redis';
 import {
   globalRateLimiter,
   pollingRateLimiter,
@@ -26,6 +28,51 @@ import adminRoutes from './api/routes/admin.routes';
 import sellerRoutes from './api/routes/seller.routes';
 
 const app: Application = express();
+
+const apiRouteGroups = [
+  { name: 'auth', path: `/api/${config.apiVersion}/auth` },
+  { name: 'wallet', path: `/api/${config.apiVersion}/wallet` },
+  { name: 'gadgets', path: `/api/${config.apiVersion}/gadgets` },
+  { name: 'auctions', path: `/api/${config.apiVersion}/auctions` },
+  { name: 'bids', path: `/api/${config.apiVersion}/bids` },
+  { name: 'orders', path: `/api/${config.apiVersion}/orders` },
+  { name: 'addresses', path: `/api/${config.apiVersion}/addresses` },
+  {
+    name: 'notifications',
+    path: `/api/${config.apiVersion}/notifications`,
+  },
+  { name: 'support', path: `/api/${config.apiVersion}/support` },
+  { name: 'admin', path: `/api/${config.apiVersion}/admin` },
+  { name: 'seller', path: `/api/${config.apiVersion}/seller` },
+  { name: 'webhooks', path: `/api/${config.apiVersion}/webhooks` },
+] as const;
+
+const getServiceChecks = async () => {
+  const checks = [
+    {
+      name: 'api',
+      status: 'ok',
+    },
+  ];
+
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    checks.push({ name: 'database', status: 'ok' });
+  } catch (error) {
+    checks.push({ name: 'database', status: 'degraded' });
+    logger.warn('Health check database probe failed:', error);
+  }
+
+  try {
+    await redisClient.ping();
+    checks.push({ name: 'redis', status: 'ok' });
+  } catch (error) {
+    checks.push({ name: 'redis', status: 'degraded' });
+    logger.warn('Health check redis probe failed:', error);
+  }
+
+  return checks;
+};
 
 // Trust reverse proxy in production (rate limits, secure cookies)
 if (config.nodeEnv === 'production') {
@@ -80,6 +127,26 @@ app.get('/health', (req: Request, res: Response) => {
       uptime: process.uptime(),
       environment: config.nodeEnv,
     }),
+  });
+});
+
+app.get(`/api/${config.apiVersion}/health`, async (req: Request, res: Response) => {
+  const checks = await getServiceChecks();
+  const unhealthy = checks.some(check => check.status !== 'ok');
+
+  res.status(unhealthy ? 503 : 200).json({
+    status: unhealthy ? 'degraded' : 'ok',
+    timestamp: new Date().toISOString(),
+    version: config.apiVersion,
+    checks,
+  });
+});
+
+app.get(`/api/${config.apiVersion}/routes`, (req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    version: config.apiVersion,
+    routes: apiRouteGroups,
   });
 });
 
