@@ -417,6 +417,17 @@ export const offerOrderToSecondPlaceBidder = async (
     const platformFee = (secondAmount * PLATFORM_FEE_PERCENTAGE) / 100;
     const sellerPayout = secondAmount - platformFee;
 
+    // Void the displaced buyer's pending payment references for this order so
+    // a stale reference can never settle the reassigned order via webhook or
+    // the client verify endpoint.
+    await tx.paymentTransaction.updateMany({
+      where: {
+        metadata: { path: ['order_id'], equals: orderId },
+        status: 'pending',
+      },
+      data: { status: 'failed', updatedAt: new Date() },
+    });
+
     await tx.bid.updateMany({
       where: { auctionId: order.auctionId },
       data: { isWinning: false },
@@ -568,6 +579,12 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
 
     const wallet = await tx.wallet.findUnique({
       where: { userId: order.buyerId! },
+      include: {
+        bidHolds: {
+          where: { status: 'held' },
+          select: { id: true, amount: true },
+        },
+      },
     });
 
     if (!wallet) {
@@ -581,9 +598,20 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
     const balanceBefore = toNumber(wallet.balance);
     const orderTotal = toNumber(order.totalAmount);
 
-    if (balanceBefore < orderTotal) {
+    // Other active holds stay escrowed, so they must not be spendable here.
+    // The winning bid's own hold is released by this payment, so it is excluded.
+    const otherHeldAmount = wallet.bidHolds.reduce((sum, hold) => {
+      if (winningBidWithHold?.bidHold && hold.id === winningBidWithHold.bidHold.id) {
+        return sum;
+      }
+      return sum + toNumber(hold.amount);
+    }, 0);
+
+    const availableBalance = balanceBefore - otherHeldAmount;
+
+    if (availableBalance < orderTotal) {
       throw new Error(
-        `Insufficient wallet balance. You need ₦${orderTotal.toLocaleString()} to pay for this order.`
+        `Insufficient available balance. You need ₦${orderTotal.toLocaleString()} to pay for this order.`
       );
     }
 
@@ -1240,8 +1268,19 @@ export const initializeOrderPayment = async (
  */
 export const verifyOrderPayment = async (
   orderId: string,
+  buyerId: string,
   reference: string
 ): Promise<Order> => {
+  // The order must belong to the authenticated user.
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, buyerId },
+    select: { id: true },
+  });
+
+  if (!order) {
+    throw new Error('Order not found or unauthorized');
+  }
+
   // Verify payment with Paystack
   const verification = await paystackService.verifyPayment(reference);
 
@@ -1295,15 +1334,43 @@ export const processOrderPayment = async (
       return transformOrder(order);
     }
 
-    // Update payment transaction (use 'success' as per DB constraint)
-    await tx.paymentTransaction.updateMany({
+    // Locate the payment transaction for this reference and validate it
+    // against the CURRENT order state. This prevents a stale reference from
+    // an earlier buyer (e.g. after second-place reassignment) from settling
+    // the order, and catches amount drift between initialization and payment.
+    const paymentTx = await tx.paymentTransaction.findFirst({
       where: { gatewayReference: reference },
-      data: {
-        status: 'success',
-        gatewayResponse: gatewayResponse || {},
-        updatedAt: new Date(),
-      },
     });
+
+    if (paymentTx) {
+      const txMetadata = (paymentTx.metadata as Record<string, unknown>) || {};
+
+      if (txMetadata.purpose !== 'order_payment' || txMetadata.order_id !== orderId) {
+        throw new Error('Payment reference does not match this order');
+      }
+
+      if (paymentTx.userId && paymentTx.userId !== order.buyerId) {
+        throw new Error('Payment reference does not belong to the order buyer');
+      }
+
+      const currentTotal = toNumber(order.totalAmount);
+      if (Math.abs(toNumber(paymentTx.amount) - currentTotal) > 0.01) {
+        throw new Error(
+          `Order payment amount mismatch for ${reference}: expected ${currentTotal}, got ${toNumber(paymentTx.amount)}`
+        );
+      }
+
+      await tx.paymentTransaction.update({
+        where: { id: paymentTx.id },
+        data: {
+          status: 'success',
+          gatewayResponse: gatewayResponse || {},
+          updatedAt: new Date(),
+        },
+      });
+    } else {
+      logger.warn(`No payment transaction found for reference: ${reference}`);
+    }
 
     // Release any bid holds for this order (if they exist)
     const winningBid = await tx.bid.findFirst({

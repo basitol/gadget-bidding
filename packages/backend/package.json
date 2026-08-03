@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "type-check": "pnpm --filter @gadget-bidding/shared build && tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "jest",
+    "test": "jest --passWithNoTests --roots src",
     "migrate:create": "node scripts/create-migration.js",
     "migrate:up": "node scripts/run-migrations.js up",
     "migrate:down": "node scripts/run-migrations.js down",

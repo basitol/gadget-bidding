@@ -7,6 +7,22 @@ import { PaystackInitializeResponse } from '@gadget-bidding/shared';
 const PAYSTACK_BASE_URL = 'https://api.paystack.co';
 
 /**
+ * Log a gateway error without leaking sensitive response bodies
+ * (customer names, account numbers, card metadata) to the logs.
+ */
+const logGatewayError = (context: string, error: unknown): void => {
+  const err = error as {
+    response?: { status?: number; data?: { message?: string } };
+    message?: string;
+  };
+  logger.error(
+    `${context}: status=${err.response?.status ?? 'n/a'} message=${
+      err.response?.data?.message || err.message || 'Unknown gateway error'
+    }`
+  );
+};
+
+/**
  * Initialize Paystack payment
  */
 export const initializePayment = async (
@@ -16,7 +32,7 @@ export const initializePayment = async (
   metadata?: Record<string, any>
 ): Promise<PaystackInitializeResponse> => {
   try {
-    const reference = `PAY-${Date.now()}-${userId.substring(0, 8)}`;
+    const reference = `PAY-${crypto.randomUUID()}`;
 
     const response = await axios.post(
       `${PAYSTACK_BASE_URL}/transaction/initialize`,
@@ -51,7 +67,7 @@ export const initializePayment = async (
 
     throw new Error('Failed to initialize payment');
   } catch (error: any) {
-    logger.error('Paystack initialization error:', error.response?.data || error.message);
+    logGatewayError('Paystack initialization error', error);
     throw new Error(error.response?.data?.message || 'Failed to initialize payment');
   }
 };
@@ -100,7 +116,7 @@ export const verifyPayment = async (
       gatewayResponse: response.data,
     };
   } catch (error: any) {
-    logger.error('Paystack verification error:', error.response?.data || error.message);
+    logGatewayError('Paystack verification error', error);
     throw new Error('Failed to verify payment');
   }
 };
@@ -165,7 +181,7 @@ export const createTransferRecipient = async (
 
     throw new Error('Failed to create transfer recipient');
   } catch (error: any) {
-    logger.error('Create recipient error:', error.response?.data || error.message);
+    logGatewayError('Create recipient error', error);
     throw new Error(error.response?.data?.message || 'Failed to create recipient');
   }
 };
@@ -208,7 +224,7 @@ export const initiateTransfer = async (
 
     throw new Error('Failed to initiate transfer');
   } catch (error: any) {
-    logger.error('Transfer initiation error:', error.response?.data || error.message);
+    logGatewayError('Transfer initiation error', error);
     throw new Error(error.response?.data?.message || 'Failed to initiate transfer');
   }
 };
@@ -237,7 +253,7 @@ export const listBanks = async (): Promise<Array<{ id: number; name: string; cod
 
     return [];
   } catch (error: any) {
-    logger.error('List banks error:', error.response?.data || error.message);
+    logGatewayError('List banks error', error);
     return [];
   }
 };
@@ -268,7 +284,7 @@ export const resolveAccountNumber = async (
 
     throw new Error('Could not resolve account number');
   } catch (error: any) {
-    logger.error('Resolve account error:', error.response?.data || error.message);
+    logGatewayError('Resolve account error', error);
     throw new Error(error.response?.data?.message || 'Invalid account details');
   }
 };

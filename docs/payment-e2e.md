@@ -26,6 +26,12 @@ PAYMENT_E2E_DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/gadget_bidding_pa
 
 The script refuses to run unless `PAYMENT_E2E_DATABASE_URL` contains `_payment_e2e`.
 
+Recommended order for launch validation:
+
+1. Run `pnpm test:payments:e2e` against the throwaway database.
+2. Run `pnpm smoke:admin` against staging or production API.
+3. Complete the manual Paystack sandbox checks below.
+
 ## Paystack sandbox boundary
 
 The harness validates internal wallet/order/refund/payout state transitions by simulating successful Paystack callbacks. Before launch, also run one manual Paystack sandbox card transaction for:

@@ -148,7 +148,7 @@ export function validateEnvironment(): void {
     );
   }
 
-  if (config.nodeEnv === 'production') {
+  if (config.isDeployed) {
     if (isInsecureSecret(config.jwt.secret)) {
       errors.push(
         'JWT_SECRET must be set to a strong random value (48+ chars) in production'

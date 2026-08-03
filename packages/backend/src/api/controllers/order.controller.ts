@@ -340,7 +340,11 @@ export const verifyPayment = async (req: Request, res: Response) => {
       return sendError(res, 'Payment reference is required', 400);
     }
 
-    const order = await orderService.verifyOrderPayment(orderId, reference);
+    const order = await orderService.verifyOrderPayment(
+      orderId,
+      req.user.user_id,
+      reference
+    );
 
     sendSuccess(res, order, 'Payment verified successfully');
   } catch (error: any) {

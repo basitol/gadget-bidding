@@ -122,5 +122,5 @@ async function handleTransferSuccess(data: Record<string, unknown>) {
 }
 
 async function handleTransferFailed(data: Record<string, unknown>) {
-  logger.error(`Transfer failed: ${data.reference}`, data);
+  logger.error(`Transfer failed: ${data.reference}`);
 }

@@ -16,12 +16,19 @@ const toNumber = (value: any): number => {
 };
 
 // Helper to transform Prisma auction to shared Auction type
-const transformAuction = (auction: any): Auction => ({
+// reserve_price is private (only the seller/admin should see it), so it is
+// omitted by default and included explicitly for owner-facing responses.
+const transformAuction = (
+  auction: any,
+  options: { includeReserve?: boolean } = {}
+): Auction => ({
   id: auction.id,
   gadget_id: auction.gadgetId,
   seller_id: auction.sellerId,
   starting_price: toNumber(auction.startingPrice),
-  reserve_price: toNumber(auction.reservePrice),
+  ...(options.includeReserve
+    ? { reserve_price: toNumber(auction.reservePrice) }
+    : {}),
   current_price: toNumber(auction.currentPrice),
   bid_increment: toNumber(auction.bidIncrement),
   buy_now_price: toNumber(auction.buyNowPrice),
@@ -139,7 +146,7 @@ export const createAuction = async (
 
     logger.info(`Auction created: ${auction.id} by ${sellerId}`);
 
-    return transformAuction(auction);
+    return transformAuction(auction, { includeReserve: true });
   });
 
   notificationService
@@ -215,6 +222,7 @@ export const getAuctions = async (filters: {
   sort_by?: string;
   page?: number;
   limit?: number;
+  includeReserve?: boolean;
 }): Promise<{ auctions: AuctionWithGadget[]; total: number }> => {
   const page = filters.page || 1;
   const limit = filters.limit || 20;
@@ -314,7 +322,7 @@ export const getAuctions = async (filters: {
       : 0;
 
     return {
-      ...transformAuction(auction),
+      ...transformAuction(auction, { includeReserve: filters.includeReserve }),
       seconds_remaining: secondsRemaining,
       gadget: auction.gadget
         ? {
@@ -392,7 +400,7 @@ export const updateAuction = async (
 
     logger.info(`Auction updated: ${auctionId}`);
 
-    return transformAuction(updatedAuction);
+    return transformAuction(updatedAuction, { includeReserve: true });
   });
 };
 
@@ -460,7 +468,7 @@ export const getSellerAuctions = async (
   page: number = 1,
   limit: number = 20
 ): Promise<{ auctions: AuctionWithGadget[]; total: number }> => {
-  return getAuctions({ seller_id: sellerId, page, limit });
+  return getAuctions({ seller_id: sellerId, page, limit, includeReserve: true });
 };
 
 /**

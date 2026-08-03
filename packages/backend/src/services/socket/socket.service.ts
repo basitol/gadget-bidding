@@ -20,7 +20,7 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
     cors: {
       origin:
-        config.nodeEnv === 'production'
+        config.isDeployed
           ? [config.frontendUrl, config.mobileAppUrl]
           : '*',
       methods: ['GET', 'POST'],

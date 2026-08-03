@@ -5,8 +5,12 @@ import path from 'path';
 const backendEnvPath = path.resolve(__dirname, '../../.env');
 dotenv.config({ path: backendEnvPath });
 
-const isProduction = process.env.NODE_ENV === 'production';
 const appEnv = process.env.APP_ENV || process.env.NODE_ENV || 'development';
+
+// Deployed (staging/production) services must fail fast on missing secrets and
+// enforce strict security settings regardless of the NODE_ENV value, since
+// Render does not set NODE_ENV automatically. APP_ENV is the source of truth.
+const isDeployed = ['staging', 'production'].includes(appEnv);
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -20,6 +24,7 @@ interface Config {
   // Server
   appEnv: string;
   nodeEnv: string;
+  isDeployed: boolean;
   port: number;
   apiVersion: string;
 
@@ -119,6 +124,7 @@ const config: Config = {
   // Server
   appEnv,
   nodeEnv: process.env.NODE_ENV || 'development',
+  isDeployed,
   port: parseInt(process.env.PORT || '3000', 10),
   apiVersion: process.env.API_VERSION || 'v1',
 
@@ -143,10 +149,10 @@ const config: Config = {
 
   // JWT
   jwt: {
-    secret: isProduction
+    secret: isDeployed
       ? requireEnv('JWT_SECRET')
       : process.env.JWT_SECRET || 'jwt_secret_change_this',
-    refreshSecret: isProduction
+    refreshSecret: isDeployed
       ? requireEnv('JWT_REFRESH_SECRET')
       : process.env.JWT_REFRESH_SECRET || 'refresh_secret_change_this',
     accessExpiry: process.env.JWT_ACCESS_EXPIRY || '24h', // Increased for development

@@ -14,7 +14,7 @@ export function safeErrorMessage(
     logger.error(String(error));
   }
 
-  if (config.nodeEnv === 'production') {
+  if (config.isDeployed) {
     return fallback;
   }
 

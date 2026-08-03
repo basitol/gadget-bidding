@@ -75,9 +75,16 @@ const smoke = async () => {
   const startedAt = Date.now();
 
   process.stdout.write('• API health check ... ');
-  const health = await request('/api/v1/health');
-  assert(health.status, 'Health check did not return status');
-  assert(Array.isArray(health.checks), 'Health check did not return checks[]');
+  let health;
+  try {
+    const healthz = await request('/healthz');
+    assert(healthz === 'ok' || healthz.ok === 'ok', 'Healthz did not return ok');
+    health = healthz;
+  } catch (error) {
+    health = await request('/api/v1/health');
+    assert(health.status, 'Health check did not return status');
+    assert(Array.isArray(health.checks), 'Health check did not return checks[]');
+  }
   process.stdout.write('ok\n');
 
   process.stdout.write('• API routes manifest ... ');

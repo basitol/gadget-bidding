@@ -175,6 +175,26 @@ export function clearSession() {
   disconnectAdminSocket();
 }
 
+export async function getApiHealth() {
+  try {
+    const res = await fetch(`${API_BASE.replace(/\/api\/v1$/, '')}/healthz`);
+    if (res.ok) {
+      const text = await res.text();
+      return { endpoint: '/healthz', ok: text === 'ok', raw: text };
+    }
+  } catch {
+    // fall through to richer health check
+  }
+
+  const res = await fetch(`${API_BASE}/health`);
+  const json = await res.json().catch(() => ({}));
+  return {
+    endpoint: '/api/v1/health',
+    ok: res.ok && json.status === 'ok',
+    raw: json,
+  };
+}
+
 export function getStoredUser(): AdminUser | null {
   const raw = localStorage.getItem('gb_admin_user');
   if (!raw) return null;

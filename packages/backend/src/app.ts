@@ -74,15 +74,15 @@ const getServiceChecks = async () => {
   return checks;
 };
 
-// Trust reverse proxy in production (rate limits, secure cookies)
-if (config.nodeEnv === 'production') {
+// Trust reverse proxy in deployed environments (rate limits, secure cookies)
+if (config.isDeployed) {
   app.set('trust proxy', 1);
 }
 
 // Security headers
 app.use(
   helmet({
-    contentSecurityPolicy: config.nodeEnv === 'production',
+    contentSecurityPolicy: config.isDeployed,
     crossOriginEmbedderPolicy: false,
   })
 );
@@ -90,11 +90,10 @@ app.use(
 // CORS
 app.use(
   cors({
-    origin:
-      config.nodeEnv === 'production'
-        ? [config.frontendUrl, config.mobileAppUrl]
-        : true,
-    credentials: config.nodeEnv === 'production',
+    origin: config.isDeployed
+      ? [config.frontendUrl, config.mobileAppUrl]
+      : true,
+    credentials: config.isDeployed,
   })
 );
 
@@ -128,6 +127,10 @@ app.get('/health', (req: Request, res: Response) => {
       environment: config.nodeEnv,
     }),
   });
+});
+
+app.get('/healthz', (req: Request, res: Response) => {
+  res.status(200).send('ok');
 });
 
 app.get(`/api/${config.apiVersion}/health`, async (req: Request, res: Response) => {
@@ -186,11 +189,11 @@ app.use((req: Request, res: Response) => {
   sendError(res, 'Route not found', 404);
 });
 
-// Global error handler — no stack traces in production
+// Global error handler — no stack traces in deployed environments
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   logger.error('Unhandled error:', err);
 
-  if (config.nodeEnv === 'development') {
+  if (!config.isDeployed) {
     return sendError(res, err.message, 500);
   }
 

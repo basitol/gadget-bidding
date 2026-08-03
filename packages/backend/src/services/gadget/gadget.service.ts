@@ -60,7 +60,7 @@ export const getGadgetById = async (
 ): Promise<Gadget | null> => {
   const result = await query(
     `SELECT g.*, gc.name as category_name, gc.slug as category_slug,
-            u.full_name as seller_name, u.phone_number as seller_phone
+            u.full_name as seller_name
      FROM gadgets g
      LEFT JOIN gadget_categories gc ON g.category_id = gc.id
      LEFT JOIN users u ON g.seller_id = u.id
