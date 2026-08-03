@@ -1,0 +1,140 @@
+# Render Blueprint — GadgetBid backend (staging)
+#
+# Apply via the Render dashboard ("New Blueprint") or:
+#   render blueprint launch --branch <branch>
+#
+# This configures the STAGING service only. For production, duplicate the
+# service with a new name, APP_ENV=production, live Paystack keys, and a
+# production Postgres database.
+#
+# After the first deploy, fill in the `sync: false` secrets in the Render
+# dashboard (they are created empty on purpose). See docs/production-env-audit.md
+# and docs/launch-checklist.md for the full manual checklist.
+#
+# Note: Render does not set NODE_ENV, so APP_ENV is the source of truth for the
+# backend's security gates (see packages/backend/src/config/index.ts).
+
+services:
+  - type: web
+    name: gadget-bid-backend-staging
+    runtime: node
+    rootDir: packages/backend
+    plan: starter
+    region: frankfurt # EU region; adjust to your team's preference
+    healthCheckPath: /healthz
+    buildCommand: >-
+      pnpm install --frozen-lockfile &&
+      pnpm prisma:generate &&
+      pnpm --filter @gadget-bidding/shared build &&
+      pnpm build
+    # Prisma migrations run after the database below is provisioned and before
+    # the service accepts traffic. Equivalent to `pnpm db:migrate`.
+    preDeployCommand: pnpm db:migrate
+    startCommand: node dist/index.js
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: NODE_ENV
+        value: production
+      - key: API_VERSION
+        value: v1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gadget-bid-db-staging
+          property: connectionString
+      # Redis — create an external Redis (e.g. Render Redis or Upstash) and set
+      # the full URL, e.g. rediss://...:6379. Socket.io and Bull queues fail
+      # gracefully without it, but use it on staging to match production.
+      - key: REDIS_URL
+        sync: false
+      # Strong, distinct secrets: openssl rand -base64 48 (must be 48+ chars
+      # and different from each other — enforced by validateEnvironment()).
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: JWT_ACCESS_EXPIRY
+        value: 15m
+      - key: JWT_REFRESH_EXPIRY
+        value: 30d
+      # Staging uses Paystack TEST keys (sk_test_/pk_test_).
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_URL
+        value: https://gadget-bid-backend-staging.onrender.com/api/v1/webhooks/paystack
+      - key: TERMII_API_KEY
+        sync: false
+      - key: TERMII_SENDER_ID
+        value: N-Alert
+      - key: TERMII_API_URL
+        value: https://v3.api.termii.com/api
+      # Staging uploads to Cloudinary (required in deployed mode).
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # FRONTEND_URL is the admin dashboard (Vercel), must be HTTPS.
+      - key: FRONTEND_URL
+        sync: false
+      - key: MOBILE_APP_URL
+        value: gadgetbid://
+      - key: LOG_LEVEL
+        value: info
+      # Platform settings
+      - key: PLATFORM_FEE_PERCENTAGE
+        value: "5"
+      - key: MIN_BID_INCREMENT
+        value: "100"
+      - key: DEFAULT_AUCTION_DURATION_HOURS
+        value: "24"
+      - key: AUTO_EXTEND_MINUTES
+        value: "5"
+      # Rate limits (kept below the deployed thresholds in validateEnvironment())
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "100"
+      - key: RATE_LIMIT_READ_MAX_REQUESTS
+        value: "1000"
+      - key: RATE_LIMIT_WRITE_MAX_REQUESTS
+        value: "300"
+      - key: RATE_LIMIT_AUTH_MAX_REQUESTS
+        value: "20"
+      - key: RATE_LIMIT_AUTH_SESSION_MAX_REQUESTS
+        value: "120"
+      - key: RATE_LIMIT_OTP_MAX_REQUESTS
+        value: "6"
+      - key: RATE_LIMIT_BID_MAX_REQUESTS
+        value: "60"
+      - key: RATE_LIMIT_WALLET_FUNDING_MAX_REQUESTS
+        value: "10"
+      - key: RATE_LIMIT_WALLET_WITHDRAWAL_MAX_REQUESTS
+        value: "10"
+      - key: RATE_LIMIT_PAYMENT_VERIFICATION_MAX_REQUESTS
+        value: "60"
+      - key: RATE_LIMIT_SUPPORT_MESSAGE_MAX_REQUESTS
+        value: "30"
+      - key: RATE_LIMIT_NOTIFICATION_MUTATION_MAX_REQUESTS
+        value: "120"
+      - key: RATE_LIMIT_ADMIN_MUTATION_MAX_REQUESTS
+        value: "120"
+      # Security
+      - key: BCRYPT_SALT_ROUNDS
+        value: "10"
+      - key: OTP_EXPIRY_MINUTES
+        value: "10"
+    # Local fallback uploads dir (Cloudinary is primary on staging/production).
+    disk:
+      name: uploads
+      mountPath: uploads
+      sizeGB: 1
+
+databases:
+  - name: gadget-bid-db-staging
+    plan: starter
+    databaseName: gadget_bidding
+    user: gadget_bidding
