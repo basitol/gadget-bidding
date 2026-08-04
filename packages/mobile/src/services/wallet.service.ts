@@ -9,6 +9,7 @@ import {
 export interface InitiateDepositData {
   amount: number;
   payment_method: 'paystack' | 'flutterwave' | 'bank_transfer';
+  email?: string;
 }
 
 export interface InitiateWithdrawalData {

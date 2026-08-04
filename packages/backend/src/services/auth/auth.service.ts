@@ -58,7 +58,7 @@ export const registerUser = async (
         acceptedTermsAt: new Date(),
         wallet: {
           create: {
-            balance: 1000, // Starting balance for testing
+            balance: 0,
             currency: 'NGN',
           },
         },

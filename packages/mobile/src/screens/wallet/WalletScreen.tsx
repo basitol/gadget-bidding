@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -23,7 +23,7 @@ import {
   LoadingScreen,
 } from '../../components';
 import { useIsTabRoot } from '../../hooks';
-import { useWalletStore } from '../../store';
+import { useAuthStore, useWalletStore } from '../../store';
 import { walletService } from '../../services';
 import {
   formatCurrency,
@@ -42,6 +42,8 @@ export const WalletScreen: React.FC = () => {
   const [fundAmount, setFundAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [pendingDeposit, setPendingDeposit] = useState<string | null>(null);
+  const isVerifyingRef = useRef(false);
 
   const {
     wallet,
@@ -54,10 +56,35 @@ export const WalletScreen: React.FC = () => {
     loadMoreTransactions,
     refreshWallet,
   } = useWalletStore();
+  const userEmail = useAuthStore(state => state.user?.email);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!pendingDeposit || isVerifyingRef.current) return;
+      isVerifyingRef.current = true;
+      (async () => {
+        try {
+          const res = await walletService.verifyDeposit(pendingDeposit);
+          if (res.data) {
+            setPendingDeposit(null);
+            await refreshWallet();
+            Alert.alert(
+              'Payment Confirmed',
+              'Your wallet has been credited. Your new balance is available now.'
+            );
+          }
+        } catch (error) {
+          // Not yet paid or payment still processing — retry next focus
+        } finally {
+          isVerifyingRef.current = false;
+        }
+      })();
+    }, [pendingDeposit, refreshWallet])
+  );
 
   const loadData = async () => {
     await Promise.all([fetchWallet(), fetchTransactions()]);
@@ -72,15 +99,26 @@ export const WalletScreen: React.FC = () => {
 
     setIsProcessing(true);
     try {
+      if (!userEmail) {
+        Alert.alert(
+          'Missing Email',
+          'Please add an email to your account before funding your wallet.'
+        );
+        return;
+      }
+
       const response = await walletService.initiateDeposit({
         amount,
         payment_method: 'paystack',
+        email: userEmail,
       });
 
       setShowFundModal(false);
       setFundAmount('');
 
       if (response.data.authorization_url) {
+        // Remember the reference so we can verify once the browser returns
+        setPendingDeposit(response.data.reference);
         // Open payment URL
         await Linking.openURL(response.data.authorization_url);
         Alert.alert(
