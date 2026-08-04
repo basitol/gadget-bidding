@@ -75,6 +75,7 @@ export interface WalletTransaction {
   id: string;
   wallet_id: string;
   transaction_type: TransactionType;
+  type?: TransactionType;
   amount: number;
   balance_before: number;
   balance_after: number;

@@ -30,11 +30,16 @@ import {
   type GadgetSpecifications,
 } from '@gadget-bidding/shared';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
-import { Button, Input } from '../../components';
+import { Button, Input, OptionPicker } from '../../components';
 import { auctionService, GadgetCategory } from '../../services';
 import { Gadget } from '../../types';
 import { toJpegUri } from '../../utils/images';
-import { formatCurrency } from '../../utils';
+import {
+  formatCurrency,
+  suggestedNamesForCategoryAndBrand,
+  categoryKeyForName,
+  BRAND_SUGGESTIONS,
+} from '../../utils';
 import { PLATFORM_FEE_PERCENTAGE } from '@gadget-bidding/shared';
 
 const MAX_PHOTOS = 5;
@@ -229,6 +234,15 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
   const selectedCategory = useMemo(
     () => categories.find(c => c.id === categoryId),
     [categories, categoryId]
+  );
+
+  const modelOptions = useMemo(
+    () =>
+      suggestedNamesForCategoryAndBrand(
+        categoryKeyForName(selectedCategory?.name),
+        brand
+      ),
+    [selectedCategory, brand]
   );
 
   const startingAmount = parseMoneyInput(startingPrice);
@@ -700,18 +714,20 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
           <Text style={styles.sectionSubtitle}>
             Brand and model identify the device
           </Text>
-          <Input
+          <OptionPicker
             label="Brand"
             placeholder="e.g., Apple"
             value={brand}
-            onChangeText={setBrand}
+            options={BRAND_SUGGESTIONS}
+            onSelect={setBrand}
             error={errors.brand}
           />
-          <Input
+          <OptionPicker
             label="Model"
             placeholder="e.g., iPhone 15 Pro Max"
             value={model}
-            onChangeText={setModel}
+            options={modelOptions}
+            onSelect={setModel}
             error={errors.model}
           />
         </View>

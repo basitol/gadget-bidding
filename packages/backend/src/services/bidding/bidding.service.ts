@@ -88,7 +88,7 @@ export const placeBid = async (
       data: { isWinning: false, status: 'outbid' },
     });
 
-    // Release previous bid hold for this bidder (if they had one)
+    // Check if this bidder already has an active bid hold on this auction
     const previousBidHold = await tx.bidHold.findFirst({
       where: {
         bid: { auctionId: data.auction_id, bidderId },
@@ -97,6 +97,7 @@ export const placeBid = async (
       include: { wallet: true },
     });
 
+    /* Unused redundant release code:
     if (previousBidHold) {
       await tx.bidHold.update({
         where: { id: previousBidHold.id },
@@ -115,6 +116,7 @@ export const placeBid = async (
         },
       });
     }
+    */
 
     // Get wallet with held amounts
     const wallet = await tx.wallet.findUnique({
@@ -138,7 +140,7 @@ export const placeBid = async (
     );
     const actualAvailableBalance = balance - heldAmount;
 
-    if (actualAvailableBalance < BID_COMMITMENT_AMOUNT) {
+    if (!previousBidHold && actualAvailableBalance < BID_COMMITMENT_AMOUNT) {
       throw new Error(
         `You need at least ₦${BID_COMMITMENT_AMOUNT.toLocaleString()} available in your wallet to bid. Available: ₦${actualAvailableBalance.toLocaleString()}`
       );
@@ -156,28 +158,35 @@ export const placeBid = async (
       },
     });
 
-    // Create bid hold
-    await tx.bidHold.create({
-      data: {
-        bidId: bid.id,
-        walletId: wallet.id,
-        amount: BID_COMMITMENT_AMOUNT,
-        status: 'held',
-      },
-    });
+    if (previousBidHold) {
+      // User already has a ₦1,000 hold active for this auction — re-link to new bid without creating duplicate transactions
+      await tx.bidHold.update({
+        where: { id: previousBidHold.id },
+        data: { bidId: bid.id },
+      });
+    } else {
+      // Create new bid hold and transaction
+      await tx.bidHold.create({
+        data: {
+          bidId: bid.id,
+          walletId: wallet.id,
+          amount: BID_COMMITMENT_AMOUNT,
+          status: 'held',
+        },
+      });
 
-    // Create transaction record for the hold
-    await tx.walletTransaction.create({
-      data: {
-        walletId: wallet.id,
-        transactionType: 'bid_hold',
-        amount: BID_COMMITMENT_AMOUNT,
-        balanceBefore: balance,
-        balanceAfter: balance,
-        description: 'Commitment hold for bid on auction',
-        status: 'completed',
-      },
-    });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          transactionType: 'bid_hold',
+          amount: BID_COMMITMENT_AMOUNT,
+          balanceBefore: balance,
+          balanceAfter: balance,
+          description: 'Commitment hold for bid on auction',
+          status: 'completed',
+        },
+      });
+    }
 
     // Update auction current price and bid count
     await tx.auction.update({

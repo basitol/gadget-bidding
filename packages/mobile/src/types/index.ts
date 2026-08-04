@@ -41,7 +41,7 @@ export interface Wallet {
 export interface WalletTransaction {
   id: string;
   wallet_id: string;
-  type:
+  type?:
     | 'deposit'
     | 'withdrawal'
     | 'bid_hold'
@@ -49,6 +49,7 @@ export interface WalletTransaction {
     | 'bid_charge'
     | 'sale_credit'
     | 'refund';
+  transaction_type?: string;
   amount: number;
   balance_before: number;
   balance_after: number;

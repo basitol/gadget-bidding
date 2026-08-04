@@ -26,6 +26,7 @@ import notificationRoutes from './api/routes/notification.routes';
 import supportRoutes from './api/routes/support.routes';
 import adminRoutes from './api/routes/admin.routes';
 import sellerRoutes from './api/routes/seller.routes';
+import * as walletController from './api/controllers/wallet.controller';
 
 const app: Application = express();
 
@@ -161,6 +162,9 @@ app.get(`/api/${config.apiVersion}`, (req: Request, res: Response) => {
     status: 'running',
   });
 });
+
+// Payment redirect fallback route for browser Paystack callbacks
+app.get('/wallet/verify', walletController.handlePaymentCallback);
 
 // Local gadget image uploads (dev / without Cloudinary)
 app.use(

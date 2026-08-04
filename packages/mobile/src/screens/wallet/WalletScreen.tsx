@@ -11,6 +11,7 @@ import {
   Alert,
   FlatList,
   Linking,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -34,7 +35,7 @@ import {
 } from '../../utils';
 import { WalletTransaction } from '../../types';
 
-export const WalletScreen: React.FC = () => {
+export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
   const navigation = useNavigation();
   const isTabRoot = useIsTabRoot();
   const [showFundModal, setShowFundModal] = useState(false);
@@ -62,29 +63,50 @@ export const WalletScreen: React.FC = () => {
     loadData();
   }, []);
 
+  const verifyPendingDeposit = useCallback(
+    async (reference?: string) => {
+      const ref = reference || pendingDeposit;
+      if (!ref || isVerifyingRef.current) return;
+      isVerifyingRef.current = true;
+      try {
+        const res = await walletService.verifyDeposit(ref);
+        if (res.data) {
+          setPendingDeposit(null);
+          await refreshWallet();
+          Alert.alert(
+            'Payment Confirmed',
+            'Your wallet has been credited. Your new balance is available now.'
+          );
+        }
+      } catch (error) {
+        // Not yet paid or payment still processing — retry on next foreground/focus
+      } finally {
+        isVerifyingRef.current = false;
+      }
+    },
+    [pendingDeposit, refreshWallet]
+  );
+
   useFocusEffect(
     useCallback(() => {
-      if (!pendingDeposit || isVerifyingRef.current) return;
-      isVerifyingRef.current = true;
-      (async () => {
-        try {
-          const res = await walletService.verifyDeposit(pendingDeposit);
-          if (res.data) {
-            setPendingDeposit(null);
-            await refreshWallet();
-            Alert.alert(
-              'Payment Confirmed',
-              'Your wallet has been credited. Your new balance is available now.'
-            );
-          }
-        } catch (error) {
-          // Not yet paid or payment still processing — retry next focus
-        } finally {
-          isVerifyingRef.current = false;
-        }
-      })();
-    }, [pendingDeposit, refreshWallet])
+      verifyPendingDeposit();
+    }, [verifyPendingDeposit])
   );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') verifyPendingDeposit();
+    });
+    return () => sub.remove();
+  }, [verifyPendingDeposit]);
+
+  useEffect(() => {
+    const ref = (route?.params as any)?.reference;
+    if (ref) {
+      setPendingDeposit(ref);
+      verifyPendingDeposit(ref);
+    }
+  }, [route?.params, verifyPendingDeposit]);
 
   const loadData = async () => {
     await Promise.all([fetchWallet(), fetchTransactions()]);
@@ -180,7 +202,8 @@ export const WalletScreen: React.FC = () => {
   };
 
   const renderTransaction = ({ item }: { item: WalletTransaction }) => {
-    const transactionType = item.type || 'transaction';
+    // const transactionType = item.type || 'transaction';
+    const transactionType = item.transaction_type || item.type || 'deposit';
     const transactionStatus = item.status || 'pending';
 
     return (

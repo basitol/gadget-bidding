@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import config from '../../config';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as walletService from '../../services/wallet/wallet.service';
 import * as paystackService from '../../services/payment/paystack.service';
@@ -240,4 +241,89 @@ export const resolveAccount = async (req: Request, res: Response) => {
     logger.error('Resolve account error:', error);
     sendError(res, safeErrorMessage(error, 'Failed to resolve account'), 400);
   }
+};
+
+/**
+ * Handle payment redirect callback from Paystack
+ * GET /wallet/verify or GET /api/v1/wallet/callback
+ *
+ * Credits the wallet server-side (idempotent) before redirecting the browser
+ * back into the app, so the balance is updated even if the app never retries.
+ */
+export const handlePaymentCallback = async (req: Request, res: Response) => {
+  const reference = (req.query.reference || req.query.trxref || '') as string;
+  const deepLinkUrl = `${config.mobileAppUrl}wallet/verify?reference=${encodeURIComponent(reference)}`;
+
+  let paymentStatus: 'success' | 'pending' = 'success';
+  let paymentMessage =
+    'Your payment process is complete. Tap below to return to GadgetBid.';
+
+  if (reference) {
+    try {
+      const txResult = await query<{ user_id: string }>(
+        'SELECT user_id FROM payment_transactions WHERE gateway_reference = $1',
+        [reference]
+      );
+      const userId = txResult[0]?.user_id;
+
+      if (userId) {
+        const verification = await paystackService.verifyPayment(reference);
+        if (verification.status) {
+          await walletService.processWalletFundingFromPaystack({
+            userId,
+            reference,
+            amount: verification.amount,
+            gatewayResponse: verification.gatewayResponse,
+            source: 'verify',
+          });
+        } else {
+          paymentStatus = 'pending';
+          paymentMessage =
+            'Your payment was not completed. You have not been charged.';
+        }
+      }
+    } catch (error) {
+      logger.error('Payment callback verification error:', error);
+      paymentStatus = 'pending';
+      paymentMessage =
+        'We could not confirm your payment right now. Your wallet will update automatically once the payment is confirmed.';
+    }
+  }
+
+  const headingColor = paymentStatus === 'success' ? '#10B981' : '#F59E0B';
+  const heading =
+    paymentStatus === 'success' ? 'Payment Complete' : 'Payment Pending';
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Payment Complete - GadgetBid</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0F0F0F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
+    .card { background: #1A1A1A; border: 1px solid #2E2E2E; border-radius: 16px; padding: 36px 24px; max-width: 380px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .icon { font-size: 52px; margin-bottom: 16px; }
+    h1 { font-size: 22px; margin-bottom: 8px; color: ${headingColor}; font-weight: 700; }
+    p { font-size: 14px; color: #9CA3AF; margin-bottom: 24px; line-height: 1.5; }
+    .btn { display: inline-block; background: #10B981; color: #FFFFFF; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 10px; font-size: 16px; width: 100%; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${paymentStatus === 'success' ? '✅' : '⏳'}</div>
+    <h1>${heading}</h1>
+    <p>${paymentMessage}</p>
+    <a href="${deepLinkUrl}" class="btn">Open GadgetBid App</a>
+  </div>
+  <script>
+    setTimeout(function() {
+      window.location.href = "${deepLinkUrl}";
+    }, 300);
+  </script>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.status(200).send(html);
 };

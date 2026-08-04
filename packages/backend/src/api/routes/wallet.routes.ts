@@ -100,4 +100,12 @@ router.get(
   walletController.resolveAccount
 );
 
+/**
+ * @route   GET /api/v1/wallet/callback
+ * @desc    Payment callback redirect to app
+ * @access  Public
+ */
+router.get('/callback', walletController.handlePaymentCallback);
+router.get('/verify', walletController.handlePaymentCallback);
+
 export default router;

@@ -1,5 +1,6 @@
 export { Button } from './Button';
 export { Input } from './Input';
+export { OptionPicker } from './OptionPicker';
 export { AuctionCard } from './AuctionCard';
 export { Card } from './Card';
 export { CountdownTimer } from './CountdownTimer';

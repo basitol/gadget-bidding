@@ -25,6 +25,7 @@ const transformTransaction = (tx: any): WalletTransaction => ({
   id: tx.id,
   wallet_id: tx.walletId,
   transaction_type: tx.transactionType,
+  type: tx.transactionType,
   amount: toNumber(tx.amount),
   balance_before: toNumber(tx.balanceBefore),
   balance_after: toNumber(tx.balanceAfter),
