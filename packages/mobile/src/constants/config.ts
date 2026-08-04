@@ -92,11 +92,11 @@ const DEV_API_HOST = getDevApiHost();
 
 export const API_BASE_URL = __DEV__
   ? `http://${DEV_API_HOST}:3000/api/v1`
-  : 'https://api.gadgetbid.ng/api/v1';
+  : 'https://gadget-bidding.onrender.com/api/v1';
 
 export const SOCKET_URL = __DEV__
   ? `http://${DEV_API_HOST}:3000`
-  : 'https://api.gadgetbid.ng';
+  : 'https://gadget-bidding.onrender.com';
 
 if (__DEV__) {
   // Helps diagnose "timeout" / Network Error when Wi‑Fi IP changes
