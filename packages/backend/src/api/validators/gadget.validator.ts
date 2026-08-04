@@ -46,8 +46,8 @@ export const validateCreateGadget: ValidationChain[] = [
     .isObject()
     .withMessage('Specifications must be an object'),
   body('images')
-    .isArray({ min: 1, max: 10 })
-    .withMessage('At least 1 image is required, maximum 10 images')
+    .isArray({ min: 1, max: 5 })
+    .withMessage('At least 1 image is required, maximum 5 images')
     .custom((value) => {
       if (!value.every((url: string) => typeof url === 'string' && url.length > 0)) {
         throw new Error('All images must be valid URLs');
@@ -139,8 +139,8 @@ export const validateUpdateGadget: ValidationChain[] = [
     .withMessage('Specifications must be an object'),
   body('images')
     .optional()
-    .isArray({ min: 1, max: 10 })
-    .withMessage('At least 1 image is required, maximum 10 images'),
+    .isArray({ min: 1, max: 5 })
+    .withMessage('At least 1 image is required, maximum 5 images'),
   body('status')
     .optional()
     .isIn(['pending'])

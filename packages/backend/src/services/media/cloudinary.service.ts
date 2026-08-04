@@ -57,3 +57,34 @@ export async function uploadLocalFiles(
   }
   return urls;
 }
+
+/**
+ * Extract a Cloudinary public_id from a secure URL, e.g.
+ * https://res.cloudinary.com/<cloud>/image/upload/v123/gadget-bidding/gadgets/abc.jpg
+ * -> gadget-bidding/gadgets/abc
+ */
+function publicIdFromUrl(url: string): string | null {
+  const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+)$/);
+  if (!match) return null;
+  return match[1].replace(/\.[a-z0-9]+$/i, '');
+}
+
+/**
+ * Best-effort deletion of Cloudinary assets referenced by the given URLs.
+ * No-op when Cloudinary is not configured.
+ */
+export async function deleteAssetsByUrl(urls: string[]): Promise<void> {
+  if (!isCloudinaryEnabled()) return;
+  ensureConfigured();
+
+  for (const url of urls) {
+    const publicId = publicIdFromUrl(url);
+    if (!publicId) continue;
+    try {
+      await cloudinary.uploader.destroy(publicId);
+      logger.info(`Cloudinary deleted: ${publicId}`);
+    } catch (error) {
+      logger.error(`Cloudinary delete failed for ${publicId}:`, error);
+    }
+  }
+}

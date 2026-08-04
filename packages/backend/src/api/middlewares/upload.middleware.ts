@@ -48,7 +48,6 @@ export const uploadGadgetImages: RequestHandler = multer({
   fileFilter,
   limits: {
     fileSize: config.maxFileSizeMB * 1024 * 1024,
-    files: config.maxImagesPerGadget,
   },
 }).array('images', config.maxImagesPerGadget);
 

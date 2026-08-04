@@ -20,6 +20,7 @@ import {
   formatDateTime,
   getConditionLabel,
   getOrderStatusLabel,
+  mediaUrl,
 } from '../../utils';
 import { DisputeType, Order, ShippingAddress, UserAddress } from '../../types';
 import { useAuthStore } from '../../store';
@@ -585,7 +586,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
             <View style={styles.itemImage}>
               {(order as any).gadget?.images?.[0] ? (
                 <Image
-                  source={{ uri: (order as any).gadget.images[0] }}
+                  source={{ uri: mediaUrl((order as any).gadget.images[0]) }}
                   style={styles.itemImageContent}
                 />
               ) : (

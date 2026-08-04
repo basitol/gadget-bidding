@@ -22,6 +22,7 @@ import {
   formatRelativeTime,
   formatDateTime,
   getAuctionStatusLabel,
+  mediaUrl,
 } from '../../utils';
 import { Auction } from '../../types';
 
@@ -147,7 +148,7 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
           <View style={styles.gadgetImage}>
             {(item as any).gadget?.images?.[0] ? (
               <Image
-                source={{ uri: (item as any).gadget.images[0] }}
+                source={{ uri: mediaUrl((item as any).gadget.images[0]) }}
                 style={styles.gadgetImageContent}
               />
             ) : (

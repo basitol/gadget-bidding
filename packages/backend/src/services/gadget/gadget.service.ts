@@ -8,6 +8,9 @@ import {
 import { normalizeMediaPaths } from '@gadget-bidding/shared';
 import logger from '../../utils/logger';
 import * as notificationService from '../notification/notification.service';
+import { deleteAssetsByUrl } from '../media/cloudinary.service';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Create a new gadget listing
@@ -316,7 +319,9 @@ export const deleteGadget = async (
   gadgetId: string,
   sellerId: string
 ): Promise<void> => {
-  return transaction(async client => {
+  let images: string[] = [];
+
+  await transaction(async client => {
     // Check if gadget has active auction
     const auctionResult = await client.query(
       `SELECT * FROM auctions WHERE gadget_id = $1 AND status IN ('scheduled', 'active')`,
@@ -327,18 +332,38 @@ export const deleteGadget = async (
       throw new Error('Cannot delete gadget with active auction');
     }
 
-    // Verify ownership and delete
-    const result = await client.query(
+    // Fetch images for cleanup after the row is removed
+    const gadgetResult = await client.query(
+      'SELECT images FROM gadgets WHERE id = $1 AND seller_id = $2',
+      [gadgetId, sellerId]
+    );
+
+    if (gadgetResult.rows.length === 0) {
+      throw new Error('Gadget not found or unauthorized');
+    }
+
+    images = gadgetResult.rows[0].images ?? [];
+
+    await client.query(
       'DELETE FROM gadgets WHERE id = $1 AND seller_id = $2 RETURNING id',
       [gadgetId, sellerId]
     );
 
-    if (result.rows.length === 0) {
-      throw new Error('Gadget not found or unauthorized');
-    }
-
     logger.info(`Gadget deleted: ${gadgetId}`);
   });
+
+  // Best-effort media cleanup after the row is gone
+  if (images.length > 0) {
+    await deleteAssetsByUrl(images);
+    for (const image of images) {
+      if (!image.startsWith('/uploads/')) continue;
+      try {
+        fs.unlinkSync(path.join(process.cwd(), image.replace(/^\/+/, '')));
+      } catch {
+        // Local file already gone or not present
+      }
+    }
+  }
 };
 
 /**
