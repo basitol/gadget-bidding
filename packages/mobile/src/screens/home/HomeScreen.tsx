@@ -76,7 +76,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
 
-  const liveAuctions = hotAuctions.length > 0 ? hotAuctions : auctions;
+  const liveAuctions =
+    selectedCategory === 'all' && hotAuctions.length > 0 ? hotAuctions : auctions;
+  const selectedCategoryLabel =
+    LIGHT_CATEGORIES.find(cat => cat.id === selectedCategory)?.label ||
+    'Live Auctions';
   const firstName = user?.full_name?.split(' ')[0] || 'there';
   const initials = user?.full_name
     ? user.full_name
@@ -107,6 +111,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const handleAuctionPress = (auction: Auction) => {
     navigation.navigate('AuctionDetail', { auctionId: auction.id });
+  };
+
+  const handleCategorySelect = async (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    const filters = {
+      status: 'active' as const,
+      ...(categoryId !== 'all' ? { category: categoryId } : {}),
+    };
+    await fetchAuctions(filters);
   };
 
   const navigateTab = (screen: 'Wallet') => {
@@ -350,15 +363,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               <TouchableOpacity
                 key={cat.id}
                 style={[styles.categoryChip, active && styles.categoryChipActive]}
-                onPress={() => {
-                  setSelectedCategory(cat.id);
-                  if (cat.id !== 'all') {
-                    navigation.navigate('Category', {
-                      category: cat.id,
-                      label: cat.label,
-                    });
-                  }
-                }}
+                onPress={() => handleCategorySelect(cat.id)}
               >
                 <Ionicons
                   name={cat.icon}
@@ -379,7 +384,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         </ScrollView>
 
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitleLight}>Live Auctions</Text>
+          <Text style={styles.sectionTitleLight}>
+            {selectedCategory === 'all'
+              ? 'Live Auctions'
+              : `Live ${selectedCategoryLabel}`}
+          </Text>
           <TouchableOpacity onPress={() => navigation.navigate('Search')}>
             <Text style={styles.seeAll}>See all</Text>
           </TouchableOpacity>

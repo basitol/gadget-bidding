@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
-import { Bell, CheckCheck, Command, Inbox, Search } from 'lucide-react';
+import { Bell, CheckCheck, Inbox } from 'lucide-react';
 import { AdminNotification, adminApi, getStoredUser } from './api';
 import { AppSidebar } from './components/AppSidebar';
+import { ConfirmDialogProvider } from './components/ConfirmDialogProvider';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { GadgetsPage } from './pages/GadgetsPage';
@@ -50,24 +51,14 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="bg-transparent">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/75 px-4 backdrop-blur-xl">
-          <SidebarTrigger className="-ml-1 rounded-xl border border-slate-200 bg-white shadow-sm" />
+      <SidebarInset className="bg-background">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
+          <SidebarTrigger className="-ml-1 rounded-md" />
           <Separator orientation="vertical" className="mr-1 h-5" />
-          <div className="hidden min-w-0 flex-1 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-500 shadow-inner shadow-slate-950/[0.02] md:flex">
-            <Search className="size-4 text-slate-400" />
-            <span className="flex-1">Search orders, sellers, disputes…</span>
-            <kbd className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-400">
-              ⌘K
-            </kbd>
-          </div>
           <div className="ml-auto flex items-center gap-2">
-            <button className="grid size-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:text-slate-900">
-              <Command className="size-4" />
-            </button>
             <AdminNotifications />
-            <div className="hidden items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm sm:flex">
-              <div className="grid size-7 place-items-center rounded-xl bg-slate-950 text-[10px] font-bold text-white">
+            <div className="hidden items-center gap-2 rounded-lg border px-2.5 py-1.5 sm:flex">
+              <div className="grid size-6 place-items-center rounded-md bg-slate-950 text-[10px] font-bold text-white">
                 {user?.full_name
                   ?.split(/\s+/)
                   .slice(0, 2)
@@ -75,18 +66,17 @@ function Shell({ children }: { children: React.ReactNode }) {
                   .join('') || 'AD'}
               </div>
               <div className="leading-tight">
-                <div className="text-xs font-semibold text-slate-900">
+                <div className="text-xs font-semibold text-foreground">
                   {user?.full_name || 'Admin'}
                 </div>
-                <div className="text-[11px] text-slate-500">Operations</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Operations
+                </div>
               </div>
             </div>
           </div>
         </header>
-        <div className="relative flex-1 overflow-auto p-4 md:p-6">
-          <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_0%,rgba(37,99,235,0.1),transparent_28%),radial-gradient(circle_at_90%_12%,rgba(14,165,233,0.09),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#f5f7fb_46%,#f8fafc_100%)]" />
-          {children}
-        </div>
+        <div className="flex-1 overflow-auto p-4 md:p-6">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );
@@ -168,10 +158,10 @@ function AdminNotifications() {
   return (
     <DropdownMenu onOpenChange={open => open && load()}>
       <DropdownMenuTrigger asChild>
-        <button className="relative grid size-9 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:text-slate-900">
+        <button className="relative grid size-8 place-items-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
           <Bell className="size-4" />
           {unreadCount > 0 ? (
-            <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-blue-600 px-1.5 text-[10px] font-bold text-white ring-2 ring-white">
+            <span className="absolute -right-1 -top-1 grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           ) : null}
@@ -179,35 +169,35 @@ function AdminNotifications() {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-[360px] rounded-2xl border-slate-200 bg-white p-2 shadow-2xl shadow-slate-950/10"
+        className="w-90 rounded-lg p-2 shadow-lg"
       >
         <div className="flex items-center justify-between px-2 py-2">
           <div>
-            <div className="text-sm font-semibold text-slate-950">
+            <div className="text-sm font-semibold text-foreground">
               Backoffice notifications
             </div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-muted-foreground">
               {unreadCount ? `${unreadCount} unread` : 'All caught up'}
             </div>
           </div>
           <button
             type="button"
             onClick={markAllRead}
-            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
           >
             <CheckCheck className="size-3.5" />
             Read all
           </button>
         </div>
         <DropdownMenuSeparator />
-        <ScrollArea className="max-h-[420px]">
+        <ScrollArea className="max-h-105">
           {loading && items.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-slate-500">
+            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
               Loading notifications…
             </div>
           ) : items.length === 0 ? (
-            <div className="grid place-items-center gap-2 px-3 py-8 text-center text-sm text-slate-500">
-              <Inbox className="size-8 text-slate-300" />
+            <div className="grid place-items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground">
+              <Inbox className="size-8 text-muted-foreground/40" />
               No backoffice notifications yet.
             </div>
           ) : (
@@ -217,21 +207,21 @@ function AdminNotifications() {
                 <DropdownMenuItem
                   key={item.id}
                   onSelect={() => openNotification(item)}
-                  className="cursor-pointer items-start gap-3 rounded-xl p-3 focus:bg-slate-50"
+                  className="cursor-pointer items-start gap-3 rounded-md p-3"
                 >
                   <span
-                    className={`mt-1 size-2.5 shrink-0 rounded-full ${
-                      item.is_read ? 'bg-slate-300' : 'bg-blue-600'
+                    className={`mt-1 size-2 shrink-0 rounded-full ${
+                      item.is_read ? 'bg-muted-foreground/30' : 'bg-primary'
                     }`}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-slate-950">
+                    <span className="block truncate text-sm font-semibold text-foreground">
                       {item.title}
                     </span>
-                    <span className="mt-1 line-clamp-2 block text-xs leading-5 text-slate-500">
+                    <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">
                       {item.message}
                     </span>
-                    <span className="mt-2 flex items-center justify-between text-[11px] font-medium text-slate-400">
+                    <span className="mt-2 flex items-center justify-between text-[11px] font-medium text-muted-foreground/70">
                       <span>{label(type)}</span>
                       <span>{when(item.created_at)}</span>
                     </span>
@@ -244,7 +234,7 @@ function AdminNotifications() {
         <DropdownMenuSeparator />
         <Link
           to="/notifications"
-          className="block rounded-xl px-3 py-2 text-center text-sm font-semibold text-blue-700 hover:bg-blue-50"
+          className="block rounded-md px-3 py-2 text-center text-sm font-semibold text-primary hover:bg-primary/10"
         >
           View all notifications
         </Link>
@@ -264,123 +254,125 @@ function Guard({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <TooltipProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/"
-          element={
-            <Guard>
-              <DashboardPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/gadgets"
-          element={
-            <Guard>
-              <GadgetsPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/auctions"
-          element={
-            <Guard>
-              <AuctionsPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/orders"
-          element={
-            <Guard>
-              <OrdersPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/backoffice"
-          element={
-            <Guard>
-              <BackofficePage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/buyers"
-          element={
-            <Guard>
-              <BuyersPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/sellers"
-          element={
-            <Guard>
-              <SellersPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/admins"
-          element={
-            <Guard>
-              <AdminsPage />
-            </Guard>
-          }
-        />
-        <Route path="/users" element={<Navigate to="/buyers" replace />} />
-        <Route
-          path="/support"
-          element={
-            <Guard>
-              <SupportPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/disputes"
-          element={
-            <Guard>
-              <DisputesPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/payments"
-          element={
-            <Guard>
-              <PaymentsPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/payouts"
-          element={
-            <Guard>
-              <PayoutsPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/notifications"
-          element={
-            <Guard>
-              <NotificationsPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/audit"
-          element={
-            <Guard>
-              <AuditPage />
-            </Guard>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <ConfirmDialogProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/"
+            element={
+              <Guard>
+                <DashboardPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/gadgets"
+            element={
+              <Guard>
+                <GadgetsPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/auctions"
+            element={
+              <Guard>
+                <AuctionsPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <Guard>
+                <OrdersPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/backoffice"
+            element={
+              <Guard>
+                <BackofficePage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/buyers"
+            element={
+              <Guard>
+                <BuyersPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/sellers"
+            element={
+              <Guard>
+                <SellersPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/admins"
+            element={
+              <Guard>
+                <AdminsPage />
+              </Guard>
+            }
+          />
+          <Route path="/users" element={<Navigate to="/buyers" replace />} />
+          <Route
+            path="/support"
+            element={
+              <Guard>
+                <SupportPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/disputes"
+            element={
+              <Guard>
+                <DisputesPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/payments"
+            element={
+              <Guard>
+                <PaymentsPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/payouts"
+            element={
+              <Guard>
+                <PayoutsPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <Guard>
+                <NotificationsPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/audit"
+            element={
+              <Guard>
+                <AuditPage />
+              </Guard>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ConfirmDialogProvider>
       <Toaster />
     </TooltipProvider>
   );

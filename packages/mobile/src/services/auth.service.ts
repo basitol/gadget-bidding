@@ -14,8 +14,14 @@ export interface RegisterData {
 }
 
 export interface LoginData {
-  phone_number: string;
+  identifier: string;
   password: string;
+  account_type: AppInterfaceType;
+}
+
+export interface SocialLoginData {
+  provider: 'google' | 'apple';
+  id_token: string;
   account_type: AppInterfaceType;
 }
 
@@ -75,6 +81,24 @@ class AuthService {
   async login(data: LoginData): Promise<LoginResponse> {
     try {
       const response = await api.post('/auth/login', data);
+      const { access_token, refresh_token, user } = response.data.data;
+
+      // Store tokens securely
+      await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, access_token);
+      await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, refresh_token);
+      await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user));
+      await this.persistInterfaceType(data.account_type);
+
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  // Social login (Google / Apple)
+  async socialLogin(data: SocialLoginData): Promise<LoginResponse> {
+    try {
+      const response = await api.post('/auth/social', data);
       const { access_token, refresh_token, user } = response.data.data;
 
       // Store tokens securely

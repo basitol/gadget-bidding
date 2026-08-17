@@ -203,6 +203,10 @@ export function validateEnvironment(): void {
       https: true,
       noLocal: true,
     });
+    requireProductionValue(errors, 'BACKEND_URL', config.backendUrl, {
+      https: true,
+      noLocal: true,
+    });
     if (
       !process.env.MOBILE_APP_URL ||
       !config.mobileAppUrl ||

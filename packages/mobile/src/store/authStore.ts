@@ -13,8 +13,13 @@ interface AuthState {
   setUser: (user: User | null) => void;
   setInterfaceType: (interfaceType: AppInterfaceType | null) => void;
   login: (
-    phone_number: string,
+    identifier: string,
     password: string,
+    interfaceType: AppInterfaceType
+  ) => Promise<void>;
+  socialLogin: (
+    provider: 'google' | 'apple',
+    idToken: string,
     interfaceType: AppInterfaceType
   ) => Promise<void>;
   register: (
@@ -48,11 +53,11 @@ export const useAuthStore = create<AuthState>(set => ({
 
   setInterfaceType: interfaceType => set({ interfaceType }),
 
-  login: async (phone_number, password, interfaceType) => {
+  login: async (identifier, password, interfaceType) => {
     set({ isLoading: true, error: null });
     try {
       const response = await authService.login({
-        phone_number,
+        identifier,
         password,
         account_type: interfaceType,
       });
@@ -73,6 +78,37 @@ export const useAuthStore = create<AuthState>(set => ({
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Login failed',
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  socialLogin: async (provider, idToken, interfaceType) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await authService.socialLogin({
+        provider,
+        id_token: idToken,
+        account_type: interfaceType,
+      });
+      const accessError = validateInterfaceAccess(
+        interfaceType,
+        response.data.user.role
+      );
+      if (accessError) {
+        await authService.logout();
+        throw new Error(accessError);
+      }
+      set({
+        user: response.data.user,
+        interfaceType,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Social login failed',
         isLoading: false,
       });
       throw error;

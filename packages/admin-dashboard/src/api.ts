@@ -310,7 +310,7 @@ export async function login(phone_number: string, password: string) {
     data: { user: AdminUser; access_token: string; refresh_token?: string };
   }>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ phone_number, password }),
+    body: JSON.stringify({ identifier: phone_number, password }),
   });
 
   if (json.data.user.role !== 'admin') {

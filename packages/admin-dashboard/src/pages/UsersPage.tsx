@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { AdminSellerProfile, RiskFlag, adminApi } from '@/api';
 import { label, money, when } from '@/lib/format';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import { mediaUrl } from '@/lib/media';
 import {
   Badge,
@@ -82,6 +83,7 @@ export function UsersPage({
   title = 'Users',
   description = 'Roles, verification, wallet balances, and account controls.',
 }: UsersPageProps = {}) {
+  const { confirm, prompt } = useConfirmDialog();
   const [role, setRole] = useState(fixedRole || 'all');
   const [active, setActive] = useState('all');
   const [search, setSearch] = useState('');
@@ -153,13 +155,15 @@ export function UsersPage({
 
   const reactivateUser = async (user: any) => {
     const reference =
-      window.prompt(
+      (await prompt(
         `Penalty payment reference for ${user.full_name}`,
-        user.pending_penalty?.id || ''
-      ) || undefined;
+        user.pending_penalty?.id || '',
+        { title: 'Reactivate account' }
+      )) || undefined;
     const note =
-      window.prompt('Optional recovery note', 'Penalty paid and verified') ||
-      undefined;
+      (await prompt('Optional recovery note', 'Penalty paid and verified', {
+        title: 'Reactivate account',
+      })) || undefined;
 
     setBusyId(user.id);
     setError('');
@@ -211,16 +215,16 @@ export function UsersPage({
   const approveSellerGadget = (id: string) =>
     runProfileAction(id, () => adminApi.approveGadget(id));
 
-  const rejectSellerGadget = (id: string) => {
-    const reason = window.prompt(
-      'Rejection reason',
-      'Does not meet guidelines'
-    );
+  const rejectSellerGadget = async (id: string) => {
+    const reason = await prompt('Rejection reason', 'Does not meet guidelines', {
+      title: 'Reject listing',
+      required: true,
+    });
     if (!reason) return;
     void runProfileAction(id, () => adminApi.rejectGadget(id, reason));
   };
 
-  const cancelSellerAuction = (auction: {
+  const cancelSellerAuction = async (auction: {
     id: string;
     title: string;
     total_bids: number;
@@ -229,7 +233,15 @@ export function UsersPage({
     const message = hasBids
       ? `Force-cancel "${auction.title}"? It has ${auction.total_bids} bid(s).`
       : `Cancel "${auction.title}"?`;
-    if (!window.confirm(message)) return;
+    if (
+      !(await confirm({
+        title: 'Cancel auction',
+        description: message,
+        danger: true,
+        confirmLabel: 'Cancel auction',
+      }))
+    )
+      return;
     void runProfileAction(auction.id, () =>
       adminApi.cancelAuction(auction.id, hasBids)
     );
@@ -242,21 +254,30 @@ export function UsersPage({
     );
   };
 
-  const setSellerWalletLocked = (locked: boolean) => {
+  const setSellerWalletLocked = async (locked: boolean) => {
     if (!selectedSeller) return;
     const message = locked
       ? `Lock ${selectedSeller.user.full_name}'s wallet? They will not be able to use the balance until it is unlocked.`
       : `Unlock ${selectedSeller.user.full_name}'s wallet?`;
-    if (!window.confirm(message)) return;
+    if (
+      !(await confirm({
+        title: locked ? 'Lock wallet' : 'Unlock wallet',
+        description: message,
+        danger: locked,
+      }))
+    )
+      return;
     void runProfileAction(selectedSeller.user.id, () =>
       adminApi.updateUser(selectedSeller.user.id, { wallet_locked: locked })
     );
   };
 
-  const updateSellerDispute = (id: string, nextStatus: string) => {
+  const updateSellerDispute = async (id: string, nextStatus: string) => {
     const resolution =
       nextStatus === 'resolved' || nextStatus === 'rejected'
-        ? window.prompt('Resolution notes', '') || undefined
+        ? (await prompt('Resolution notes', '', {
+            title: label(nextStatus) + ' dispute',
+          })) || undefined
         : undefined;
     void runProfileAction(id, () =>
       adminApi.updateDispute(id, { status: nextStatus, resolution })
@@ -325,7 +346,7 @@ export function UsersPage({
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-primary/5 hover:bg-primary/5">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Wallet</TableHead>
@@ -533,17 +554,17 @@ function SellerProfileDialog({
               <DialogTitle>Seller profile</DialogTitle>
             </DialogHeader>
 
-            <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-slate-950 via-slate-900 to-primary/30 p-5 text-white">
+            <div className="rounded-xl border bg-card p-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-4">
                   {profile.user.avatar_url ? (
                     <img
-                      className="size-16 rounded-2xl object-cover ring-2 ring-white/20"
+                      className="size-16 rounded-2xl object-cover ring-1 ring-border"
                       src={mediaUrl(profile.user.avatar_url)}
                       alt={profile.user.full_name}
                     />
                   ) : (
-                    <div className="grid size-16 place-items-center rounded-2xl bg-white/10 ring-2 ring-white/15">
+                    <div className="grid size-16 place-items-center rounded-2xl bg-muted text-muted-foreground ring-1 ring-border">
                       <Store className="size-8" />
                     </div>
                   )}
@@ -551,7 +572,7 @@ function SellerProfileDialog({
                     <h2 className="text-2xl font-semibold tracking-tight">
                       {profile.user.full_name}
                     </h2>
-                    <p className="text-sm text-white/65">
+                    <p className="text-sm text-muted-foreground">
                       {profile.user.phone_number} ·{' '}
                       {profile.user.email || 'No email'}
                     </p>
@@ -572,17 +593,19 @@ function SellerProfileDialog({
                     <RiskFlags flags={profile.user.risk_flags} compact />
                   </div>
                 </div>
-                <div className="rounded-2xl bg-white/10 px-4 py-3 text-right ring-1 ring-white/15">
-                  <div className="text-sm text-white/60">Wallet balance</div>
+                <div className="rounded-xl bg-muted/50 px-4 py-3 text-right">
+                  <div className="text-sm text-muted-foreground">
+                    Wallet balance
+                  </div>
                   <div className="text-2xl font-semibold">
                     {money(profile.user.wallet.balance)}
                   </div>
-                  <div className="text-xs text-white/50">
+                  <div className="text-xs text-muted-foreground">
                     Joined {when(profile.user.created_at)}
                   </div>
                 </div>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+              <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
                 <Button
                   size="sm"
                   variant={profile.user.is_verified ? 'destructive' : 'default'}

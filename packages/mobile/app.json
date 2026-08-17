@@ -24,13 +24,17 @@
         "backgroundColor": "#0F0F0F"
       },
       "package": "com.gadgetbid.app",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
+      "expo-apple-authentication",
       [
         "expo-image-picker",
         {
@@ -44,12 +48,15 @@
           "icon": "./assets/icon.png",
           "color": "#008751"
         }
-      ]
+      ],
+      "expo-web-browser",
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "93b60ed8-10e9-452e-8a85-8fe41c714d11"
       }
-    }
+    },
+    "owner": "basitolaitan27"
   }
 }

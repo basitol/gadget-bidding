@@ -29,8 +29,16 @@ export interface UserRegistration {
 }
 
 export interface UserLogin {
-  phone_number: string;
+  identifier: string;
   password: string;
+  account_type?: AccountType;
+}
+
+export type SocialProvider = 'google' | 'apple';
+
+export interface SocialLoginRequest {
+  provider: SocialProvider;
+  id_token: string;
   account_type?: AccountType;
 }
 
@@ -90,7 +98,7 @@ export interface WalletTransaction {
 // Payment Types
 // ============================================================================
 
-export type PaymentGateway = 'paystack' | 'flutterwave' | 'bank_transfer';
+export type PaymentGateway = 'paystack' | 'monnify' | 'bank_transfer';
 
 export type PaymentStatus = 'pending' | 'success' | 'failed' | 'abandoned';
 

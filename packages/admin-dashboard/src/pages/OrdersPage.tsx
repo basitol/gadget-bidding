@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { adminApi } from '@/api';
 import { mediaUrl } from '@/lib/media';
 import { formatAddress, label, money, when } from '@/lib/format';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import {
   Badge,
   Empty,
@@ -32,6 +33,7 @@ import {
 } from '@/components/ui/table';
 
 export function OrdersPage() {
+  const { confirm } = useConfirmDialog();
   const [params, setParams] = useSearchParams();
   const paymentStatus = params.get('payment_status') || 'all';
   const payoutStatus = params.get('payout_status') || 'all';
@@ -73,9 +75,10 @@ export function OrdersPage() {
   const createSecondPlaceOffer = async () => {
     if (!selected) return;
     if (
-      !window.confirm(
-        `Offer order ${selected.order_number} to the second-place bidder?`
-      )
+      !(await confirm({
+        title: 'Offer to second-place bidder',
+        description: `Offer order ${selected.order_number} to the second-place bidder?`,
+      }))
     ) {
       return;
     }
@@ -206,19 +209,19 @@ export function OrdersPage() {
           label="Payout queue"
           value={items.filter(o => o.payout_status === 'ready').length}
           detail="Ready on this page"
-          accent="from-emerald-500/20 to-sky-500/10"
+          accent="text-emerald-700 dark:text-emerald-400"
         />
         <PayoutSummaryCard
           label="Held payouts"
           value={items.filter(o => o.payout_status === 'held').length}
           detail="Needs review"
-          accent="from-amber-500/20 to-orange-500/10"
+          accent="text-amber-700 dark:text-amber-400"
         />
         <PayoutSummaryCard
           label="Paid payouts"
           value={items.filter(o => o.payout_status === 'paid').length}
           detail="Released to sellers"
-          accent="from-violet-500/20 to-primary/10"
+          accent="text-violet-700 dark:text-violet-400"
         />
         <PayoutSummaryCard
           label="Visible payout value"
@@ -232,7 +235,7 @@ export function OrdersPage() {
             )
           )}
           detail="Ready + held"
-          accent="from-slate-900/10 to-primary/10"
+          accent="text-primary"
         />
       </div>
 
@@ -314,7 +317,7 @@ export function OrdersPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-primary/5 hover:bg-primary/5">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Order</TableHead>
                 <TableHead>Parties</TableHead>
                 <TableHead>Money</TableHead>
@@ -415,18 +418,39 @@ export function OrdersPage() {
         title={selected ? `Order ${selected.order_number}` : 'Order'}
         onClose={() => setSelected(null)}
         wide
+        footer={
+          selected ? (
+            <>
+              {selected.payment_status === 'pending' &&
+              selected.fulfillment_status === 'cancelled' ? (
+                <Button
+                  variant="outline"
+                  disabled={secondPlaceBusy}
+                  onClick={createSecondPlaceOffer}
+                >
+                  {secondPlaceBusy
+                    ? 'Sending offer…'
+                    : 'Offer to second-place bidder'}
+                </Button>
+              ) : null}
+              <Button disabled={saving} onClick={saveOrder}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Button>
+            </>
+          ) : undefined
+        }
       >
         {selected ? (
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-4">
               {selected.gadget_image ? (
                 <img
-                  className="aspect-square w-full rounded-lg object-cover ring-2 ring-primary/20"
+                  className="aspect-square w-full rounded-lg object-cover ring-1 ring-border"
                   src={mediaUrl(selected.gadget_image)}
                   alt=""
                 />
               ) : (
-                <div className="aspect-square w-full rounded-lg bg-gradient-to-br from-primary/20 to-sky-400/20" />
+                <div className="aspect-square w-full rounded-lg bg-muted" />
               )}
               <dl className="space-y-3 text-sm">
                 <div>
@@ -558,21 +582,6 @@ export function OrdersPage() {
                   placeholder="Optional courier tracking #"
                 />
               </Field>
-              <Button disabled={saving} onClick={saveOrder}>
-                {saving ? 'Saving…' : 'Save changes'}
-              </Button>
-              {selected.payment_status === 'pending' &&
-              selected.fulfillment_status === 'cancelled' ? (
-                <Button
-                  variant="outline"
-                  disabled={secondPlaceBusy}
-                  onClick={createSecondPlaceOffer}
-                >
-                  {secondPlaceBusy
-                    ? 'Sending offer…'
-                    : 'Offer to second-place bidder'}
-                </Button>
-              ) : null}
             </div>
           </div>
         ) : null}
@@ -593,11 +602,11 @@ function PayoutSummaryCard({
   accent: string;
 }) {
   return (
-    <div
-      className={`rounded-2xl border border-primary/10 bg-gradient-to-br ${accent} p-4 shadow-sm`}
-    >
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
       <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tracking-tight">{value}</div>
+      <div className={`mt-1 text-2xl font-semibold tracking-tight ${accent}`}>
+        {value}
+      </div>
       <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
     </div>
   );

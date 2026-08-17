@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     wallet_transaction_id UUID REFERENCES wallet_transactions(id),
-    payment_gateway VARCHAR(20) NOT NULL CHECK (payment_gateway IN ('paystack', 'flutterwave', 'bank_transfer')),
+    payment_gateway VARCHAR(20) NOT NULL CHECK (payment_gateway IN ('paystack', 'monnify', 'bank_transfer')),
     gateway_reference VARCHAR(255) UNIQUE,
     amount DECIMAL(15, 2) NOT NULL,
     currency VARCHAR(3) DEFAULT 'NGN',

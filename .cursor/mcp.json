@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "context-engine": {
+      "command": "/Users/abdulbasitquadri/.local/bin/cce",
+      "args": [
+        "serve",
+        "--project-dir",
+        "/Users/abdulbasitquadri/Documents/Code/gadget-bidding"
+      ]
+    }
+  }
+}

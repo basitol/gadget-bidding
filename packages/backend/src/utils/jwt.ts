@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import config from '../config';
 
@@ -26,6 +27,11 @@ export const generateAccessToken = (payload: JwtPayload): string => {
 export const generateRefreshToken = (payload: JwtPayload): string => {
   const options: SignOptions = {
     expiresIn: config.jwt.refreshExpiry as any, // e.g., '30d' - JWT accepts string time formats
+    // jwt.sign is deterministic for identical payload+secret+iat, so two
+    // requests issuing a token for the same user within the same second
+    // would otherwise produce byte-identical tokens and collide on the
+    // refresh_tokens.token unique constraint.
+    jwtid: crypto.randomUUID(),
   };
   return jwt.sign(payload, config.jwt.refreshSecret, options);
 };

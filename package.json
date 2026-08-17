@@ -4,6 +4,7 @@
   "private": true,
   "description": "Nigerian gadget auction platform with real-time bidding",
   "scripts": {
+    "postinstall": "pnpm --filter @gadget-bidding/shared build",
     "dev:backend": "pnpm --filter backend dev",
     "dev:mobile": "pnpm --filter mobile start",
     "dev:admin": "pnpm --filter @gadget-bidding/admin-dashboard dev",

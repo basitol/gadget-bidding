@@ -91,7 +91,7 @@ export function PaymentsPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-primary/5 hover:bg-primary/5">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Reference</TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Gateway</TableHead>

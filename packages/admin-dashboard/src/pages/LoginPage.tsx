@@ -1,30 +1,12 @@
 import { FormEvent, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import {
-  Activity,
-  AlertTriangle,
-  ArrowRight,
-  BadgeCheck,
-  CircleDollarSign,
-  Gavel,
-  LockKeyhole,
-  Phone,
-  ShieldCheck,
-  Sparkles,
-  Truck,
-} from 'lucide-react';
+import { Eye, EyeOff, Sparkle } from 'lucide-react';
 import { getStoredUser, login } from '@/api';
 import { ErrorAlert } from '@/components/shared';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 function normalizePhone(input: string): string {
   const digits = input.replace(/\D/g, '');
@@ -39,8 +21,9 @@ function normalizePhone(input: string): string {
 export function LoginPage() {
   const navigate = useNavigate();
   const existing = getStoredUser();
-  const [phone, setPhone] = useState('08011111111');
-  const [password, setPassword] = useState('Admin1234');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -63,293 +46,181 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-svh overflow-hidden bg-[#f5f7fb] text-slate-950">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_12%,rgba(37,99,235,0.18),transparent_30%),radial-gradient(circle_at_78%_0%,rgba(14,165,233,0.16),transparent_28%),linear-gradient(135deg,#f8fbff_0%,#eef4ff_55%,#f8fafc_100%)]" />
-      <div className="pointer-events-none absolute -left-24 top-24 size-72 rounded-full bg-sky-300/25 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 bottom-16 size-80 rounded-full bg-blue-500/15 blur-3xl" />
+    <div className="grid min-h-svh bg-background lg:grid-cols-2">
+      <div className="relative hidden flex-col bg-muted/60 lg:flex">
+        <div className="relative z-10 shrink-0 px-16 pt-16 xl:px-20 xl:pt-20">
+          <span className="inline-flex items-center gap-1.5 rounded-full border bg-background px-3.5 py-1.5 text-sm font-semibold text-muted-foreground">
+            <Sparkle className="size-3.5" fill="currentColor" />
+            GadgetBid Ops
+          </span>
+          <h2 className="mt-6 max-w-md text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
+            Run the marketplace, calmly.
+          </h2>
+          <p className="mt-4 max-w-sm text-base leading-7 text-muted-foreground xl:text-lg">
+            Listings, auctions, disputes, and payouts — everything your team
+            needs to keep GadgetBid moving, in one console.
+          </p>
+        </div>
+        <div className="relative min-h-0 flex-1">
+          <BrandIllustration />
+        </div>
+      </div>
 
-      <main className="relative z-10 grid min-h-svh p-3 lg:grid-cols-[1.12fr_0.88fr] lg:p-5">
-        <section className="relative hidden overflow-hidden rounded-[2.25rem] bg-slate-950 p-7 text-white shadow-2xl shadow-slate-950/20 lg:flex lg:flex-col">
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,#020617_0%,#08111f_45%,#0b2540_100%)]" />
-          <div className="pointer-events-none absolute left-0 top-0 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
-          <div className="pointer-events-none absolute right-0 top-0 h-80 w-80 rounded-full bg-cyan-400/12 blur-3xl" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-sky-300/60 to-transparent" />
-
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="grid size-11 place-items-center rounded-2xl bg-white text-base font-black text-slate-950 shadow-lg shadow-white/10">
-                GB
-              </div>
-              <div>
-                <div className="text-lg font-semibold tracking-tight">
-                  GadgetBid
-                </div>
-                <div className="text-sm text-slate-400">Admin console</div>
-              </div>
+      <div className="flex flex-col items-center justify-center px-8 py-14 sm:px-14">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-10 flex flex-col items-center gap-5 text-center">
+            <div className="grid size-12 place-items-center rounded-xl bg-slate-950 text-white">
+              <Sparkle className="size-5" fill="currentColor" />
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-1 text-xs text-slate-300 backdrop-blur">
-              <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.8)]" />
-              Live ops
-            </div>
-          </div>
-
-          <div className="relative mt-16 grid flex-1 content-center gap-8">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-sm text-sky-100 backdrop-blur">
-                <Sparkles className="size-4 text-sky-300" />
-                Marketplace operations, cleaned up
-              </div>
-              <h1 className="mt-6 max-w-[720px] text-6xl font-semibold leading-[0.92] tracking-[-0.065em] text-white">
-                Control the marketplace without the clutter.
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                Welcome back
               </h1>
-              <p className="mt-5 max-w-xl text-base leading-7 text-slate-300">
-                One console for auctions, backoffice intake, disputes, payouts,
-                and audit trails — designed around how the team actually works.
+              <p className="mt-2 text-sm text-muted-foreground">
+                Sign in to GadgetBid operations.
               </p>
             </div>
+          </div>
 
-            <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-              <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-4 backdrop-blur-xl">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-white">
-                      Today’s work
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      Prioritized by operations stage
-                    </div>
-                  </div>
-                  <Activity className="size-5 text-sky-300" />
-                </div>
-                <div className="space-y-3">
-                  <PreviewRow
-                    icon={<Truck />}
-                    label="Backoffice intake"
-                    value="12"
-                    tone="blue"
-                  />
-                  <PreviewRow
-                    icon={<Gavel />}
-                    label="Live auctions"
-                    value="8"
-                    tone="violet"
-                  />
-                  <PreviewRow
-                    icon={<CircleDollarSign />}
-                    label="Payout queue"
-                    value="₦2.4m"
-                    tone="emerald"
-                  />
-                  <PreviewRow
-                    icon={<AlertTriangle />}
-                    label="Open disputes"
-                    value="3"
-                    tone="amber"
-                  />
-                </div>
-              </div>
-
-              <div className="relative rounded-[2rem] border border-white/10 bg-white/[0.06] p-4 backdrop-blur-xl">
-                <div className="mb-5 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-white">
-                      Fulfillment pipeline
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      Seller → Backoffice → Buyer
-                    </div>
-                  </div>
-                  <BadgeCheck className="size-5 text-emerald-300" />
-                </div>
-                <div className="space-y-4">
-                  <PipelineStep
-                    active
-                    label="Seller sent item"
-                    detail="Awaiting backoffice confirmation"
-                  />
-                  <PipelineStep
-                    active
-                    label="Received by backoffice"
-                    detail="Condition check complete"
-                  />
-                  <PipelineStep
-                    label="Ship to buyer"
-                    detail="Courier tracking required"
-                  />
-                  <PipelineStep
-                    label="Release payout"
-                    detail="After delivery is cleared"
-                  />
-                </div>
+          <form className="space-y-5" onSubmit={onSubmit}>
+            <ErrorAlert>{error}</ErrorAlert>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone number</Label>
+              <Input
+                id="phone"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="08011111111"
+                autoComplete="username"
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="h-11 pr-9"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                </button>
               </div>
             </div>
+
+            <Button className="h-11 w-full" type="submit" disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </Button>
+          </form>
+
+          <p className="mt-8 text-center text-xs text-muted-foreground">
+            Restricted to GadgetBid admin accounts. Activity is recorded in
+            the audit log.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function BrandIllustration() {
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {/* scattered decorative accents */}
+      <span className="absolute left-[12%] top-[16%] size-2.5 rounded-full bg-primary/25" />
+      <span className="absolute left-[68%] top-[10%] size-1.5 rounded-full bg-amber-400/40" />
+      <span className="absolute left-[80%] top-[28%] size-3 rounded-full border-2 border-slate-300" />
+      <span className="absolute left-[24%] top-[36%] size-1.5 rounded-full bg-slate-300" />
+      <Sparkle className="absolute left-[76%] top-[52%] size-4 text-primary/30" />
+      <Sparkle className="absolute left-[16%] top-[58%] size-3 text-amber-400/50" />
+
+      <div className="absolute inset-0 flex items-end justify-center">
+        <div className="relative -mb-4 h-[92%] w-full max-w-[520px] xl:max-w-[600px]">
+          {/* ground shadow */}
+          <div className="absolute -bottom-2 left-1/2 h-8 w-[78%] -translate-x-1/2 rounded-full bg-slate-950/10 blur-md" />
+
+          {/* pill shape (amber) */}
+          <div className="absolute bottom-0 right-[10%] h-[56%] w-[24%] rounded-t-[999px] rounded-b-2xl bg-amber-300 shadow-sm">
+            <Face tone="dark" mouth="flat" />
           </div>
-        </section>
 
-        <section className="flex items-center justify-center px-2 py-10 sm:px-6 lg:px-12">
-          <Card className="w-full max-w-[448px] rounded-[2rem] border-white/90 bg-white/90 p-2 shadow-2xl shadow-slate-950/10 backdrop-blur-xl">
-            <CardHeader className="space-y-6 px-6 pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="grid size-11 place-items-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-lg shadow-slate-950/15">
-                    GB
-                  </div>
-                  <div className="lg:hidden">
-                    <div className="text-sm font-semibold text-slate-950">
-                      GadgetBid
-                    </div>
-                    <div className="text-xs text-slate-500">Admin console</div>
-                  </div>
-                </div>
-                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-                  Admin only
-                </div>
-              </div>
-              <div>
-                <CardTitle className="text-3xl font-semibold tracking-[-0.04em] text-slate-950">
-                  Sign in to operations
-                </CardTitle>
-                <CardDescription className="mt-2 text-base text-slate-500">
-                  Manage backoffice intake, orders, payouts, disputes, and
-                  platform controls.
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="px-6 pb-6">
-              <form className="space-y-5" onSubmit={onSubmit}>
-                <ErrorAlert>{error}</ErrorAlert>
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="phone"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Phone number
-                  </Label>
-                  <div className="relative">
-                    <Phone className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      id="phone"
-                      value={phone}
-                      onChange={e => setPhone(e.target.value)}
-                      placeholder="08011111111"
-                      autoComplete="username"
-                      className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-11 text-base shadow-inner shadow-slate-950/[0.02] focus-visible:border-blue-500"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="password"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Password
-                  </Label>
-                  <div className="relative">
-                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-11 text-base shadow-inner shadow-slate-950/[0.02] focus-visible:border-blue-500"
-                    />
-                  </div>
-                </div>
-                <Button
-                  className="h-12 w-full rounded-2xl bg-blue-600 text-base font-semibold text-white shadow-xl shadow-blue-600/20 hover:bg-blue-700"
-                  type="submit"
-                  disabled={loading}
-                >
-                  {loading ? 'Signing in…' : 'Sign in'}
-                  <ArrowRight className="size-4" />
-                </Button>
-              </form>
+          {/* tall card shape (blue) */}
+          <div className="absolute bottom-0 left-[10%] h-[70%] w-[36%] rounded-2xl bg-primary shadow-sm">
+            <div className="absolute inset-x-3 top-2 h-2 rounded-full bg-white/15" />
+            <Face tone="light" mouth="smile" />
+          </div>
 
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-blue-50/60 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="grid size-9 place-items-center rounded-xl bg-blue-500/10 text-blue-600">
-                    <ShieldCheck className="size-4" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">
-                      Secure admin session
-                    </div>
-                    <p className="mt-1 text-sm leading-5 text-slate-500">
-                      Access is restricted to admin accounts. Activity is
-                      recorded in the audit log.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-      </main>
+          {/* slanted card (slate) */}
+          <div className="absolute bottom-0 left-[40%] h-[52%] w-[22%] origin-bottom -rotate-6 rounded-xl bg-slate-800 shadow-sm">
+            <div className="absolute left-1/2 top-[18%] flex -translate-x-1/2 gap-1.5">
+              <span className="h-1 w-3 rounded-full bg-white/25" />
+              <span className="h-1 w-3 rounded-full bg-white/25" />
+              <span className="h-1 w-3 rounded-full bg-white/25" />
+            </div>
+          </div>
+
+          {/* sun / disc — frontmost, covers just the lower third of the others */}
+          <div className="absolute bottom-0 left-1/2 h-[210px] w-[300px] -translate-x-1/2 rounded-t-full bg-sky-300">
+            <div className="absolute left-[18%] top-[10%] h-4 w-11 -rotate-12 rounded-full bg-white/25" />
+            <Face tone="dark" mouth="smile" top="22%" />
+            <span className="absolute left-[30%] top-[46%] size-2.5 rounded-full bg-rose-300/70" />
+            <span className="absolute right-[30%] top-[46%] size-2.5 rounded-full bg-rose-300/70" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function PreviewRow({
-  icon,
-  label,
-  value,
+function Face({
   tone,
+  mouth,
+  top = '30%',
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  tone: 'blue' | 'violet' | 'emerald' | 'amber';
+  tone: 'light' | 'dark';
+  mouth: 'smile' | 'flat';
+  top?: string;
 }) {
-  const toneClass = {
-    blue: 'bg-blue-400/15 text-blue-200',
-    violet: 'bg-violet-400/15 text-violet-200',
-    emerald: 'bg-emerald-400/15 text-emerald-200',
-    amber: 'bg-amber-400/15 text-amber-200',
-  }[tone];
-
+  const dot = tone === 'light' ? 'bg-white' : 'bg-slate-900';
+  const mouthColor = tone === 'light' ? 'border-white' : 'border-slate-900';
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/20 p-3">
-      <div className="flex items-center gap-3">
+    <div
+      className="absolute left-1/2 -translate-x-1/2"
+      style={{ top }}
+    >
+      <div className="flex items-center gap-4">
+        <span className={cn('size-3.5 rounded-full', dot)} />
+        <span className={cn('size-3.5 rounded-full', dot)} />
+      </div>
+      {mouth === 'smile' ? (
         <div
-          className={`grid size-9 place-items-center rounded-xl ${toneClass}`}
-        >
-          {icon}
-        </div>
-        <span className="text-sm text-slate-300">{label}</span>
-      </div>
-      <span className="text-sm font-semibold text-white">{value}</span>
-    </div>
-  );
-}
-
-function PipelineStep({
-  active,
-  label,
-  detail,
-}: {
-  active?: boolean;
-  label: string;
-  detail: string;
-}) {
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
+          className={cn(
+            'mx-auto mt-3 h-3.5 w-7 rounded-b-full border-b-4',
+            mouthColor
+          )}
+        />
+      ) : (
         <div
-          className={`grid size-7 place-items-center rounded-full border ${
-            active
-              ? 'border-blue-300 bg-blue-400 text-slate-950'
-              : 'border-white/15 bg-white/5 text-slate-500'
-          }`}
-        >
-          {active ? <BadgeCheck className="size-4" /> : null}
-        </div>
-        <div className="mt-2 h-8 w-px bg-white/10 last:hidden" />
-      </div>
-      <div>
-        <div className="text-sm font-medium text-white">{label}</div>
-        <div className="text-xs text-slate-400">{detail}</div>
-      </div>
+          className={cn(
+            'mx-auto mt-3.5 h-1 w-7 rounded-full',
+            tone === 'light' ? 'bg-white' : 'bg-slate-900'
+          )}
+        />
+      )}
     </div>
   );
 }

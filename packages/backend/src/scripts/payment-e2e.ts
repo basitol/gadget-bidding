@@ -320,19 +320,21 @@ const testWalletFunding = async () => {
     },
   });
 
-  const first = await walletService.processWalletFundingFromPaystack({
+  const first = await walletService.processWalletFunding({
     userId: user.id,
     reference,
     amount,
     gatewayResponse: { reference, channel: 'card', status: 'success' },
     source: 'webhook',
+    gateway: 'paystack',
   });
-  const second = await walletService.processWalletFundingFromPaystack({
+  const second = await walletService.processWalletFunding({
     userId: user.id,
     reference,
     amount,
     gatewayResponse: { reference, channel: 'card', status: 'success' },
     source: 'verify',
+    gateway: 'paystack',
   });
 
   assert(

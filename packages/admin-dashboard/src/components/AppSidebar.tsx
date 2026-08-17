@@ -76,7 +76,7 @@ function NavItems({
             <SidebarMenuButton
               asChild
               isActive={isActive}
-              className="h-10 rounded-xl px-3 text-sidebar-foreground/75 transition-all hover:bg-white/8 hover:text-white data-active:bg-white data-active:text-slate-950 data-active:shadow-sm"
+              className="h-9 rounded-md px-3 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-active:bg-primary/10 data-active:font-medium data-active:text-primary"
             >
               <NavLink to={item.to} end={item.end}>
                 <item.icon />
@@ -103,26 +103,25 @@ export function AppSidebar() {
   const user = getStoredUser();
 
   return (
-    <Sidebar
-      collapsible="icon"
-      className="border-r border-slate-900/10 bg-slate-950"
-    >
-      <SidebarHeader className="border-b border-white/10 px-4 py-4">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-          <div className="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-sky-400 text-sm font-black text-white shadow-lg shadow-blue-500/25">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-slate-950 text-xs font-black text-white">
             GB
           </div>
           <div className="flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
-            <span className="text-base font-semibold tracking-tight text-white">
+            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
               GadgetBid
             </span>
-            <span className="text-xs text-slate-400">Operations console</span>
+            <span className="text-xs text-muted-foreground">
+              Operations console
+            </span>
           </div>
         </div>
       </SidebarHeader>
-      <SidebarContent className="gap-3 bg-slate-950">
+      <SidebarContent className="gap-3">
         <SidebarGroup className="py-1">
-          <SidebarGroupLabel className="mb-1 text-slate-500">
+          <SidebarGroupLabel className="mb-1 text-muted-foreground">
             Monitor
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -130,7 +129,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="py-1">
-          <SidebarGroupLabel className="mb-1 text-slate-500">
+          <SidebarGroupLabel className="mb-1 text-muted-foreground">
             Marketplace
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -138,7 +137,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="py-1">
-          <SidebarGroupLabel className="mb-1 text-slate-500">
+          <SidebarGroupLabel className="mb-1 text-muted-foreground">
             Risk & money
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -146,19 +145,19 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="gap-3 border-t border-white/10 bg-slate-950 p-3">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-2.5 shadow-inner shadow-white/[0.03] group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-1.5">
+      <SidebarFooter className="gap-3 border-t border-sidebar-border p-3">
+        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-2.5 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-1.5">
           <div className="flex items-center gap-3">
-            <Avatar className="size-9 ring-1 ring-white/15">
-              <AvatarFallback className="bg-white text-xs font-bold text-slate-950">
+            <Avatar className="size-8 ring-1 ring-sidebar-border">
+              <AvatarFallback className="bg-slate-950 text-xs font-bold text-white">
                 {initials(user?.full_name)}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <div className="truncate text-sm font-semibold text-white">
+              <div className="truncate text-sm font-semibold text-sidebar-foreground">
                 {user?.full_name}
               </div>
-              <div className="truncate text-xs text-slate-400">
+              <div className="truncate text-xs text-muted-foreground">
                 {user?.phone_number}
               </div>
             </div>
@@ -169,7 +168,7 @@ export function AppSidebar() {
               clearSession();
               window.location.href = '/login';
             }}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:size-9 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-sidebar-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
           >
             <LogOut className="size-4 shrink-0" />
             <span className="group-data-[collapsible=icon]:hidden">

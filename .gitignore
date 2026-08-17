@@ -57,3 +57,12 @@ packages/backend/logs/
 *.sqlite
 *.sqlite3
 pgdata/
+
+# CCE (code-context-engine)
+# CCE local cache (per-machine, not for version control)
+.cce/
+# Claude Code local settings written by cce init
+.claude/settings.local.json
+
+# Local dev/preview build artifacts (too large for git)
+packages/mobile/*.apk

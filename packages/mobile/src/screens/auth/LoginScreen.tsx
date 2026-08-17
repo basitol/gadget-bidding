@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,18 @@ import { Button, Input } from '../../components';
 import {
   AuthLayout,
   AuthFooterLink,
+  SocialAuthButtons,
 } from '../../components/auth';
+import { SocialAuthResult } from '../../components/auth/SocialAuthButtons';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
-import { isValidNigerianPhone, formatToInternational } from '../../utils';
+import {
+  isValidNigerianPhone,
+  isValidEmail,
+  formatToInternational,
+} from '../../utils';
 import { AppInterfaceType } from '../../utils/roles';
 
 type LoginScreenProps = {
@@ -64,21 +70,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ phone?: string; password?: string }>(
-    {}
-  );
+  const [errors, setErrors] = useState<{
+    identifier?: string;
+    password?: string;
+  }>({});
 
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { login, socialLogin, isLoading, error, clearError } = useAuthStore();
 
   const validateForm = (): boolean => {
-    const newErrors: { phone?: string; password?: string } = {};
+    const newErrors: { identifier?: string; password?: string } = {};
 
-    if (!phoneNumber.trim()) {
-      newErrors.phone = 'Phone number is required';
-    } else if (!isValidNigerianPhone(phoneNumber)) {
-      newErrors.phone = 'Enter a valid Nigerian phone number';
+    const value = identifier.trim();
+    if (!value) {
+      newErrors.identifier = 'Email or phone number is required';
+    } else if (value.includes('@')) {
+      if (!isValidEmail(value)) {
+        newErrors.identifier = 'Enter a valid email address';
+      }
+    } else if (!isValidNigerianPhone(value)) {
+      newErrors.identifier = 'Enter a valid Nigerian phone number';
     }
 
     if (!password) {
@@ -96,8 +108,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     if (!validateForm()) return;
 
     try {
-      const formattedPhone = formatToInternational(phoneNumber);
-      await login(formattedPhone, password, interfaceType);
+      const value = identifier.trim();
+      const formatted = value.includes('@')
+        ? value.toLowerCase()
+        : formatToInternational(value);
+      await login(formatted, password, interfaceType);
     } catch (err) {
       Alert.alert(
         'Login Failed',
@@ -107,6 +122,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       );
     }
   };
+
+  const handleSocialSuccess = useCallback(
+    async (result: SocialAuthResult) => {
+      clearError();
+      try {
+        await socialLogin(result.provider, result.idToken, interfaceType);
+      } catch (err) {
+        Alert.alert(
+          'Login Failed',
+          err instanceof Error
+            ? err.message
+            : 'Social login failed. Please try again.'
+        );
+      }
+    },
+    [clearError, socialLogin, interfaceType]
+  );
+
+  const handleSocialError = useCallback((message: string) => {
+    Alert.alert('Sign in', message);
+  }, []);
 
   const goBack = () => {
     if (navigation.canGoBack()) {
@@ -169,16 +205,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       </View>
 
       <Input
-        label="Phone number"
-        placeholder="08012345678"
-        value={phoneNumber}
-        onChangeText={setPhoneNumber}
-        keyboardType="phone-pad"
+        label="Email or phone number"
+        placeholder="you@example.com or 08012345678"
+        value={identifier}
+        onChangeText={setIdentifier}
+        keyboardType="email-address"
         autoCapitalize="none"
-        autoComplete="tel"
-        textContentType="telephoneNumber"
-        error={errors.phone}
-        iconName="call-outline"
+        autoCorrect={false}
+        autoComplete="email"
+        textContentType="username"
+        error={errors.identifier}
+        iconName="mail-outline"
       />
 
       <Input
@@ -204,6 +241,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         loading={isLoading}
         fullWidth
         size="lg"
+      />
+
+      <SocialAuthButtons
+        onSuccess={handleSocialSuccess}
+        onError={handleSocialError}
       />
 
       {error && (

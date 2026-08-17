@@ -6,7 +6,7 @@ A Nigerian gadget auction platform with real-time bidding, featuring React Nativ
 
 - Real-time English auction bidding
 - Wallet system with multiple payment gateways
-- Paystack, Flutterwave, and bank transfer integration
+- Paystack, Monnify, and bank transfer integration
 - SMS notifications via Termii
 - Push notifications
 - Secure escrow system for bids
@@ -112,7 +112,9 @@ JWT_REFRESH_SECRET=your_refresh_secret
 
 # Payment Gateways
 PAYSTACK_SECRET_KEY=sk_test_xxx
-FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-xxx
+MONNIFY_API_KEY=MK_TEST_xxx
+MONNIFY_SECRET_KEY=xxx
+MONNIFY_CONTRACT_CODE=xxx
 
 # SMS
 TERMII_API_KEY=xxx
@@ -166,7 +168,7 @@ See plan file for complete API documentation.
 5. Updates auction state in real-time
 
 ### Payment Flow
-1. User funds wallet via Paystack/Flutterwave
+1. User funds wallet via Paystack/Monnify
 2. Gateway webhook verifies payment
 3. Wallet balance updated
 4. When bidding, amount held in escrow (bid_holds)

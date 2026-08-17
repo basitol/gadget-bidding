@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,9 @@ import {
   AuthLayout,
   AuthFooterLink,
   PasswordRequirements,
+  SocialAuthButtons,
 } from '../../components/auth';
+import { SocialAuthResult } from '../../components/auth/SocialAuthButtons';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
@@ -66,7 +68,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const { register, isLoading, error, clearError } = useAuthStore();
+  const { register, socialLogin, isLoading, error, clearError } =
+    useAuthStore();
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -141,6 +144,27 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       );
     }
   };
+
+  const handleSocialSuccess = useCallback(
+    async (result: SocialAuthResult) => {
+      clearError();
+      try {
+        await socialLogin(result.provider, result.idToken, interfaceType);
+      } catch (err) {
+        Alert.alert(
+          'Sign up Failed',
+          err instanceof Error
+            ? err.message
+            : 'Social sign up failed. Please try again.'
+        );
+      }
+    },
+    [clearError, socialLogin, interfaceType]
+  );
+
+  const handleSocialError = useCallback((message: string) => {
+    Alert.alert('Sign up', message);
+  }, []);
 
   return (
     <AuthLayout
@@ -279,6 +303,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         loading={isLoading}
         fullWidth
         size="lg"
+      />
+
+      <SocialAuthButtons
+        onSuccess={handleSocialSuccess}
+        onError={handleSocialError}
       />
 
       {error && (

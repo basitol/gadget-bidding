@@ -62,9 +62,11 @@ interface Config {
     webhookUrl: string;
   };
 
-  flutterwave: {
+  monnify: {
+    apiKey: string;
     secretKey: string;
-    publicKey: string;
+    contractCode: string;
+    baseUrl: string;
     webhookUrl: string;
   };
 
@@ -90,7 +92,16 @@ interface Config {
 
   // App URLs
   frontendUrl: string;
+  backendUrl: string;
   mobileAppUrl: string;
+
+  // Social auth (Google / Apple)
+  google: {
+    clientIds: string[];
+  };
+  apple: {
+    clientIds: string[];
+  };
 
   // Security
   bcryptSaltRounds: number;
@@ -172,10 +183,12 @@ const config: Config = {
     webhookUrl: process.env.PAYSTACK_WEBHOOK_URL || '',
   },
 
-  flutterwave: {
-    secretKey: process.env.FLUTTERWAVE_SECRET_KEY || '',
-    publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY || '',
-    webhookUrl: process.env.FLUTTERWAVE_WEBHOOK_URL || '',
+  monnify: {
+    apiKey: process.env.MONNIFY_API_KEY || '',
+    secretKey: process.env.MONNIFY_SECRET_KEY || '',
+    contractCode: process.env.MONNIFY_CONTRACT_CODE || '',
+    baseUrl: process.env.MONNIFY_BASE_URL || 'https://sandbox.monnify.com',
+    webhookUrl: process.env.MONNIFY_WEBHOOK_URL || '',
   },
 
   // SMS (Termii)
@@ -200,7 +213,23 @@ const config: Config = {
 
   // App URLs
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  backendUrl: process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3000',
   mobileAppUrl: process.env.MOBILE_APP_URL || 'gadgetbid://',
+
+  // Social auth — comma-separated client IDs (web/android/iOS) that are
+  // allowed to mint login tokens for this app.
+  google: {
+    clientIds: (process.env.GOOGLE_CLIENT_IDS || '')
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean),
+  },
+  apple: {
+    clientIds: (process.env.APPLE_CLIENT_IDS || '')
+      .split(',')
+      .map(id => id.trim())
+      .filter(Boolean),
+  },
 
   // Security
   bcryptSaltRounds: parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10),

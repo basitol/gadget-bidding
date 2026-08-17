@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -223,7 +225,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="space-y-1">
-        <h1 className="bg-gradient-to-r from-primary to-sky-500 bg-clip-text text-2xl font-semibold tracking-tight text-transparent">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {title}
         </h1>
         {description ? (
@@ -237,7 +239,7 @@ export function PageHeader({
 
 export function Toolbar({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border-2 border-primary/15 bg-gradient-to-r from-white via-sky-50/90 to-violet-50/70 p-3 shadow-md shadow-primary/5 backdrop-blur-sm dark:from-card dark:via-card dark:to-primary/10">
+    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 shadow-sm">
       {children}
     </div>
   );
@@ -246,13 +248,10 @@ export function Toolbar({ children }: { children: ReactNode }) {
 export function SearchInput(props: React.ComponentProps<typeof Input>) {
   return (
     <div className="relative w-[260px]">
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-primary" />
+      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         {...props}
-        className={cn(
-          'h-9 border-2 border-primary/20 bg-white pl-9 shadow-sm focus-visible:border-primary dark:bg-card',
-          props.className
-        )}
+        className={cn('h-9 pl-9', props.className)}
       />
     </div>
   );
@@ -266,11 +265,7 @@ export function SearchButton({
   disabled?: boolean;
 }) {
   return (
-    <Button
-      onClick={onClick}
-      disabled={disabled}
-      className="h-9 bg-gradient-to-r from-primary to-sky-500 shadow-md shadow-primary/25 hover:from-primary/90 hover:to-sky-500/90"
-    >
+    <Button onClick={onClick} disabled={disabled} className="h-9">
       <Search data-icon="inline-start" />
       Search
     </Button>
@@ -291,18 +286,18 @@ export function FilterChip({
       type="button"
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        'inline-flex h-9 items-center gap-2 rounded-xl border-2 px-3 text-sm font-medium transition-all',
+        'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors',
         checked
-          ? 'border-rose-400 bg-rose-500 text-white shadow-md shadow-rose-500/25'
-          : 'border-primary/20 bg-white text-foreground hover:border-rose-300 hover:bg-rose-50 dark:bg-card'
+          ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400'
+          : 'border-border bg-background text-foreground hover:bg-muted'
       )}
     >
       <span
         className={cn(
-          'flex size-4 items-center justify-center rounded border-2 text-[10px] font-bold',
+          'flex size-4 items-center justify-center rounded-sm border text-[10px] font-bold',
           checked
-            ? 'border-white bg-white text-rose-500'
-            : 'border-primary/40 bg-transparent text-transparent'
+            ? 'border-rose-500 bg-rose-500 text-white'
+            : 'border-muted-foreground/30 bg-transparent text-transparent'
         )}
       >
         ✓
@@ -445,28 +440,40 @@ export function Pagination({
 export function Modal({
   open,
   title,
+  description,
   onClose,
   children,
+  footer,
   wide,
 }: {
   open: boolean;
   title: string;
+  description?: string;
   onClose: () => void;
   children: ReactNode;
+  footer?: ReactNode;
   wide?: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={next => !next && onClose()}>
       <DialogContent
         className={cn(
-          'max-h-[90vh] overflow-y-auto',
+          'flex max-h-[90vh] flex-col overflow-hidden p-0',
           wide ? 'sm:max-w-3xl' : 'sm:max-w-lg'
         )}
       >
-        <DialogHeader>
+        <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{title}</DialogTitle>
+          {description ? (
+            <DialogDescription>{description}</DialogDescription>
+          ) : null}
         </DialogHeader>
-        {children}
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {footer ? (
+          <DialogFooter className="mx-0 mb-0 rounded-none">
+            {footer}
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -482,7 +489,7 @@ export function Panel({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-xl border border-primary/10 bg-card/90 text-card-foreground shadow-md shadow-primary/5 backdrop-blur-sm',
+        'overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm',
         className
       )}
     >

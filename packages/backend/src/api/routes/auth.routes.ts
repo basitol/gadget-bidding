@@ -51,6 +51,19 @@ router.post(
 );
 
 /**
+ * @route   POST /api/v1/auth/social
+ * @desc    Login with Google/Apple identity token
+ * @access  Public
+ */
+router.post(
+  '/social',
+  authRateLimiter,
+  authValidator.validateSocialLogin,
+  handleValidationErrors,
+  authController.socialLogin
+);
+
+/**
  * @route   POST /api/v1/auth/refresh-token
  * @desc    Refresh access token
  * @access  Public

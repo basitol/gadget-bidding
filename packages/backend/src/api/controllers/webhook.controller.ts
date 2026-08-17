@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { sendSuccess } from '../../utils/response';
 import * as paystackService from '../../services/payment/paystack.service';
+import * as monnifyService from '../../services/payment/monnify.service';
 import * as walletService from '../../services/wallet/wallet.service';
 import * as orderService from '../../services/order/order.service';
 import prisma from '../../config/prisma';
@@ -29,7 +30,7 @@ export const paystackWebhook = async (req: Request, res: Response) => {
 
     switch (event.event) {
       case 'charge.success':
-        await handleChargeSuccess(event.data);
+        await handleChargeSuccess('paystack', event.data);
         break;
 
       case 'transfer.success':
@@ -53,12 +54,62 @@ export const paystackWebhook = async (req: Request, res: Response) => {
 };
 
 /**
- * Handle successful charge
+ * Monnify webhook handler
+ * POST /api/v1/webhooks/monnify
  */
-async function handleChargeSuccess(data: Record<string, unknown>) {
+export const monnifyWebhook = async (req: Request, res: Response) => {
+  try {
+    const signature = req.headers['monnify-signature'] as string;
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body.toString('utf8')
+      : typeof req.body === 'string'
+        ? req.body
+        : JSON.stringify(req.body);
+
+    if (!monnifyService.verifyWebhookSignature(rawBody, signature)) {
+      logger.warn('Invalid Monnify webhook signature');
+      return res.status(400).send('Invalid signature');
+    }
+
+    const event = JSON.parse(rawBody);
+    const eventType = event.eventType;
+    logger.info(`Monnify webhook received: ${eventType}`);
+
+    switch (eventType) {
+      case 'SUCCESSFUL_TRANSACTION':
+        await handleChargeSuccess('monnify', {
+          reference: event.eventData?.paymentReference,
+          amount: event.eventData?.amountPaid ?? event.eventData?.amount,
+          metadata: event.eventData?.metaData,
+          raw: event.eventData,
+        });
+        break;
+
+      default:
+        logger.info(`Unhandled Monnify webhook event: ${eventType}`);
+    }
+
+    res.status(200).send('Webhook received');
+  } catch (error: unknown) {
+    logger.error('Monnify webhook processing error:', error);
+    res.status(500).send('Error processing webhook');
+  }
+};
+
+/**
+ * Handle successful charge (shared between Paystack and Monnify)
+ */
+async function handleChargeSuccess(
+  gateway: 'paystack' | 'monnify',
+  data: Record<string, unknown>
+) {
   const reference = data.reference as string;
-  const amount = (data.amount as number) / 100;
+  const amount =
+    gateway === 'paystack'
+      ? (data.amount as number) / 100
+      : (data.amount as number);
   const metadata = (data.metadata as Record<string, unknown>) || {};
+  const gatewayResponse = (data.raw as Record<string, unknown>) || data;
 
   const existingTx = await prisma.paymentTransaction.findFirst({
     where: {
@@ -99,7 +150,7 @@ async function handleChargeSuccess(data: Record<string, unknown>) {
       txMetadata.order_id as string,
       reference,
       amount,
-      data
+      gatewayResponse
     );
     return;
   }
@@ -108,12 +159,13 @@ async function handleChargeSuccess(data: Record<string, unknown>) {
     throw new Error(`Wallet funding missing user for reference: ${reference}`);
   }
 
-  await walletService.processWalletFundingFromPaystack({
+  await walletService.processWalletFunding({
     userId: pendingTx.userId,
     reference,
     amount,
-    gatewayResponse: data,
+    gatewayResponse,
     source: 'webhook',
+    gateway,
   });
 }
 

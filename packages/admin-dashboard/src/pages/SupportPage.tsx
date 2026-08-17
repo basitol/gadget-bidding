@@ -6,6 +6,7 @@ import {
   joinSupportThread,
   leaveSupportThread,
 } from '@/lib/socket';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import {
   Badge,
   Empty,
@@ -41,6 +42,7 @@ function mergeMessages(current: any[], incoming: any[]) {
 }
 
 export function SupportPage() {
+  const { confirm } = useConfirmDialog();
   const [status, setStatus] = useState('open');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -171,7 +173,7 @@ export function SupportPage() {
 
   const closeThread = async () => {
     if (!selected) return;
-    if (!window.confirm('Close this support thread?')) return;
+    if (!(await confirm('Close this support thread?'))) return;
     setBusy(true);
     try {
       await adminApi.closeSupport(selected.id);
@@ -239,7 +241,7 @@ export function SupportPage() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-primary/5 hover:bg-primary/5">
+                  <TableRow className="hover:bg-transparent">
                     <TableHead>Seller</TableHead>
                     <TableHead>Preview</TableHead>
                     <TableHead>Status</TableHead>
@@ -305,7 +307,7 @@ export function SupportPage() {
             <Empty>Select a conversation to reply.</Empty>
           ) : (
             <>
-              <div className="flex items-start justify-between gap-3 border-b border-primary/10 bg-gradient-to-r from-primary/10 to-transparent px-4 py-3">
+              <div className="flex items-start justify-between gap-3 border-b bg-muted/40 px-4 py-3">
                 <div>
                   <div className="font-medium">
                     {selected.seller?.full_name}

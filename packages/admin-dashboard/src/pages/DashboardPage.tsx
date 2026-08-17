@@ -23,13 +23,12 @@ import {
 import { cn } from '@/lib/utils';
 
 const accentStyles = {
-  warn: 'from-amber-400/25 via-amber-300/10 to-transparent border-amber-300/40',
-  danger: 'from-rose-400/25 via-rose-300/10 to-transparent border-rose-300/40',
-  ok: 'from-emerald-400/25 via-emerald-300/10 to-transparent border-emerald-300/40',
-  info: 'from-sky-400/25 via-sky-300/10 to-transparent border-sky-300/40',
-  primary: 'from-primary/25 via-sky-400/10 to-transparent border-primary/25',
-  violet:
-    'from-violet-400/25 via-violet-300/10 to-transparent border-violet-300/40',
+  warn: 'border-l-amber-500 text-amber-700 dark:text-amber-400',
+  danger: 'border-l-rose-500 text-rose-700 dark:text-rose-400',
+  ok: 'border-l-emerald-500 text-emerald-700 dark:text-emerald-400',
+  info: 'border-l-sky-500 text-sky-700 dark:text-sky-400',
+  primary: 'border-l-primary text-primary',
+  violet: 'border-l-violet-500 text-violet-700 dark:text-violet-400',
 };
 
 export function DashboardPage() {
@@ -149,7 +148,7 @@ export function DashboardPage() {
           <Link key={item.label} to={item.to}>
             <Card
               className={cn(
-                'h-full border bg-gradient-to-br transition-transform hover:-translate-y-0.5 hover:shadow-md',
+                'h-full border-l-4 shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md',
                 accentStyles[item.accent]
               )}
             >
@@ -173,10 +172,7 @@ export function DashboardPage() {
         {metrics.map(item => (
           <Card
             key={item.label}
-            className={cn(
-              'border bg-gradient-to-br shadow-sm',
-              accentStyles[item.accent]
-            )}
+            className={cn('border-l-4 shadow-sm', accentStyles[item.accent])}
           >
             <CardHeader className="pb-2">
               <CardDescription className="text-foreground/70">
@@ -195,7 +191,7 @@ export function DashboardPage() {
 
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Panel>
-          <div className="flex items-center justify-between border-b border-primary/10 bg-gradient-to-r from-primary/10 to-transparent px-4 py-3">
+          <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-3">
             <strong className="text-sm font-medium">
               Recent platform activity
             </strong>
@@ -251,7 +247,7 @@ export function DashboardPage() {
         </Panel>
 
         <Panel>
-          <div className="border-b border-primary/10 bg-gradient-to-r from-violet-500/10 to-transparent px-4 py-3">
+          <div className="border-b bg-muted/40 px-4 py-3">
             <strong className="text-sm font-medium">Catalog health</strong>
           </div>
           <dl className="divide-y px-4">

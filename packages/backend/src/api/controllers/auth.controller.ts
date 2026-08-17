@@ -76,10 +76,10 @@ export const verifyOTP = async (req: Request, res: Response) => {
  */
 export const login = async (req: Request, res: Response) => {
   try {
-    const { phone_number, password, account_type } = req.body;
+    const { identifier, password, account_type } = req.body;
 
     const tokens = await authService.loginUser({
-      phone_number,
+      identifier,
       password,
       account_type,
     });
@@ -90,13 +90,34 @@ export const login = async (req: Request, res: Response) => {
     auditService
       .recordFailedLogin(
         req,
-        req.body?.phone_number,
+        req.body?.identifier,
         error.message || 'Login failed'
       )
       .catch(err => {
         logger.error('Failed to record login audit:', err);
       });
     sendError(res, error.message || 'Login failed', 401);
+  }
+};
+
+/**
+ * Login with Google or Apple
+ * POST /api/v1/auth/social
+ */
+export const socialLogin = async (req: Request, res: Response) => {
+  try {
+    const { provider, id_token, account_type } = req.body;
+
+    const tokens = await authService.socialLogin({
+      provider,
+      id_token,
+      account_type,
+    });
+
+    sendSuccess(res, tokens, 'Login successful');
+  } catch (error: any) {
+    logger.error('Social login error:', error);
+    sendError(res, error.message || 'Social login failed', 401);
   }
 };
 

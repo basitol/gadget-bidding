@@ -3,11 +3,20 @@ import config from '../../config';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as walletService from '../../services/wallet/wallet.service';
 import * as paystackService from '../../services/payment/paystack.service';
+import * as monnifyService from '../../services/payment/monnify.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as auditService from '../../services/audit/audit.service';
 import { query } from '../../config/database';
 import logger from '../../utils/logger';
 import { safeErrorMessage, USER_ERRORS } from '../../utils/errors';
+
+type PaymentGatewayName = 'paystack' | 'monnify';
+
+const getGatewayService = (gateway: unknown) =>
+  gateway === 'monnify' ? monnifyService : paystackService;
+
+const resolveGatewayName = (gateway: unknown): PaymentGatewayName =>
+  gateway === 'monnify' ? 'monnify' : 'paystack';
 
 /**
  * Get wallet balance
@@ -74,8 +83,9 @@ export const fundWallet = async (req: Request, res: Response) => {
     }
 
     const { amount, email } = req.body;
+    const gateway = resolveGatewayName(req.body.gateway);
 
-    const paymentData = await paystackService.initializePayment(
+    const paymentData = await getGatewayService(gateway).initializePayment(
       email,
       amount,
       req.user.user_id,
@@ -90,7 +100,7 @@ export const fundWallet = async (req: Request, res: Response) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         req.user.user_id,
-        'paystack',
+        gateway,
         paymentData.reference,
         amount,
         'NGN',
@@ -132,7 +142,15 @@ export const verifyPayment = async (req: Request, res: Response) => {
       return sendError(res, 'Payment reference is required', 400);
     }
 
-    const verification = await paystackService.verifyPayment(reference);
+    const gatewayRow = await query<{ payment_gateway: string }>(
+      'SELECT payment_gateway FROM payment_transactions WHERE gateway_reference = $1',
+      [reference]
+    );
+    const gateway = resolveGatewayName(gatewayRow[0]?.payment_gateway);
+
+    const verification = await getGatewayService(gateway).verifyPayment(
+      reference
+    );
 
     if (!verification.status) {
       auditService.recordPaymentVerificationFailed(
@@ -152,12 +170,13 @@ export const verifyPayment = async (req: Request, res: Response) => {
       return sendError(res, USER_ERRORS.PAYMENT_FAILED, 400);
     }
 
-    const result = await walletService.processWalletFundingFromPaystack({
+    const result = await walletService.processWalletFunding({
       userId: req.user.user_id,
       reference,
       amount: verification.amount,
       gatewayResponse: verification.gatewayResponse,
       source: 'verify',
+      gateway,
     });
 
     sendSuccess(res, {
@@ -260,21 +279,25 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
 
   if (reference) {
     try {
-      const txResult = await query<{ user_id: string }>(
-        'SELECT user_id FROM payment_transactions WHERE gateway_reference = $1',
+      const txResult = await query<{ user_id: string; payment_gateway: string }>(
+        'SELECT user_id, payment_gateway FROM payment_transactions WHERE gateway_reference = $1',
         [reference]
       );
       const userId = txResult[0]?.user_id;
+      const gateway = resolveGatewayName(txResult[0]?.payment_gateway);
 
       if (userId) {
-        const verification = await paystackService.verifyPayment(reference);
+        const verification = await getGatewayService(gateway).verifyPayment(
+          reference
+        );
         if (verification.status) {
-          await walletService.processWalletFundingFromPaystack({
+          await walletService.processWalletFunding({
             userId,
             reference,
             amount: verification.amount,
             gatewayResponse: verification.gatewayResponse,
             source: 'verify',
+            gateway,
           });
         } else {
           paymentStatus = 'pending';
@@ -314,12 +337,17 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
     <div class="icon">${paymentStatus === 'success' ? '✅' : '⏳'}</div>
     <h1>${heading}</h1>
     <p>${paymentMessage}</p>
+    <p>If the app does not open automatically, tap the button below.</p>
     <a href="${deepLinkUrl}" class="btn">Open GadgetBid App</a>
   </div>
   <script>
-    setTimeout(function() {
+    function openApp() {
       window.location.href = "${deepLinkUrl}";
-    }, 300);
+    }
+    if (window.navigator && /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent)) {
+      setTimeout(openApp, 300);
+    }
+    window.addEventListener('load', openApp);
   </script>
 </body>
 </html>`;

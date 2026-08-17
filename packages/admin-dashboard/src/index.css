@@ -73,15 +73,15 @@
     --chart-3: oklch(0.65 0.18 155);
     --chart-4: oklch(0.75 0.16 75);
     --chart-5: oklch(0.62 0.2 20);
-    --radius: 0.75rem;
-    --sidebar: oklch(0.28 0.09 260);
-    --sidebar-foreground: oklch(0.96 0.02 250);
-    --sidebar-primary: oklch(0.72 0.16 230);
-    --sidebar-primary-foreground: oklch(0.18 0.05 260);
-    --sidebar-accent: oklch(0.35 0.1 260);
-    --sidebar-accent-foreground: oklch(0.98 0.01 250);
-    --sidebar-border: oklch(0.38 0.08 260);
-    --sidebar-ring: oklch(0.72 0.16 230);
+    --radius: 0.5rem;
+    --sidebar: oklch(0.985 0.008 250);
+    --sidebar-foreground: oklch(0.32 0.05 255);
+    --sidebar-primary: oklch(0.55 0.22 260);
+    --sidebar-primary-foreground: oklch(0.99 0.01 250);
+    --sidebar-accent: oklch(0.94 0.03 255);
+    --sidebar-accent-foreground: oklch(0.22 0.04 255);
+    --sidebar-border: oklch(0.91 0.02 250);
+    --sidebar-ring: oklch(0.55 0.22 260);
 }
 
 .dark {
@@ -124,11 +124,6 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 0% -10%, oklch(0.7 0.14 255 / 0.18), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, oklch(0.75 0.12 280 / 0.14), transparent),
-      radial-gradient(ellipse 50% 30% at 50% 100%, oklch(0.8 0.1 200 / 0.1), transparent);
-    background-attachment: fixed;
   }
   html {
     @apply font-sans;

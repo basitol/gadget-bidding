@@ -82,7 +82,7 @@ export function AuditPage() {
           <>
             <Table>
               <TableHeader>
-                <TableRow className="bg-primary/5 hover:bg-primary/5">
+                <TableRow className="hover:bg-transparent">
                   <TableHead>When</TableHead>
                   <TableHead>Actor</TableHead>
                   <TableHead>Action</TableHead>

@@ -67,8 +67,9 @@ function getDevApiHost(): string {
     return '10.0.2.2';
   }
 
-  const legacyManifest = (Constants as { manifest?: Record<string, string> })
-    .manifest;
+  const legacyManifest = (
+    Constants as unknown as { manifest?: Record<string, string> }
+  ).manifest;
 
   const candidates = [
     Constants.expoConfig?.hostUri,
@@ -107,6 +108,19 @@ if (__DEV__) {
 export const APP_NAME = 'GadgetBid';
 export const CURRENCY = '₦';
 export const CURRENCY_CODE = 'NGN';
+
+// Social auth — set these in .env (EXPO_PUBLIC_*) with your Google OAuth
+// client IDs (comma/space separated list matching backend GOOGLE_CLIENT_IDS)
+export const GOOGLE_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '';
+export const GOOGLE_IOS_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
+export const GOOGLE_ANDROID_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
+
+// Apple — the Sign in with Apple service identifier (your iOS bundle id)
+export const APPLE_CLIENT_ID =
+  process.env.EXPO_PUBLIC_APPLE_CLIENT_ID || 'com.gadgetbid.app';
 
 // Bid Configuration
 export const MIN_BID_INCREMENT = 1000; // ₦1,000 minimum increment

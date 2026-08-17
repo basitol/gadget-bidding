@@ -246,34 +246,39 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
     );
   };
 
-  const renderBidItem = ({ item }: { item: Bid }) => (
-    <View style={styles.bidItem}>
-      <View style={styles.bidderInfo}>
-        <View style={styles.bidderAvatar}>
-          <Text style={styles.bidderInitial}>
-            {item.bidder?.full_name?.[0] || '?'}
-          </Text>
+  const renderBidItem = ({ item }: { item: Bid }) => {
+    const isCurrentUser = item.bidder_id === user?.id;
+    const bidderLabel = isCurrentUser ? 'You' : 'Bidder';
+
+    return (
+      <View style={styles.bidItem}>
+        <View style={styles.bidderInfo}>
+          <View style={styles.bidderAvatar}>
+            <Text style={styles.bidderInitial}>
+              {isCurrentUser ? 'Y' : 'B'}
+            </Text>
+          </View>
+          <View>
+            <Text style={styles.bidderName}>
+              {bidderLabel}
+              {isCurrentUser ? ' (You)' : ''}
+            </Text>
+            <Text style={styles.bidTime}>
+              {formatRelativeTime(item.bid_time || item.created_at)}
+            </Text>
+          </View>
         </View>
-        <View>
-          <Text style={styles.bidderName}>
-            {item.bidder?.full_name || 'Anonymous'}
-            {item.bidder_id === user?.id && ' (You)'}
-          </Text>
-          <Text style={styles.bidTime}>
-            {formatRelativeTime(item.bid_time || item.created_at)}
-          </Text>
-        </View>
+        <Text
+          style={[
+            styles.bidAmount,
+            item.status === 'active' ? styles.activeBid : undefined,
+          ]}
+        >
+          {formatCurrency(item.amount)}
+        </Text>
       </View>
-      <Text
-        style={[
-          styles.bidAmount,
-          item.status === 'active' ? styles.activeBid : undefined,
-        ]}
-      >
-        {formatCurrency(item.amount)}
-      </Text>
-    </View>
-  );
+    );
+  };
 
   if (isLoading && !currentAuction) {
     return <LoadingScreen message="Loading auction..." />;

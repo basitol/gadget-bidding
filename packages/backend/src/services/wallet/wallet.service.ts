@@ -174,16 +174,17 @@ export type WalletFundingResult = {
 
 /**
  * Atomically verify and credit a wallet funding payment.
- * Used by client verify endpoint and Paystack webhooks.
+ * Used by client verify endpoint and gateway webhooks (Paystack, Monnify).
  */
-export const processWalletFundingFromPaystack = async (params: {
+export const processWalletFunding = async (params: {
   userId: string;
   reference: string;
   amount: number;
   gatewayResponse: Record<string, unknown>;
   source: 'verify' | 'webhook';
+  gateway: 'paystack' | 'monnify';
 }): Promise<WalletFundingResult> => {
-  const { userId, reference, amount, gatewayResponse, source } = params;
+  const { userId, reference, amount, gatewayResponse, source, gateway } = params;
 
   return prisma.$transaction(async tx => {
     const pending = await tx.paymentTransaction.findFirst({
@@ -257,8 +258,11 @@ export const processWalletFundingFromPaystack = async (params: {
         reference,
         description: 'Wallet funded',
         metadata: {
-          gateway: 'paystack',
-          payment_method: (gatewayResponse as { channel?: string }).channel,
+          gateway,
+          payment_method:
+            gateway === 'paystack'
+              ? (gatewayResponse as { channel?: string }).channel
+              : (gatewayResponse as { paymentMethod?: string }).paymentMethod,
           source,
         },
         status: 'completed',

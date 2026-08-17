@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { adminApi } from '@/api';
 import { mediaUrl } from '@/lib/media';
 import { label, money, when } from '@/lib/format';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import {
   Badge,
   Empty,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/table';
 
 export function AuctionsPage() {
+  const { confirm } = useConfirmDialog();
   const [status, setStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -69,7 +71,15 @@ export function AuctionsPage() {
     const msg = hasBids
       ? `Force-cancel "${auction.gadget?.title || 'this auction'}"? It has ${auction.total_bids} bid(s).`
       : `Cancel "${auction.gadget?.title || 'this auction'}"?`;
-    if (!window.confirm(msg)) return;
+    if (
+      !(await confirm({
+        title: 'Cancel auction',
+        description: msg,
+        danger: true,
+        confirmLabel: 'Cancel auction',
+      }))
+    )
+      return;
 
     setBusyId(auction.id);
     setError('');
@@ -135,7 +145,7 @@ export function AuctionsPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-primary/5 hover:bg-primary/5">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Auction</TableHead>
                 <TableHead>Seller / winner</TableHead>
                 <TableHead>Pricing</TableHead>
@@ -151,12 +161,12 @@ export function AuctionsPage() {
                     <div className="flex items-center gap-3">
                       {a.gadget?.image ? (
                         <img
-                          className="size-14 rounded-lg object-cover ring-2 ring-primary/15"
+                          className="size-14 rounded-lg object-cover ring-1 ring-border"
                           src={mediaUrl(a.gadget.image)}
                           alt=""
                         />
                       ) : (
-                        <div className="size-14 rounded-lg bg-gradient-to-br from-primary/30 to-sky-400/30" />
+                        <div className="size-14 rounded-lg bg-muted" />
                       )}
                       <div>
                         <div className="font-medium">

@@ -30,7 +30,7 @@ type Queue = {
   title: string;
   description: string;
   icon: React.ReactNode;
-  accent: string;
+  color: string;
   empty: string;
 };
 
@@ -40,7 +40,7 @@ const queues: Queue[] = [
     title: 'Seller sent to us',
     description: 'Items sellers have handed over or dispatched to backoffice.',
     icon: <PackageOpen className="size-5" />,
-    accent: 'from-amber-500/20 to-orange-500/10 text-amber-700',
+    color: 'text-amber-700 dark:text-amber-400',
     empty: 'No inbound seller deliveries.',
   },
   {
@@ -48,7 +48,7 @@ const queues: Queue[] = [
     title: 'Ready to ship',
     description: 'Items received by backoffice and ready for buyer delivery.',
     icon: <PackageCheck className="size-5" />,
-    accent: 'from-sky-500/20 to-primary/10 text-sky-700',
+    color: 'text-sky-700 dark:text-sky-400',
     empty: 'No items waiting for shipping.',
   },
   {
@@ -56,7 +56,7 @@ const queues: Queue[] = [
     title: 'Out for delivery',
     description: 'Items shipped by backoffice to buyers.',
     icon: <Truck className="size-5" />,
-    accent: 'from-violet-500/20 to-primary/10 text-violet-700',
+    color: 'text-violet-700 dark:text-violet-400',
     empty: 'No active outbound deliveries.',
   },
   {
@@ -64,7 +64,7 @@ const queues: Queue[] = [
     title: 'Delivered',
     description: 'Completed deliveries now eligible for payout handling.',
     icon: <CheckCircle2 className="size-5" />,
-    accent: 'from-emerald-500/20 to-sky-500/10 text-emerald-700',
+    color: 'text-emerald-700 dark:text-emerald-400',
     empty: 'No delivered orders yet.',
   },
 ];
@@ -190,11 +190,13 @@ export function BackofficePage() {
         {queues.map(queue => (
           <div
             key={queue.status}
-            className={`rounded-2xl border border-primary/10 bg-gradient-to-br ${queue.accent} p-4 shadow-sm`}
+            className="rounded-xl border bg-card p-4 shadow-sm"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{queue.title}</span>
-              {queue.icon}
+              <span className="text-sm font-medium text-muted-foreground">
+                {queue.title}
+              </span>
+              <span className={queue.color}>{queue.icon}</span>
             </div>
             <div className="mt-2 text-3xl font-semibold tracking-tight">
               {totals[queue.status] || 0}
@@ -213,7 +215,7 @@ export function BackofficePage() {
 
           return (
             <Panel key={queue.status} className="overflow-hidden">
-              <div className="border-b bg-primary/5 p-4">
+              <div className="border-b bg-muted/40 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="font-semibold tracking-tight">
@@ -224,7 +226,7 @@ export function BackofficePage() {
                     </p>
                   </div>
                   <span
-                    className={`grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${queue.accent}`}
+                    className={`grid size-10 shrink-0 place-items-center rounded-lg bg-background ${queue.color}`}
                   >
                     {queue.icon}
                   </span>

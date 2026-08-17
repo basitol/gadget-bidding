@@ -6,17 +6,22 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Modal,
   TextInput,
   Alert,
   FlatList,
   Linking,
   AppState,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView, WebViewNavigation } from 'react-native-webview';
 import {
   WalletCard,
   Button,
@@ -43,8 +48,15 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
   const [fundAmount, setFundAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [paymentReference, setPaymentReference] = useState<string | null>(null);
+  const [showPaymentWebView, setShowPaymentWebView] = useState(false);
+  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [pendingDeposit, setPendingDeposit] = useState<string | null>(null);
   const isVerifyingRef = useRef(false);
+  const pendingDepositRef = useRef<string | null>(null);
+  const verifyRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const webViewRef = useRef<WebView>(null);
 
   const {
     wallet,
@@ -63,15 +75,23 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
     loadData();
   }, []);
 
-  const verifyPendingDeposit = useCallback(
-    async (reference?: string) => {
-      const ref = reference || pendingDeposit;
-      if (!ref || isVerifyingRef.current) return;
+  const clearVerifyRetry = useCallback(() => {
+    if (verifyRetryRef.current) {
+      clearTimeout(verifyRetryRef.current);
+      verifyRetryRef.current = null;
+    }
+  }, []);
+
+  const attemptVerify = useCallback(
+    async (reference: string, attempt = 1) => {
+      if (!reference || isVerifyingRef.current) return;
       isVerifyingRef.current = true;
       try {
-        const res = await walletService.verifyDeposit(ref);
+        const res = await walletService.verifyDeposit(reference);
         if (res.data) {
+          pendingDepositRef.current = null;
           setPendingDeposit(null);
+          clearVerifyRetry();
           await refreshWallet();
           Alert.alert(
             'Payment Confirmed',
@@ -79,37 +99,106 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
           );
         }
       } catch (error) {
-        // Not yet paid or payment still processing — retry on next foreground/focus
+        // Paystack can take a few seconds to finalize. Keep retrying so a
+        // premature check never strands a completed payment.
+        if (attempt < 8) {
+          const delay = Math.min(2000 * attempt, 10000);
+          verifyRetryRef.current = setTimeout(() => {
+            verifyRetryRef.current = null;
+            attemptVerify(reference, attempt + 1);
+          }, delay);
+        }
       } finally {
         isVerifyingRef.current = false;
       }
     },
-    [pendingDeposit, refreshWallet]
+    [clearVerifyRetry, refreshWallet]
+  );
+
+  const startVerification = useCallback(
+    (reference: string) => {
+      pendingDepositRef.current = reference;
+      setPendingDeposit(reference);
+      clearVerifyRetry();
+      attemptVerify(reference, 1);
+    },
+    [attemptVerify, clearVerifyRetry]
   );
 
   useFocusEffect(
     useCallback(() => {
-      verifyPendingDeposit();
-    }, [verifyPendingDeposit])
+      const ref = pendingDepositRef.current;
+      if (ref) attemptVerify(ref, 1);
+    }, [attemptVerify])
   );
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') verifyPendingDeposit();
+      if (state === 'active') {
+        const ref = pendingDepositRef.current;
+        if (ref) attemptVerify(ref, 1);
+      }
     });
     return () => sub.remove();
-  }, [verifyPendingDeposit]);
+  }, [attemptVerify]);
 
   useEffect(() => {
     const ref = (route?.params as any)?.reference;
     if (ref) {
-      setPendingDeposit(ref);
-      verifyPendingDeposit(ref);
+      startVerification(ref);
     }
-  }, [route?.params, verifyPendingDeposit]);
+  }, [route?.params, startVerification]);
+
+  useEffect(() => {
+    return () => clearVerifyRetry();
+  }, [clearVerifyRetry]);
 
   const loadData = async () => {
     await Promise.all([fetchWallet(), fetchTransactions()]);
+  };
+
+  const closePaymentWebView = () => {
+    setShowPaymentWebView(false);
+    setPaymentUrl(null);
+    setPaymentReference(null);
+    setIsPaymentLoading(false);
+  };
+
+  const handleShouldStartLoad = (request: any): boolean => {
+    const { url } = request;
+    if (!url) return true;
+
+    if (url.startsWith('gadgetbid://')) {
+      closePaymentWebView();
+      Linking.openURL(url).catch(() => {
+        // Ignore if the app cannot open the URL immediately.
+      });
+      return false;
+    }
+
+    if (url.includes('/wallet/verify')) {
+      try {
+        const parsedUrl = new URL(url);
+        const reference = parsedUrl.searchParams.get('reference');
+        if (reference) {
+          closePaymentWebView();
+          startVerification(reference);
+          return false;
+        }
+      } catch {
+        // If URL parsing fails, continue loading normally.
+      }
+    }
+
+    return true;
+  };
+
+  const handleWebViewLoadStart = () => {
+    setIsPaymentLoading(true);
+  };
+
+  const handleWebViewLoadEnd = () => {
+    setIsPaymentLoading(false);
   };
 
   const handleFund = async () => {
@@ -139,14 +228,12 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
       setFundAmount('');
 
       if (response.data.authorization_url) {
-        // Remember the reference so we can verify once the browser returns
+        pendingDepositRef.current = response.data.reference;
         setPendingDeposit(response.data.reference);
-        // Open payment URL
-        await Linking.openURL(response.data.authorization_url);
-        Alert.alert(
-          'Payment Initiated',
-          'Complete your payment in the browser. Your wallet will be credited once payment is confirmed.'
-        );
+        clearVerifyRetry();
+        setPaymentReference(response.data.reference);
+        setPaymentUrl(response.data.authorization_url);
+        setShowPaymentWebView(true);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to initiate deposit. Please try again.');
@@ -350,77 +437,75 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
         transparent
         onRequestClose={() => setShowFundModal(false)}
       >
-        <TouchableOpacity
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
           style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowFundModal(false)}
         >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={e => e.stopPropagation()}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Fund Wallet</Text>
-                <TouchableOpacity onPress={() => setShowFundModal(false)}>
-                  <Ionicons
-                    name="close"
-                    size={22}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalBody}>
-                <Text style={styles.modalLabel}>Amount (₦)</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={fundAmount}
-                  onChangeText={setFundAmount}
-                  keyboardType="number-pad"
-                  placeholder="Enter amount"
-                  placeholderTextColor={colors.textMuted}
+          <TouchableWithoutFeedback onPress={() => setShowFundModal(false)}>
+            <View style={styles.modalBackground} />
+          </TouchableWithoutFeedback>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Fund Wallet</Text>
+              <TouchableOpacity onPress={() => setShowFundModal(false)}>
+                <Ionicons
+                  name="close"
+                  size={22}
+                  color={colors.textSecondary}
                 />
-
-                <View style={styles.quickAmounts}>
-                  {[1000, 5000, 10000, 20000, 50000].map(amount => (
-                    <TouchableOpacity
-                      key={amount}
-                      style={styles.quickAmountButton}
-                      onPress={() => setFundAmount(amount.toString())}
-                    >
-                      <Text style={styles.quickAmountText}>
-                        {formatCurrency(amount)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <View style={styles.paymentMethods}>
-                  <Text style={styles.paymentLabel}>Payment Method</Text>
-                  <View style={styles.paymentOption}>
-                    <Ionicons
-                      name="card-outline"
-                      size={22}
-                      color={colors.primary}
-                      style={styles.paymentIcon}
-                    />
-                    <Text style={styles.paymentName}>Paystack (Card/Bank)</Text>
-                    <View style={styles.paymentSelected} />
-                  </View>
-                </View>
-
-                <Button
-                  title="Continue to Payment"
-                  onPress={handleFund}
-                  loading={isProcessing}
-                  fullWidth
-                  size="lg"
-                />
-              </View>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.modalLabel}>Amount (₦)</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={fundAmount}
+                onChangeText={setFundAmount}
+                keyboardType="number-pad"
+                placeholder="Enter amount"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <View style={styles.quickAmounts}>
+                {[1000, 5000, 10000, 20000, 50000].map(amount => (
+                  <TouchableOpacity
+                    key={amount}
+                    style={styles.quickAmountButton}
+                    onPress={() => setFundAmount(amount.toString())}
+                  >
+                    <Text style={styles.quickAmountText}>
+                      {formatCurrency(amount)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.paymentMethods}>
+                <Text style={styles.paymentLabel}>Payment Method</Text>
+                <View style={styles.paymentOption}>
+                  <Ionicons
+                    name="card-outline"
+                    size={22}
+                    color={colors.primary}
+                    style={styles.paymentIcon}
+                  />
+                  <Text style={styles.paymentName}>Paystack (Card/Bank)</Text>
+                  <View style={styles.paymentSelected} />
+                </View>
+              </View>
+
+              <Button
+                title="Continue to Payment"
+                onPress={handleFund}
+                loading={isProcessing}
+                fullWidth
+                size="lg"
+              />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Withdraw Modal */}
@@ -494,6 +579,97 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={showPaymentWebView}
+        animationType="slide"
+        onRequestClose={closePaymentWebView}
+      >
+        <SafeAreaView style={styles.webViewContainer} edges={['top']}>
+          <View style={styles.paymentHeader}>
+            <TouchableOpacity onPress={closePaymentWebView} style={styles.backButton}>
+              <Ionicons name="chevron-back" size={20} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.paymentTitle}>Paystack Checkout</Text>
+            <View style={styles.placeholder} />
+          </View>
+          {paymentUrl ? (
+            <WebView
+              ref={webViewRef}
+              source={{ uri: paymentUrl }}
+              style={styles.webView}
+              onShouldStartLoadWithRequest={handleShouldStartLoad}
+              onLoadStart={handleWebViewLoadStart}
+              onLoadEnd={handleWebViewLoadEnd}
+              startInLoadingState
+              javaScriptEnabled
+              domStorageEnabled
+            />
+          ) : (
+            <View style={styles.webViewLoading}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Preparing payment...</Text>
+            </View>
+          )}
+          {isPaymentLoading && (
+            <View style={styles.paymentLoadingOverlay}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={showPaymentWebView}
+        animationType="slide"
+        onRequestClose={closePaymentWebView}
+      >
+        <SafeAreaView style={styles.webViewContainer} edges={['top']}>
+          <View style={styles.paymentHeader}>
+            <TouchableOpacity
+              onPress={closePaymentWebView}
+              style={styles.backButton}
+            >
+              <Ionicons name="chevron-back" size={20} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.paymentTitle}>Paystack Checkout</Text>
+            <View style={styles.placeholder} />
+          </View>
+
+          {paymentUrl ? (
+            <WebView
+              ref={webViewRef}
+              source={{ uri: paymentUrl }}
+              style={styles.webView}
+              onShouldStartLoadWithRequest={handleShouldStartLoad}
+              onLoadStart={handleWebViewLoadStart}
+              onLoadEnd={handleWebViewLoadEnd}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={styles.webViewLoading}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingText}>Loading payment page...</Text>
+                </View>
+              )}
+              javaScriptEnabled
+              domStorageEnabled
+              thirdPartyCookiesEnabled
+              sharedCookiesEnabled
+            />
+          ) : (
+            <View style={styles.webViewLoading}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Preparing payment...</Text>
+            </View>
+          )}
+
+          {isPaymentLoading && (
+            <View style={styles.paymentLoadingOverlay}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -618,8 +794,11 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
+  },
+  modalBackground: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
   modalContent: {
     backgroundColor: colors.surface,
@@ -639,6 +818,55 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fonts.sizes.xl,
     fontWeight: '700',
+  },
+  modalWrapper: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  webViewContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  paymentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  paymentTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontWeight: '700',
+  },
+  webView: {
+    flex: 1,
+  },
+  webViewLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  paymentLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  placeholder: {
+    width: 40,
+  },
+  loadingText: {
+    marginTop: spacing.sm,
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.sm,
   },
   modalBody: {
     padding: spacing.lg,

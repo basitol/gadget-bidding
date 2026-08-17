@@ -8,7 +8,7 @@ import {
 
 export interface InitiateDepositData {
   amount: number;
-  payment_method: 'paystack' | 'flutterwave' | 'bank_transfer';
+  payment_method: 'paystack' | 'monnify' | 'bank_transfer';
   email?: string;
 }
 

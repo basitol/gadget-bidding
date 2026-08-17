@@ -10,6 +10,10 @@ export const validateFundWallet: ValidationChain[] = [
   body('email')
     .isEmail()
     .withMessage('Valid email is required'),
+  body('gateway')
+    .optional()
+    .isIn(['paystack', 'monnify'])
+    .withMessage('Gateway must be paystack or monnify'),
 ];
 
 /**

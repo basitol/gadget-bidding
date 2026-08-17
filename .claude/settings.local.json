@@ -16,5 +16,18 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZDAwNmIxMzUtMmU2YS00ODhiLTg4NzEtMjQ2YzQ0ZTEzMDgwIiwicGhvbmVfbnVtYmVyIjoiKzIzNDgwMTIzNDU2NzkiLCJyb2xlIjoidXNlciIsImlhdCI6MTc3MDM1MDAxNCwiZXhwIjoxNzcwMzUwMDI5fQ.1FRwAkAuXclYSyHzsjo5kYAG3J_Vc9RydkMzJqwMjfg\")",
       "Bash(TOKEN=:*)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/abdulbasitquadri/.local/bin/cce status --oneline"
+          }
+        ]
+      }
+    ]
   }
 }

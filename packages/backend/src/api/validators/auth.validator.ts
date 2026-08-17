@@ -39,11 +39,38 @@ export const validateRegistration: ValidationChain[] = [
  * Validate login request
  */
 export const validateLogin: ValidationChain[] = [
-  body('phone_number')
+  body('identifier')
     .trim()
-    .matches(/^\+?[0-9]{10,15}$/)
-    .withMessage('Invalid phone number format'),
+    .notEmpty()
+    .withMessage('Email or phone number is required')
+    .custom((value: string) => {
+      if (value.includes('@')) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          throw new Error('Invalid email address');
+        }
+        return true;
+      }
+      if (!/^\+?[0-9]{10,15}$/.test(value)) {
+        throw new Error('Invalid phone number format');
+      }
+      return true;
+    }),
   body('password').notEmpty().withMessage('Password is required'),
+  body('account_type')
+    .optional()
+    .isIn(['buyer', 'seller'])
+    .withMessage('Account type must be buyer or seller'),
+];
+
+/**
+ * Validate social login request
+ */
+export const validateSocialLogin: ValidationChain[] = [
+  body('provider')
+    .trim()
+    .isIn(['google', 'apple'])
+    .withMessage('Provider must be google or apple'),
+  body('id_token').trim().notEmpty().withMessage('Identity token is required'),
   body('account_type')
     .optional()
     .isIn(['buyer', 'seller'])

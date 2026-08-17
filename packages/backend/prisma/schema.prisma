@@ -42,10 +42,25 @@ model User {
   supportThreads      SupportThread[]      @relation("SellerSupportThreads")
   supportMessages     SupportMessage[]
   addresses           UserAddress[]
+  socialAccounts      SocialAccount[]
 
   @@index([phoneNumber], map: "idx_users_phone")
   @@index([role], map: "idx_users_role")
   @@map("users")
+}
+
+model SocialAccount {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String    @map("provider") @db.VarChar(20)
+  providerUserId String    @map("provider_user_id") @db.VarChar(255)
+  email          String?   @map("email") @db.VarChar(255)
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@unique([provider, providerUserId], map: "uq_social_accounts_provider_user")
+  @@index([userId], map: "idx_social_accounts_user")
+  @@map("social_accounts")
 }
 
 model Wallet {

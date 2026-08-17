@@ -4,6 +4,7 @@ import { getOrderedSpecEntries } from '@gadget-bidding/shared';
 import { adminApi } from '@/api';
 import { mediaUrl } from '@/lib/media';
 import { label, when } from '@/lib/format';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import {
   Badge,
   Empty,
@@ -31,6 +32,7 @@ import {
 const STATUSES = ['pending', 'approved', 'rejected', 'listed', 'sold', 'all'];
 
 export function GadgetsPage() {
+  const { prompt } = useConfirmDialog();
   const [params, setParams] = useSearchParams();
   const status = params.get('status') || 'pending';
   const [search, setSearch] = useState(params.get('search') || '');
@@ -94,10 +96,10 @@ export function GadgetsPage() {
   };
 
   const reject = async (id: string) => {
-    const reason = window.prompt(
-      'Rejection reason',
-      'Does not meet guidelines'
-    );
+    const reason = await prompt('Rejection reason', 'Does not meet guidelines', {
+      title: 'Reject listing',
+      required: true,
+    });
     if (!reason) return;
     setBusyId(id);
     try {
@@ -151,7 +153,7 @@ export function GadgetsPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-primary/5 hover:bg-primary/5">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Listing</TableHead>
                 <TableHead>Seller</TableHead>
                 <TableHead>Status</TableHead>
@@ -170,17 +172,22 @@ export function GadgetsPage() {
                     >
                       {g.images?.[0] ? (
                         <img
-                          className="size-14 rounded-lg object-cover ring-2 ring-primary/15"
+                          className="size-14 rounded-lg object-cover ring-1 ring-border"
                           src={mediaUrl(g.images[0])}
                           alt=""
                         />
                       ) : (
-                        <div className="size-14 rounded-lg bg-gradient-to-br from-primary/30 to-violet-400/30" />
+                        <div className="size-14 rounded-lg bg-muted" />
                       )}
                       <div className="text-left">
                         <div className="font-medium">{g.title}</div>
                         <div className="text-sm font-normal text-muted-foreground">
-                          {[g.brand, g.model, g.condition, g.category_name]
+                          {[
+                            g.brand,
+                            g.model,
+                            g.condition && label(g.condition),
+                            g.category_name,
+                          ]
                             .filter(Boolean)
                             .join(' · ')}
                         </div>
@@ -256,6 +263,32 @@ export function GadgetsPage() {
         title={selected?.title || 'Gadget'}
         onClose={() => setSelected(null)}
         wide
+        footer={
+          selected?.status === 'pending' ? (
+            <>
+              <Button
+                variant="outline"
+                disabled={busyId === selected.id}
+                onClick={() => setSelected(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={busyId === selected.id}
+                onClick={() => reject(selected.id)}
+              >
+                Reject
+              </Button>
+              <Button
+                disabled={busyId === selected.id}
+                onClick={() => approve(selected.id)}
+              >
+                Approve listing
+              </Button>
+            </>
+          ) : undefined
+        }
       >
         {selected ? (
           <div className="grid gap-6 md:grid-cols-2">
@@ -267,12 +300,12 @@ export function GadgetsPage() {
                       key={i}
                       src={mediaUrl(src)}
                       alt=""
-                      className="aspect-square w-full rounded-lg object-cover ring-2 ring-primary/15"
+                      className="aspect-square w-full rounded-lg object-cover ring-1 ring-border"
                     />
                   ) : (
                     <div
                       key={i}
-                      className="aspect-square w-full rounded-lg bg-gradient-to-br from-primary/25 to-violet-400/25"
+                      className="aspect-square w-full rounded-lg bg-muted"
                     />
                   )
               )}
@@ -300,7 +333,7 @@ export function GadgetsPage() {
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Condition</dt>
-                  <dd className="font-medium">{selected.condition || '—'}</dd>
+                  <dd className="font-medium">{label(selected.condition)}</dd>
                 </div>
                 {getOrderedSpecEntries(selected.specifications).map(entry => (
                   <div key={entry.key}>
@@ -324,23 +357,6 @@ export function GadgetsPage() {
                   </div>
                 ) : null}
               </dl>
-              {selected.status === 'pending' ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    disabled={busyId === selected.id}
-                    onClick={() => approve(selected.id)}
-                  >
-                    Approve listing
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    disabled={busyId === selected.id}
-                    onClick={() => reject(selected.id)}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              ) : null}
             </div>
           </div>
         ) : null}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { adminApi } from '@/api';
 import { label, money, when } from '@/lib/format';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import {
   Badge,
   Empty,
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/table';
 
 export function DisputesPage() {
+  const { prompt } = useConfirmDialog();
   const [params, setParams] = useSearchParams();
   const status = params.get('status') || 'all';
   const [page, setPage] = useState(1);
@@ -61,7 +63,9 @@ export function DisputesPage() {
   const update = async (id: string, nextStatus: string) => {
     const resolution =
       nextStatus === 'resolved' || nextStatus === 'closed'
-        ? window.prompt('Resolution notes', '') || undefined
+        ? (await prompt('Resolution notes', '', {
+            title: label(nextStatus) + ' dispute',
+          })) || undefined
         : undefined;
     setBusyId(id);
     try {
@@ -113,7 +117,7 @@ export function DisputesPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-primary/5 hover:bg-primary/5">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Dispute</TableHead>
                 <TableHead>Order</TableHead>
                 <TableHead>Raised by</TableHead>

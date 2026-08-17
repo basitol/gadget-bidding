@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { adminApi } from '@/api';
 import { label, money, when } from '@/lib/format';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import {
   Badge,
   Empty,
@@ -25,6 +26,7 @@ import {
 } from '@/components/ui/table';
 
 export function PayoutsPage() {
+  const { confirm, prompt } = useConfirmDialog();
   const [status, setStatus] = useState('ready');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -76,16 +78,20 @@ export function PayoutsPage() {
   ) => {
     const reference =
       payoutStatus === 'paid'
-        ? window.prompt(
+        ? await prompt(
             'Payout reference',
-            order.payout_reference || `MANUAL-${order.order_number}`
+            order.payout_reference || `MANUAL-${order.order_number}`,
+            { title: 'Mark payout paid', required: true }
           )
         : order.payout_reference;
 
     if (payoutStatus === 'paid' && !reference) return;
     if (
       payoutStatus === 'held' &&
-      !window.confirm(`Hold payout for ${order.seller?.full_name || 'seller'}?`)
+      !(await confirm({
+        title: 'Hold payout',
+        description: `Hold payout for ${order.seller?.full_name || 'seller'}?`,
+      }))
     ) {
       return;
     }
@@ -125,14 +131,14 @@ export function PayoutsPage() {
 
       <ErrorAlert>{error}</ErrorAlert>
 
-      <div className="mb-4 rounded-3xl border border-primary/10 bg-gradient-to-br from-slate-950 via-slate-900 to-primary/40 p-5 text-white shadow-lg shadow-primary/10">
+      <div className="mb-4 rounded-xl border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-sm text-white/60">Current queue</div>
+            <div className="text-sm text-muted-foreground">Current queue</div>
             <h2 className="mt-1 text-3xl font-semibold tracking-tight">
               {money(summary.amount)}
             </h2>
-            <p className="mt-1 text-sm text-white/60">
+            <p className="mt-1 text-sm text-muted-foreground">
               {summary.count} payout{summary.count === 1 ? '' : 's'} visible in
               this filter.
             </p>
@@ -198,7 +204,7 @@ export function PayoutsPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="bg-primary/5 hover:bg-primary/5">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Order</TableHead>
                 <TableHead>Seller</TableHead>
                 <TableHead>Payout</TableHead>

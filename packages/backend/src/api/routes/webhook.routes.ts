@@ -11,10 +11,10 @@ const router: Router = Router();
 router.post('/paystack', webhookController.paystackWebhook);
 
 /**
- * @route   POST /api/v1/webhooks/flutterwave
- * @desc    Flutterwave webhook handler
+ * @route   POST /api/v1/webhooks/monnify
+ * @desc    Monnify webhook handler
  * @access  Public (verified by signature)
  */
-// router.post('/flutterwave', webhookController.flutterwaveWebhook);
+router.post('/monnify', webhookController.monnifyWebhook);
 
 export default router;

@@ -41,7 +41,9 @@ export const initializePayment = async (
         amount: amount * 100, // Convert Naira to kobo
         currency: 'NGN',
         reference,
-        callback_url: `${config.frontendUrl}/wallet/verify`,
+        callback_url: `${config.backendUrl}/wallet/verify?reference=${encodeURIComponent(
+          reference
+        )}`,
         metadata: {
           user_id: userId,
           ...metadata,
