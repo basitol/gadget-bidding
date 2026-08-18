@@ -4,6 +4,12 @@
     "slug": "gadgetbid",
     "scheme": "gadgetbid",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/93b60ed8-10e9-452e-8a85-8fe41c714d11"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -58,7 +64,8 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6"
         }
-      ]
+      ],
+      "expo-updates"
     ],
     "extra": {
       "eas": {

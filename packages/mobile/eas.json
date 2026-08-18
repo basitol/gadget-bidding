@@ -12,16 +12,35 @@
       },
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "426137391668-0o5ihg4gs0756h37538m68f6tsoeanle.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "426137391668-5pbm5sapoolfj1214ak2hgjqbr37h9om.apps.googleusercontent.com",
+        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "arm64-v8a"
       }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "426137391668-0o5ihg4gs0756h37538m68f6tsoeanle.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "426137391668-5pbm5sapoolfj1214ak2hgjqbr37h9om.apps.googleusercontent.com",
+        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "arm64-v8a"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "426137391668-0o5ihg4gs0756h37538m68f6tsoeanle.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "426137391668-5pbm5sapoolfj1214ak2hgjqbr37h9om.apps.googleusercontent.com"
+      }
     }
   },
   "submit": {
