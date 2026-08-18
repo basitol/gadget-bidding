@@ -74,7 +74,10 @@ const toPublicUser = (user: Record<string, any>): User =>
  * Generate an access + refresh token pair for a user and persist the refresh
  * token so the session survives app restarts.
  */
-async function issueTokensForUser(user: Record<string, any>) {
+async function issueTokensForUser(
+  user: Record<string, any>,
+  db: Pick<typeof prisma, 'refreshToken'> = prisma
+) {
   const tokenPayload = {
     user_id: user.id,
     phone_number: user.phoneNumber,
@@ -88,7 +91,7 @@ async function issueTokensForUser(user: Record<string, any>) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  await prisma.refreshToken.create({
+  await db.refreshToken.create({
     data: {
       userId: user.id,
       token: refresh_token,
@@ -594,7 +597,7 @@ async function runSocialLoginTransaction(
 
     assertAccountTypeAccess(data.account_type, user.role);
 
-    const { access_token, refresh_token } = await issueTokensForUser(user);
+    const { access_token, refresh_token } = await issueTokensForUser(user, tx);
 
     logger.info(`User signed in with ${provider}: ${user.id}`);
 
