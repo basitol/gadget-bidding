@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { query } from '../../config/database';
 import { sendSuccess, sendError } from '../../utils/response';
 import logger from '../../utils/logger';
+import prisma from '../../config/prisma';
 
 export const getDashboard = async (req: Request, res: Response) => {
   try {
@@ -97,5 +98,83 @@ export const getDashboard = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Get seller dashboard error:', error);
     sendError(res, error.message || 'Failed to get seller dashboard', 500);
+  }
+};
+
+/**
+ * Get the seller's KYB (business identity) status
+ * GET /api/v1/seller/kyb
+ */
+export const getKybStatus = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.user_id },
+      select: {
+        businessName: true,
+        cacNumber: true,
+        sellerKybStatus: true,
+        sellerKybRejectionReason: true,
+      },
+    });
+
+    sendSuccess(res, {
+      business_name: user?.businessName || null,
+      cac_number: user?.cacNumber || null,
+      status: user?.sellerKybStatus || 'not_started',
+      rejection_reason: user?.sellerKybRejectionReason || null,
+    });
+  } catch (error: any) {
+    logger.error('Get seller KYB status error:', error);
+    sendError(res, error.message || 'Failed to get KYB status', 500);
+  }
+};
+
+/**
+ * Submit seller KYB (business identity) details for admin review.
+ * This does NOT unlock listing creation by itself — an admin must approve
+ * it first (see admin.controller.ts approveSellerKyb/rejectSellerKyb).
+ * POST /api/v1/seller/kyb
+ */
+export const submitKyb = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+
+    const { business_name, cac_number } = req.body;
+
+    const user = await prisma.user.update({
+      where: { id: req.user.user_id },
+      data: {
+        businessName: business_name,
+        cacNumber: cac_number || null,
+        sellerKybStatus: 'pending',
+        sellerKybSubmittedAt: new Date(),
+        sellerKybReviewedAt: null,
+        sellerKybRejectionReason: null,
+      },
+      select: {
+        businessName: true,
+        cacNumber: true,
+        sellerKybStatus: true,
+        sellerKybRejectionReason: true,
+      },
+    });
+
+    logger.info(`Seller KYB submitted for review: ${req.user.user_id}`);
+
+    sendSuccess(res, {
+      business_name: user.businessName,
+      cac_number: user.cacNumber,
+      status: user.sellerKybStatus,
+      rejection_reason: user.sellerKybRejectionReason,
+    });
+  } catch (error: any) {
+    logger.error('Submit seller KYB error:', error);
+    sendError(res, error.message || 'Failed to submit KYB details', 500);
   }
 };

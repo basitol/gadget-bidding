@@ -52,13 +52,13 @@ function Shell({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="bg-background">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
-          <SidebarTrigger className="-ml-1 rounded-md" />
-          <Separator orientation="vertical" className="mr-1 h-5" />
-          <div className="ml-auto flex items-center gap-2">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b bg-background px-5">
+          <SidebarTrigger className="-ml-1 rounded-xl" />
+          <Separator orientation="vertical" className="mr-1 h-6" />
+          <div className="ml-auto flex items-center gap-3">
             <AdminNotifications />
-            <div className="hidden items-center gap-2 rounded-lg border px-2.5 py-1.5 sm:flex">
-              <div className="grid size-6 place-items-center rounded-md bg-slate-950 text-[10px] font-bold text-white">
+            <div className="hidden items-center gap-3 rounded-xl border px-3 py-2 sm:flex">
+              <div className="grid size-9 place-items-center rounded-xl bg-slate-950 text-xs font-bold text-white">
                 {user?.full_name
                   ?.split(/\s+/)
                   .slice(0, 2)
@@ -66,17 +66,15 @@ function Shell({ children }: { children: React.ReactNode }) {
                   .join('') || 'AD'}
               </div>
               <div className="leading-tight">
-                <div className="text-xs font-semibold text-foreground">
+                <div className="text-sm font-semibold text-foreground">
                   {user?.full_name || 'Admin'}
                 </div>
-                <div className="text-[11px] text-muted-foreground">
-                  Operations
-                </div>
+                <div className="text-xs text-muted-foreground">Operations</div>
               </div>
             </div>
           </div>
         </header>
-        <div className="flex-1 overflow-auto p-4 md:p-6">{children}</div>
+        <div className="flex-1 overflow-auto p-6 md:p-10">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );
@@ -158,7 +156,7 @@ function AdminNotifications() {
   return (
     <DropdownMenu onOpenChange={open => open && load()}>
       <DropdownMenuTrigger asChild>
-        <button className="relative grid size-8 place-items-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+        <button className="relative grid size-11 place-items-center rounded-xl border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
           <Bell className="size-4" />
           {unreadCount > 0 ? (
             <span className="absolute -right-1 -top-1 grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">

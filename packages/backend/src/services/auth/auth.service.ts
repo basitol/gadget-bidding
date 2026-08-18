@@ -29,6 +29,10 @@ const USER_SELECT: {
   role: true;
   isVerified: true;
   isActive: true;
+  businessName: true;
+  cacNumber: true;
+  sellerKybStatus: true;
+  sellerKybRejectionReason: true;
   createdAt: true;
   updatedAt: true;
 } = {
@@ -40,6 +44,10 @@ const USER_SELECT: {
   role: true,
   isVerified: true,
   isActive: true,
+  businessName: true,
+  cacNumber: true,
+  sellerKybStatus: true,
+  sellerKybRejectionReason: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -54,6 +62,10 @@ const toPublicUser = (user: Record<string, any>): User =>
     role: normalizeUserRole(user.role),
     is_verified: user.isVerified || false,
     is_active: user.isActive || true,
+    business_name: user.businessName || undefined,
+    cac_number: user.cacNumber || undefined,
+    seller_kyb_status: user.sellerKybStatus || 'not_started',
+    seller_kyb_rejection_reason: user.sellerKybRejectionReason || undefined,
     created_at: user.createdAt?.toISOString() || new Date().toISOString(),
     updated_at: user.updatedAt?.toISOString() || new Date().toISOString(),
   } as unknown as User);
@@ -133,18 +145,7 @@ export const registerUser = async (
           },
         },
       },
-      select: {
-        id: true,
-        phoneNumber: true,
-        email: true,
-        fullName: true,
-        avatarUrl: true,
-        role: true,
-        isVerified: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: USER_SELECT,
     });
 
     // Generate OTP
@@ -238,18 +239,7 @@ export const verifyOTP = async (data: OTPVerification): Promise<AuthTokens> => {
     const updatedUser = await tx.user.update({
       where: { id: verification.user.id },
       data: { isVerified: true },
-      select: {
-        id: true,
-        phoneNumber: true,
-        email: true,
-        fullName: true,
-        avatarUrl: true,
-        role: true,
-        isVerified: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: USER_SELECT,
     });
 
     // Generate tokens
@@ -405,16 +395,26 @@ export const logoutUser = async (refreshToken: string): Promise<void> => {
  * Resend OTP
  */
 export const resendOTP = async (
-  phoneNumber: string
-): Promise<{ verification_id: string }> => {
+  identifier: string
+): Promise<{ verification_id: string; phone_number: string; email?: string }> => {
   return prisma.$transaction(async tx => {
-    // Get user
-    const user = await tx.user.findUnique({
-      where: { phoneNumber },
+    // Accept a phone number or an email, same as login — a user who signed
+    // up with both shouldn't be stuck if they only remember one.
+    const user = await tx.user.findFirst({
+      where: {
+        OR: [
+          { phoneNumber: identifier },
+          { email: { equals: identifier, mode: 'insensitive' } },
+        ],
+      },
     });
 
     if (!user) {
       throw new Error('User not found');
+    }
+
+    if (user.isVerified) {
+      throw new Error('This account is already verified');
     }
 
     // Generate new OTP
@@ -437,18 +437,22 @@ export const resendOTP = async (
         logger.error('Failed to send OTP email:', err);
       });
     } else {
-      sendOTPSMS(phoneNumber, otp).catch(err => {
+      sendOTPSMS(user.phoneNumber, otp).catch(err => {
         logger.error('Failed to send OTP SMS:', err);
       });
     }
 
     if (config.nodeEnv === 'development') {
-      logger.info(`[DEV] OTP for ${phoneNumber}: ${otp}`);
+      logger.info(`[DEV] OTP for ${identifier}: ${otp}`);
     }
 
-    logger.info(`OTP resent to: ${phoneNumber}`);
+    logger.info(`OTP resent to: ${identifier}`);
 
-    return { verification_id: verification.id };
+    return {
+      verification_id: verification.id,
+      phone_number: user.phoneNumber,
+      email: user.email || undefined,
+    };
   });
 };
 
@@ -551,6 +555,12 @@ async function runSocialLoginTransaction(
     }
 
     if (!user) {
+      if (data.accepted_terms !== true) {
+        throw new Error(
+          'You must accept the Terms of Service and Privacy Policy to create an account'
+        );
+      }
+
       const phoneNumber = await makeSyntheticPhone();
       const randomPassword = await hashPassword(
         `${providerUserId}${Date.now()}${Math.random()}`

@@ -6,6 +6,8 @@ export type UserRole = 'bidder' | 'seller' | 'admin';
 
 export type AccountType = 'buyer' | 'seller';
 
+export type SellerKybStatus = 'not_started' | 'pending' | 'approved' | 'rejected';
+
 export interface User {
   id: string;
   phone_number: string;
@@ -15,6 +17,10 @@ export interface User {
   role: UserRole;
   is_verified: boolean;
   is_active: boolean;
+  business_name?: string;
+  cac_number?: string;
+  seller_kyb_status?: SellerKybStatus;
+  seller_kyb_rejection_reason?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -40,6 +46,7 @@ export interface SocialLoginRequest {
   provider: SocialProvider;
   id_token: string;
   account_type?: AccountType;
+  accepted_terms?: boolean;
 }
 
 export interface OTPVerification {

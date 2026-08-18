@@ -20,6 +20,7 @@ import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
+import { authService } from '../../services';
 import {
   isValidNigerianPhone,
   isValidEmail,
@@ -103,6 +104,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleUnverifiedAccount = async (formatted: string) => {
+    try {
+      const response = await authService.resendOtp(formatted);
+      if (!response.data?.verification_id) {
+        throw new Error('Could not send a verification code');
+      }
+      navigation.navigate('OtpVerification', {
+        phone_number: response.data.phone_number,
+        email: response.data.email || '',
+        verification_id: response.data.verification_id,
+        isNewUser: true,
+        interfaceType,
+      });
+    } catch (err) {
+      Alert.alert(
+        'Could not resend code',
+        err instanceof Error ? err.message : 'Please try again'
+      );
+    }
+  };
+
   const handleLogin = async () => {
     clearError();
     if (!validateForm()) return;
@@ -114,12 +136,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         : formatToInternational(value);
       await login(formatted, password, interfaceType);
     } catch (err) {
-      Alert.alert(
-        'Login Failed',
+      const message =
         err instanceof Error
           ? err.message
-          : 'Please check your credentials and try again'
-      );
+          : 'Please check your credentials and try again';
+
+      if (message.toLowerCase().includes('verify your account')) {
+        const value = identifier.trim();
+        const formatted = value.includes('@')
+          ? value.toLowerCase()
+          : formatToInternational(value);
+        Alert.alert('Account not verified', 'Send a new verification code?', [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Send code',
+            onPress: () => handleUnverifiedAccount(formatted),
+          },
+        ]);
+        return;
+      }
+
+      Alert.alert('Login Failed', message);
     }
   };
 

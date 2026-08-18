@@ -20,7 +20,8 @@ interface AuthState {
   socialLogin: (
     provider: 'google' | 'apple',
     idToken: string,
-    interfaceType: AppInterfaceType
+    interfaceType: AppInterfaceType,
+    acceptedTerms?: boolean
   ) => Promise<void>;
   register: (
     data: {
@@ -84,13 +85,14 @@ export const useAuthStore = create<AuthState>(set => ({
     }
   },
 
-  socialLogin: async (provider, idToken, interfaceType) => {
+  socialLogin: async (provider, idToken, interfaceType, acceptedTerms) => {
     set({ isLoading: true, error: null });
     try {
       const response = await authService.socialLogin({
         provider,
         id_token: idToken,
         account_type: interfaceType,
+        accepted_terms: acceptedTerms,
       });
       const accessError = validateInterfaceAccess(
         interfaceType,

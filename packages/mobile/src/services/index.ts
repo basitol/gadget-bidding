@@ -6,6 +6,8 @@ export type {
   GadgetCategory,
   CreateGadgetData,
   SellerDashboard,
+  SellerKybStatus,
+  SubmitSellerKybData,
 } from './auction.service';
 export { orderService } from './order.service';
 export { addressService } from './address.service';

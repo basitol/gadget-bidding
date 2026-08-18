@@ -109,6 +109,46 @@ export const sellerOnly = (req: Request, res: Response, next: NextFunction) => {
 };
 
 /**
+ * Require a seller's KYB (business identity) to be admin-approved before
+ * they can list a gadget. Submitting KYB details only sets it to "pending"
+ * — an admin has to approve it (see admin.controller.ts) before this passes.
+ */
+export const requireSellerKyb = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  void requireSellerKybCheck(req, res, next);
+};
+
+const requireSellerKybCheck = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return sendError(res, 'Authentication required', 401);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.user_id },
+    select: { sellerKybStatus: true },
+  });
+
+  if (user?.sellerKybStatus !== 'approved') {
+    return sendError(
+      res,
+      user?.sellerKybStatus === 'pending'
+        ? 'Your seller verification is still under review.'
+        : 'Complete your seller verification before listing a gadget.',
+      403
+    );
+  }
+
+  next();
+};
+
+/**
  * Check if user is an admin
  */
 export const adminOnly = (req: Request, res: Response, next: NextFunction) => {

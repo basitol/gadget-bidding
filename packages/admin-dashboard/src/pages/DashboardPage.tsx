@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '@/api';
+import { BrandIllustration } from '@/components/BrandIllustration';
+import { BrandPill } from '@/components/BrandMark';
 import { label, money, when } from '@/lib/format';
 import {
   Badge,
   Empty,
   ErrorAlert,
-  PageHeader,
   Panel,
   statusTone,
 } from '@/components/shared';
@@ -126,20 +127,29 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title="Operations overview"
-        description="Live snapshot of listings, auctions, money movement, and risk."
-        actions={
-          <>
+      <div className="mb-8 overflow-hidden rounded-2xl bg-muted/60 lg:grid lg:min-h-[280px] lg:grid-cols-2">
+        <div className="px-8 py-8 xl:px-12 xl:py-10">
+          <BrandPill />
+          <h1 className="mt-5 max-w-md text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
+            Run the marketplace, calmly.
+          </h1>
+          <p className="mt-4 max-w-sm text-base leading-7 text-muted-foreground xl:text-lg">
+            Live snapshot of listings, auctions, money movement, and risk —
+            everything your team needs to keep GadgetBid moving.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
             <Button asChild>
               <Link to="/gadgets?status=pending">Review queue</Link>
             </Button>
             <Button asChild variant="secondary">
               <Link to="/payouts">Payouts</Link>
             </Button>
-          </>
-        }
-      />
+          </div>
+        </div>
+        <div className="relative hidden min-h-[220px] lg:block">
+          <BrandIllustration compact />
+        </div>
+      </div>
 
       <ErrorAlert>{error}</ErrorAlert>
 
@@ -148,7 +158,7 @@ export function DashboardPage() {
           <Link key={item.label} to={item.to}>
             <Card
               className={cn(
-                'h-full border-l-4 shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md',
+                'h-full rounded-2xl border-l-4 shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md',
                 accentStyles[item.accent]
               )}
             >
@@ -172,7 +182,10 @@ export function DashboardPage() {
         {metrics.map(item => (
           <Card
             key={item.label}
-            className={cn('border-l-4 shadow-sm', accentStyles[item.accent])}
+            className={cn(
+              'rounded-2xl border-l-4 shadow-sm',
+              accentStyles[item.accent]
+            )}
           >
             <CardHeader className="pb-2">
               <CardDescription className="text-foreground/70">
@@ -191,7 +204,7 @@ export function DashboardPage() {
 
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Panel>
-          <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-3">
+          <div className="flex items-center justify-between border-b bg-muted/60 px-5 py-4">
             <strong className="text-sm font-medium">
               Recent platform activity
             </strong>
@@ -247,7 +260,7 @@ export function DashboardPage() {
         </Panel>
 
         <Panel>
-          <div className="border-b bg-muted/40 px-4 py-3">
+          <div className="border-b bg-muted/60 px-5 py-4">
             <strong className="text-sm font-medium">Catalog health</strong>
           </div>
           <dl className="divide-y px-4">

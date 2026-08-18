@@ -307,7 +307,7 @@ export function SupportPage() {
             <Empty>Select a conversation to reply.</Empty>
           ) : (
             <>
-              <div className="flex items-start justify-between gap-3 border-b bg-muted/40 px-4 py-3">
+              <div className="flex items-start justify-between gap-3 border-b bg-muted/60 px-5 py-4">
                 <div>
                   <div className="font-medium">
                     {selected.seller?.full_name}

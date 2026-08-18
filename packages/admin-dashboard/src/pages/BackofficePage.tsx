@@ -215,7 +215,7 @@ export function BackofficePage() {
 
           return (
             <Panel key={queue.status} className="overflow-hidden">
-              <div className="border-b bg-muted/40 p-4">
+              <div className="border-b bg-muted/60 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="font-semibold tracking-tight">

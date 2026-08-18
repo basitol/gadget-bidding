@@ -18,6 +18,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { clearSession, getStoredUser } from '@/api';
+import { BrandMark } from '@/components/BrandMark';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Sidebar,
@@ -76,7 +77,7 @@ function NavItems({
             <SidebarMenuButton
               asChild
               isActive={isActive}
-              className="h-9 rounded-md px-3 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-active:bg-primary/10 data-active:font-medium data-active:text-primary"
+              className="h-11 rounded-xl px-3 text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-active:bg-primary/10 data-active:font-medium data-active:text-primary"
             >
               <NavLink to={item.to} end={item.end}>
                 <item.icon />
@@ -103,12 +104,10 @@ export function AppSidebar() {
   const user = getStoredUser();
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-muted/60">
+      <SidebarHeader className="border-b border-sidebar-border px-4 py-5">
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-slate-950 text-xs font-black text-white">
-            GB
-          </div>
+          <BrandMark size="md" className="group-data-[collapsible=icon]:size-8" />
           <div className="flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
               GadgetBid
@@ -145,10 +144,10 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="gap-3 border-t border-sidebar-border p-3">
-        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-2.5 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-1.5">
+      <SidebarFooter className="gap-3 border-t border-sidebar-border p-4">
+        <div className="rounded-2xl border border-sidebar-border bg-background/70 p-3 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-1.5">
           <div className="flex items-center gap-3">
-            <Avatar className="size-8 ring-1 ring-sidebar-border">
+            <Avatar className="size-10 ring-1 ring-sidebar-border">
               <AvatarFallback className="bg-slate-950 text-xs font-bold text-white">
                 {initials(user?.full_name)}
               </AvatarFallback>
@@ -168,7 +167,7 @@ export function AppSidebar() {
               clearSession();
               window.location.href = '/login';
             }}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-sidebar-border bg-background px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
+            className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-sidebar-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
           >
             <LogOut className="size-4 shrink-0" />
             <span className="group-data-[collapsible=icon]:hidden">

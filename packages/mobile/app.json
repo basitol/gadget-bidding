@@ -16,7 +16,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.gadgetbid.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -50,7 +53,12 @@
         }
       ],
       "expo-web-browser",
-      "@react-native-google-signin/google-signin"
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6"
+        }
+      ]
     ],
     "extra": {
       "eas": {

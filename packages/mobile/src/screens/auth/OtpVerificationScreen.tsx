@@ -160,7 +160,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
           <Ionicons name="mail-outline" size={28} color={colors.primary} />
         </LinearGradient>
         <Text style={styles.phoneLabel}>Sent to</Text>
-        <Text style={styles.phoneNumber}>{email}</Text>
+        <Text style={styles.phoneNumber}>{email || phone_number}</Text>
       </View>
 
       <View style={styles.otpContainer}>

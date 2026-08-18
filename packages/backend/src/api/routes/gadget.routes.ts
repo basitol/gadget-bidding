@@ -6,6 +6,7 @@ import {
   authenticate,
   sellerOnly,
   adminOnly,
+  requireSellerKyb,
 } from '../middlewares/auth.middleware';
 import { uploadGadgetImages } from '../middlewares/upload.middleware';
 import { uploadRateLimiter } from '../middlewares/security.middleware';
@@ -89,6 +90,7 @@ router.post(
   '/',
   authenticate,
   sellerOnly,
+  requireSellerKyb,
   gadgetValidator.validateCreateGadget,
   handleValidationErrors,
   gadgetController.createGadget

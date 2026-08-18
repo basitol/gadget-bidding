@@ -51,6 +51,12 @@ export type AdminSellerProfile = {
     role: string;
     is_verified?: boolean | null;
     is_active?: boolean | null;
+    business_name?: string | null;
+    cac_number?: string | null;
+    seller_kyb_status?: 'not_started' | 'pending' | 'approved' | 'rejected';
+    seller_kyb_submitted_at?: string | null;
+    seller_kyb_reviewed_at?: string | null;
+    seller_kyb_rejection_reason?: string | null;
     created_at?: string | null;
     wallet: {
       balance: number;
@@ -379,6 +385,18 @@ export const adminApi = {
     request<{ success: boolean; data: AdminSellerProfile }>(
       `/admin/users/${id}/seller-profile`
     ),
+
+  pendingSellerKyb: (params: Record<string, any> = {}) =>
+    request<PageResult<any>>(`/admin/sellers/kyb-pending${qs(params)}`),
+
+  approveSellerKyb: (id: string) =>
+    request(`/admin/sellers/${id}/kyb/approve`, { method: 'POST' }),
+
+  rejectSellerKyb: (id: string, reason: string) =>
+    request(`/admin/sellers/${id}/kyb/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 
   updateUser: (
     id: string,

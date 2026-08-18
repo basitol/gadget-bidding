@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { Resend } from 'resend';
 import config from '../../config';
 import logger from '../../utils/logger';
 
@@ -6,6 +6,18 @@ interface SendEmailParams {
   to: string;
   subject: string;
   html: string;
+}
+
+let resendClient: Resend | null = null;
+
+function getResend(): Resend | null {
+  if (!config.email.resendApiKey) {
+    return null;
+  }
+  if (!resendClient) {
+    resendClient = new Resend(config.email.resendApiKey);
+  }
+  return resendClient;
 }
 
 /**
@@ -16,40 +28,35 @@ export const sendEmail = async ({
   subject,
   html,
 }: SendEmailParams): Promise<boolean> => {
-  if (!config.email.resendApiKey) {
+  const resend = getResend();
+  if (!resend) {
     logger.warn('RESEND_API_KEY is not set; skipping email send');
     return false;
   }
 
   try {
-    const response = await axios.post(
-      'https://api.resend.com/emails',
-      {
-        from: config.email.from,
-        to,
-        subject,
-        html,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${config.email.resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const { data, error } = await resend.emails.send({
+      from: config.email.from,
+      to,
+      subject,
+      html,
+    });
 
-    if (response.data?.id) {
+    if (error) {
+      logger.error('Failed to send email:', error);
+      return false;
+    }
+
+    if (data?.id) {
       logger.info(`Email sent successfully to ${to} (${subject})`);
       return true;
     }
 
-    logger.error('Failed to send email:', response.data);
+    logger.error('Failed to send email: no message id returned');
     return false;
-  } catch (error: any) {
-    logger.error(
-      'Error sending email:',
-      error.response?.data || error.message
-    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('Error sending email:', message);
     return false;
   }
 };

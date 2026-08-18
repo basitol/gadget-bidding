@@ -64,6 +64,16 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
+      <TouchableOpacity
+        style={styles.sellerLink}
+        onPress={() => navigation.navigate('Register', { interfaceType: 'seller' })}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.sellerLinkText}>
+          Want to sell instead? <Text style={styles.sellerLinkHighlight}>Create a seller account</Text>
+        </Text>
+      </TouchableOpacity>
+
       <Text style={styles.note}>
         Buyers and sellers use separate secure account paths.
       </Text>
@@ -145,6 +155,20 @@ const createStyles = (colors: ThemeColors, mode: 'light' | 'dark') =>
     secondaryButtonText: {
       color: colors.text,
       fontSize: fonts.sizes.lg,
+      fontFamily: fonts.bold,
+    },
+    sellerLink: {
+      marginTop: spacing.xl,
+      alignSelf: 'center',
+    },
+    sellerLinkText: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.md,
+      fontFamily: fonts.medium,
+      textAlign: 'center',
+    },
+    sellerLinkHighlight: {
+      color: colors.primary,
       fontFamily: fonts.bold,
     },
     note: {

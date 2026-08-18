@@ -59,6 +59,18 @@ export interface SellerDashboard {
   rejected_gadgets: Gadget[];
 }
 
+export interface SellerKybStatus {
+  business_name: string | null;
+  cac_number: string | null;
+  status: 'not_started' | 'pending' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+}
+
+export interface SubmitSellerKybData {
+  business_name: string;
+  cac_number?: string;
+}
+
 class AuctionService {
   // ============ GADGETS ============
 
@@ -150,6 +162,26 @@ class AuctionService {
   async getSellerDashboard(): Promise<ApiResponse<SellerDashboard>> {
     try {
       const response = await api.get('/seller/dashboard');
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  async getSellerKyb(): Promise<ApiResponse<SellerKybStatus>> {
+    try {
+      const response = await api.get('/seller/kyb');
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  async submitSellerKyb(
+    data: SubmitSellerKybData
+  ): Promise<ApiResponse<SellerKybStatus>> {
+    try {
+      const response = await api.post('/seller/kyb', data);
       return response.data;
     } catch (error) {
       throw new Error(getErrorMessage(error));

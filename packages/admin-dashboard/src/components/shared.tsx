@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { Search } from 'lucide-react';
+import { BrandPill } from '@/components/BrandMark';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge as ShadcnBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -187,7 +188,7 @@ export function StatusTabs({
   return (
     <div
       role="tablist"
-      className="inline-flex h-12 flex-wrap items-center rounded-xl bg-[#e8eaf2] px-0 py-1.5 dark:bg-muted"
+      className="inline-flex h-14 flex-wrap items-center rounded-2xl bg-muted/80 px-1 py-1.5"
     >
       {items.map(item => {
         const active = value === item;
@@ -199,10 +200,10 @@ export function StatusTabs({
             aria-selected={active}
             onClick={() => onValueChange(item)}
             className={cn(
-              'mx-1.5 h-9 shrink-0 rounded-lg px-5 text-sm font-medium capitalize transition-all',
+              'mx-1 h-11 shrink-0 rounded-xl px-5 text-sm font-medium capitalize transition-all',
               active
-                ? 'bg-white text-slate-900 shadow-toggle dark:bg-card dark:text-foreground'
-                : 'bg-transparent text-slate-500 hover:text-slate-800 dark:text-muted-foreground dark:hover:text-foreground'
+                ? 'bg-background text-foreground shadow-toggle'
+                : 'bg-transparent text-muted-foreground hover:text-foreground'
             )}
           >
             {item}
@@ -217,29 +218,41 @@ export function PageHeader({
   title,
   description,
   actions,
+  eyebrow = 'GadgetBid Ops',
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
+  eyebrow?: string | null;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+    <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        {eyebrow ? <BrandPill>{eyebrow}</BrandPill> : null}
+        <h1
+          className={cn(
+            'text-3xl font-semibold tracking-tight text-foreground md:text-4xl',
+            eyebrow && 'mt-4'
+          )}
+        >
           {title}
         </h1>
         {description ? (
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="mt-3 max-w-xl text-base leading-7 text-muted-foreground">
+            {description}
+          </p>
         ) : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex flex-wrap gap-2 sm:pt-12">{actions}</div>
+      ) : null}
     </div>
   );
 }
 
 export function Toolbar({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3 shadow-sm">
+    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border bg-muted/60 p-4">
       {children}
     </div>
   );
@@ -247,11 +260,11 @@ export function Toolbar({ children }: { children: ReactNode }) {
 
 export function SearchInput(props: React.ComponentProps<typeof Input>) {
   return (
-    <div className="relative w-[260px]">
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+    <div className="relative w-[300px]">
+      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         {...props}
-        className={cn('h-9 pl-9', props.className)}
+        className={cn('h-11 pl-10', props.className)}
       />
     </div>
   );
@@ -265,7 +278,7 @@ export function SearchButton({
   disabled?: boolean;
 }) {
   return (
-    <Button onClick={onClick} disabled={disabled} className="h-9">
+    <Button onClick={onClick} disabled={disabled} className="h-11">
       <Search data-icon="inline-start" />
       Search
     </Button>
@@ -286,7 +299,7 @@ export function FilterChip({
       type="button"
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors',
+        'inline-flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-medium transition-colors',
         checked
           ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400'
           : 'border-border bg-background text-foreground hover:bg-muted'
@@ -309,7 +322,7 @@ export function FilterChip({
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+    <div className="px-6 py-16 text-center text-base text-muted-foreground">
       {children}
     </div>
   );
@@ -462,7 +475,7 @@ export function Modal({
           wide ? 'sm:max-w-3xl' : 'sm:max-w-lg'
         )}
       >
-        <DialogHeader className="border-b px-6 py-4">
+        <DialogHeader className="border-b px-6 py-5">
           <DialogTitle>{title}</DialogTitle>
           {description ? (
             <DialogDescription>{description}</DialogDescription>
@@ -489,7 +502,7 @@ export function Panel({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm',
+        'overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm',
         className
       )}
     >

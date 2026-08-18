@@ -50,6 +50,10 @@ router.post(
   adminController.reactivateUserAfterPenalty
 );
 
+router.get('/sellers/kyb-pending', adminController.getPendingSellerKyb);
+router.post('/sellers/:id/kyb/approve', adminController.approveSellerKyb);
+router.post('/sellers/:id/kyb/reject', adminController.rejectSellerKyb);
+
 router.get('/disputes', adminController.getDisputes);
 router.patch('/disputes/:id', adminController.resolveDispute);
 

@@ -106,12 +106,13 @@ export const login = async (req: Request, res: Response) => {
  */
 export const socialLogin = async (req: Request, res: Response) => {
   try {
-    const { provider, id_token, account_type } = req.body;
+    const { provider, id_token, account_type, accepted_terms } = req.body;
 
     const tokens = await authService.socialLogin({
       provider,
       id_token,
       account_type,
+      accepted_terms,
     });
 
     sendSuccess(res, tokens, 'Login successful');
@@ -161,11 +162,11 @@ export const logout = async (req: Request, res: Response) => {
  */
 export const resendOTP = async (req: Request, res: Response) => {
   try {
-    const { phone_number } = req.body;
+    const identifier = req.body.identifier || req.body.phone_number;
 
-    const result = await authService.resendOTP(phone_number);
+    const result = await authService.resendOTP(identifier);
 
-    sendSuccess(res, result, 'OTP sent successfully. Please check your phone');
+    sendSuccess(res, result, 'A new verification code has been sent');
   } catch (error: any) {
     logger.error('Resend OTP error:', error);
     sendError(res, error.message || 'Failed to resend OTP', 400);

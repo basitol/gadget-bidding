@@ -38,17 +38,28 @@ export interface SocialAuthResult {
 interface SocialAuthButtonsProps {
   onSuccess: (result: SocialAuthResult) => void;
   onError: (message: string) => void;
+  /**
+   * Called before starting either native flow. Return false to block and
+   * skip the native sign-in entirely (e.g. terms not yet accepted) — this
+   * avoids sending the user through a whole Google/Apple round trip only
+   * to reject them at the end.
+   */
+  canProceed?: () => boolean;
 }
 
 export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   onSuccess,
   onError,
+  canProceed,
 }) => {
   const { colors } = useTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [busy, setBusy] = useState<null | 'google' | 'apple'>(null);
 
   const handleGoogle = async () => {
+    if (canProceed && !canProceed()) {
+      return;
+    }
     if (!GOOGLE_CLIENT_ID) {
       onError(
         'Google sign-in is not configured yet. Add your Google OAuth client IDs (see EXPO_PUBLIC_GOOGLE_*).'
@@ -75,13 +86,21 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
         email: result.data.user.email,
         fullName: result.data.user.name || undefined,
       });
-    } catch (error) {
+    } catch (error: any) {
       setBusy(null);
-      onError('Google sign-in failed. Please try again.');
+      // eslint-disable-next-line no-console
+      console.error('Google sign-in error:', error?.code, error?.message, error);
+      const detail = __DEV__
+        ? ` (${error?.code || 'no code'}: ${error?.message || String(error)})`
+        : '';
+      onError(`Google sign-in failed. Please try again.${detail}`);
     }
   };
 
   const handleApple = async () => {
+    if (canProceed && !canProceed()) {
+      return;
+    }
     if (Platform.OS !== 'ios') {
       onError('Sign in with Apple is only available on iOS.');
       return;

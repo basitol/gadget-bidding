@@ -33,6 +33,7 @@ import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Button, Input, OptionPicker } from '../../components';
 import { auctionService, GadgetCategory } from '../../services';
 import { Gadget } from '../../types';
+import { useAuthStore } from '../../store';
 import { toJpegUri } from '../../utils/images';
 import {
   formatCurrency,
@@ -269,6 +270,18 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
     model
   );
   const showBatteryBlock = showApplePhone || showAppleLaptop;
+
+  const user = useAuthStore(state => state.user);
+
+  // New listings require admin-approved seller KYB. Editing an existing
+  // listing is still allowed even if KYB isn't approved yet, so sellers who
+  // listed before this gate existed aren't locked out of managing what they
+  // already have.
+  useEffect(() => {
+    if (!isEditing && user && user.seller_kyb_status !== 'approved') {
+      navigation.replace('SellerKyb');
+    }
+  }, [isEditing, user, navigation]);
 
   useEffect(() => {
     loadCategories();

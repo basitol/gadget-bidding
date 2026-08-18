@@ -100,11 +100,12 @@ export const validateRefreshToken: ValidationChain[] = [
 ];
 
 /**
- * Validate resend OTP request
+ * Validate resend OTP request — accepts a phone number or an email,
+ * same as login, so a user isn't stuck if they only remember one.
  */
 export const validateResendOTP: ValidationChain[] = [
-  body('phone_number')
+  body('identifier')
     .trim()
-    .matches(/^\+?[0-9]{10,15}$/)
-    .withMessage('Invalid phone number format'),
+    .notEmpty()
+    .withMessage('Phone number or email is required'),
 ];

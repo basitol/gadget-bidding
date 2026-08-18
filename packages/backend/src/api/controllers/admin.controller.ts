@@ -742,6 +742,8 @@ export const getUsers = async (req: Request, res: Response) => {
           role: true,
           isVerified: true,
           isActive: true,
+          businessName: true,
+          sellerKybStatus: true,
           createdAt: true,
           wallet: {
             select: {
@@ -793,6 +795,8 @@ export const getUsers = async (req: Request, res: Response) => {
         role: u.role,
         is_verified: u.isVerified,
         is_active: u.isActive,
+        business_name: u.businessName,
+        seller_kyb_status: u.sellerKybStatus,
         created_at: u.createdAt?.toISOString(),
         wallet_balance: toNumber(u.wallet?.balance),
         wallet_locked: Boolean(u.wallet?.isLocked),
@@ -841,6 +845,12 @@ export const getSellerProfile = async (req: Request, res: Response) => {
         role: true,
         isVerified: true,
         isActive: true,
+        businessName: true,
+        cacNumber: true,
+        sellerKybStatus: true,
+        sellerKybSubmittedAt: true,
+        sellerKybReviewedAt: true,
+        sellerKybRejectionReason: true,
         createdAt: true,
         wallet: { select: { balance: true, currency: true, isLocked: true } },
       },
@@ -980,6 +990,12 @@ export const getSellerProfile = async (req: Request, res: Response) => {
         role: user.role,
         is_verified: user.isVerified,
         is_active: user.isActive,
+        business_name: user.businessName,
+        cac_number: user.cacNumber,
+        seller_kyb_status: user.sellerKybStatus,
+        seller_kyb_submitted_at: user.sellerKybSubmittedAt?.toISOString() || null,
+        seller_kyb_reviewed_at: user.sellerKybReviewedAt?.toISOString() || null,
+        seller_kyb_rejection_reason: user.sellerKybRejectionReason,
         created_at: user.createdAt?.toISOString(),
         wallet: {
           balance: toNumber(user.wallet?.balance),
@@ -1669,5 +1685,99 @@ export const closeSupportThread = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Admin support close error:', error);
     sendError(res, error.message || 'Failed to close thread', 400);
+  }
+};
+
+/**
+ * GET /api/v1/admin/sellers/kyb-pending
+ * List sellers awaiting KYB review.
+ */
+export const getPendingSellerKyb = async (req: Request, res: Response) => {
+  try {
+    const { page, limit } = parsePage(req);
+    const skip = (page - 1) * limit;
+
+    const [sellers, total] = await Promise.all([
+      prisma.user.findMany({
+        where: { role: 'seller', sellerKybStatus: 'pending' },
+        select: {
+          id: true,
+          fullName: true,
+          phoneNumber: true,
+          email: true,
+          businessName: true,
+          cacNumber: true,
+          sellerKybSubmittedAt: true,
+          createdAt: true,
+        },
+        orderBy: { sellerKybSubmittedAt: 'asc' },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count({
+        where: { role: 'seller', sellerKybStatus: 'pending' },
+      }),
+    ]);
+
+    sendPaginated(res, sellers, page, limit, total);
+  } catch (error: any) {
+    logger.error('Get pending seller KYB error:', error);
+    sendError(res, error.message || 'Failed to get pending seller KYB', 500);
+  }
+};
+
+/**
+ * POST /api/v1/admin/sellers/:id/kyb/approve
+ */
+export const approveSellerKyb = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        sellerKybStatus: 'approved',
+        sellerKybReviewedAt: new Date(),
+        sellerKybRejectionReason: null,
+      },
+      select: { id: true, fullName: true, businessName: true },
+    });
+
+    await audit(req, 'seller_kyb_approve', 'user', id, {
+      business_name: user.businessName,
+    });
+
+    sendSuccess(res, user, 'Seller verification approved');
+  } catch (error: any) {
+    logger.error('Approve seller KYB error:', error);
+    sendError(res, error.message || 'Failed to approve seller KYB', 400);
+  }
+};
+
+/**
+ * POST /api/v1/admin/sellers/:id/kyb/reject
+ */
+export const rejectSellerKyb = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const reason =
+      (req.body?.reason as string) || 'Business details could not be verified';
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        sellerKybStatus: 'rejected',
+        sellerKybReviewedAt: new Date(),
+        sellerKybRejectionReason: reason,
+      },
+      select: { id: true, fullName: true, businessName: true },
+    });
+
+    await audit(req, 'seller_kyb_reject', 'user', id, { reason });
+
+    sendSuccess(res, user, 'Seller verification rejected');
+  } catch (error: any) {
+    logger.error('Reject seller KYB error:', error);
+    sendError(res, error.message || 'Failed to reject seller KYB', 400);
   }
 };

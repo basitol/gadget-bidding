@@ -10,6 +10,7 @@ import { tabBarStyles as styles } from './tabStyles';
 import {
   SellScreen,
   CreateGadgetScreen,
+  SellerKybScreen,
 } from '../screens/sell';
 import {
   ProfileScreen,
@@ -136,6 +137,10 @@ export const SellerNavigator: React.FC = () => {
       <RootStack.Screen
         name="CreateGadget"
         component={CreateGadgetScreen as any}
+      />
+      <RootStack.Screen
+        name="SellerKyb"
+        component={SellerKybScreen as any}
       />
       <RootStack.Screen
         name="AuctionDetail"

@@ -52,6 +52,20 @@ const riskTone = (severity?: string) => {
   return 'neutral';
 };
 
+const kybTone = (status?: string) => {
+  if (status === 'approved') return 'ok';
+  if (status === 'rejected') return 'danger';
+  if (status === 'pending') return 'warn';
+  return 'neutral';
+};
+
+const kybLabel = (status?: string) => {
+  if (status === 'approved') return 'Approved';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'pending') return 'Pending review';
+  return 'Not started';
+};
+
 function RiskFlags({
   flags,
   compact = false,
@@ -247,6 +261,26 @@ export function UsersPage({
     );
   };
 
+  const approveSellerKyb = () => {
+    if (!selectedSeller) return;
+    void runProfileAction(selectedSeller.user.id, () =>
+      adminApi.approveSellerKyb(selectedSeller.user.id)
+    );
+  };
+
+  const rejectSellerKyb = async () => {
+    if (!selectedSeller) return;
+    const reason = await prompt(
+      'Rejection reason',
+      'Business details could not be verified',
+      { title: 'Reject seller verification', required: true }
+    );
+    if (!reason) return;
+    void runProfileAction(selectedSeller.user.id, () =>
+      adminApi.rejectSellerKyb(selectedSeller.user.id, reason)
+    );
+  };
+
   const setSellerVerified = (verified: boolean) => {
     if (!selectedSeller) return;
     void runProfileAction(selectedSeller.user.id, () =>
@@ -373,6 +407,13 @@ export function UsersPage({
                       <Badge tone={u.is_active ? 'ok' : 'danger'}>
                         {u.is_active ? 'Active' : 'Inactive'}
                       </Badge>
+                      {u.role === 'seller' &&
+                        u.seller_kyb_status &&
+                        u.seller_kyb_status !== 'not_started' && (
+                          <Badge tone={kybTone(u.seller_kyb_status)}>
+                            KYB: {kybLabel(u.seller_kyb_status)}
+                          </Badge>
+                        )}
                     </div>
                     <RiskFlags flags={u.risk_flags} compact />
                   </TableCell>
@@ -480,6 +521,8 @@ export function UsersPage({
         onSetVerified={setSellerVerified}
         onSetWalletLocked={setSellerWalletLocked}
         onUpdateDispute={updateSellerDispute}
+        onApproveKyb={approveSellerKyb}
+        onRejectKyb={rejectSellerKyb}
         onOpenChange={open => {
           if (!open) setSelectedSeller(null);
         }}
@@ -527,6 +570,8 @@ function SellerProfileDialog({
   onSetVerified,
   onSetWalletLocked,
   onUpdateDispute,
+  onApproveKyb,
+  onRejectKyb,
   onOpenChange,
 }: {
   profile: AdminSellerProfile | null;
@@ -541,6 +586,8 @@ function SellerProfileDialog({
   onSetVerified: (verified: boolean) => void;
   onSetWalletLocked: (locked: boolean) => void;
   onUpdateDispute: (id: string, nextStatus: string) => void;
+  onApproveKyb: () => void;
+  onRejectKyb: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const stats = profile?.stats || {};
@@ -589,7 +636,24 @@ function SellerProfileDialog({
                         Wallet{' '}
                         {profile.user.wallet.is_locked ? 'locked' : 'open'}
                       </Badge>
+                      <Badge tone={kybTone(profile.user.seller_kyb_status)}>
+                        KYB: {kybLabel(profile.user.seller_kyb_status)}
+                      </Badge>
                     </div>
+                    {(profile.user.business_name || profile.user.cac_number) && (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {profile.user.business_name || 'No business name'}
+                        {profile.user.cac_number
+                          ? ` · CAC ${profile.user.cac_number}`
+                          : ''}
+                      </p>
+                    )}
+                    {profile.user.seller_kyb_status === 'rejected' &&
+                      profile.user.seller_kyb_rejection_reason && (
+                        <p className="mt-1 text-sm text-destructive">
+                          Rejected: {profile.user.seller_kyb_rejection_reason}
+                        </p>
+                      )}
                     <RiskFlags flags={profile.user.risk_flags} compact />
                   </div>
                 </div>
@@ -630,6 +694,32 @@ function SellerProfileDialog({
                     ? 'Unlock wallet'
                     : 'Lock wallet'}
                 </Button>
+                {profile.user.seller_kyb_status &&
+                  profile.user.seller_kyb_status !== 'not_started' && (
+                    <>
+                      <Button
+                        size="sm"
+                        disabled={
+                          busyId === profile.user.id ||
+                          profile.user.seller_kyb_status === 'approved'
+                        }
+                        onClick={onApproveKyb}
+                      >
+                        Approve KYB
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={
+                          busyId === profile.user.id ||
+                          profile.user.seller_kyb_status === 'rejected'
+                        }
+                        onClick={onRejectKyb}
+                      >
+                        Reject KYB
+                      </Button>
+                    </>
+                  )}
               </div>
             </div>
 

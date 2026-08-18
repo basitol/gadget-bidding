@@ -149,7 +149,12 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
     async (result: SocialAuthResult) => {
       clearError();
       try {
-        await socialLogin(result.provider, result.idToken, interfaceType);
+        await socialLogin(
+          result.provider,
+          result.idToken,
+          interfaceType,
+          acceptedTerms
+        );
       } catch (err) {
         Alert.alert(
           'Sign up Failed',
@@ -159,12 +164,27 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         );
       }
     },
-    [clearError, socialLogin, interfaceType]
+    [clearError, socialLogin, interfaceType, acceptedTerms]
   );
 
   const handleSocialError = useCallback((message: string) => {
     Alert.alert('Sign up', message);
   }, []);
+
+  const canProceedWithSocial = useCallback(() => {
+    if (!acceptedTerms) {
+      setErrors(prev => ({
+        ...prev,
+        terms: 'You must accept the Terms of Service and Privacy Policy',
+      }));
+      Alert.alert(
+        'Almost there',
+        'Please accept the Terms of Service and Privacy Policy before continuing.'
+      );
+      return false;
+    }
+    return true;
+  }, [acceptedTerms]);
 
   return (
     <AuthLayout
@@ -297,6 +317,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       </View>
       {errors.terms && <Text style={styles.termsError}>{errors.terms}</Text>}
 
+      <View style={styles.buttonSpacer} />
+
       <Button
         title="Create account"
         onPress={handleRegister}
@@ -308,6 +330,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
       <SocialAuthButtons
         onSuccess={handleSocialSuccess}
         onError={handleSocialError}
+        canProceed={canProceedWithSocial}
       />
 
       {error && (
@@ -390,5 +413,8 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.error,
       fontSize: fonts.sizes.sm,
       marginTop: spacing.xs,
+    },
+    buttonSpacer: {
+      height: spacing.lg,
     },
   });

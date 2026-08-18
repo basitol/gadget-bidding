@@ -23,6 +23,7 @@ export interface SocialLoginData {
   provider: 'google' | 'apple';
   id_token: string;
   account_type: AppInterfaceType;
+  accepted_terms?: boolean;
 }
 
 export interface VerifyOtpData {
@@ -113,12 +114,12 @@ class AuthService {
     }
   }
 
-  // Resend OTP
-  async resendOtp(
-    phone_number: string
-  ): Promise<ApiResponse<{ verification_id: string }>> {
+  // Resend OTP — identifier can be a phone number or an email, same as login
+  async resendOtp(identifier: string): Promise<
+    ApiResponse<{ verification_id: string; phone_number: string; email?: string }>
+  > {
     try {
-      const response = await api.post('/auth/resend-otp', { phone_number });
+      const response = await api.post('/auth/resend-otp', { identifier });
       return response.data;
     } catch (error) {
       throw new Error(getErrorMessage(error));
@@ -143,6 +144,12 @@ class AuthService {
       await SecureStore.deleteItemAsync(STORAGE_KEYS.USER);
       await SecureStore.deleteItemAsync(STORAGE_KEYS.INTERFACE_TYPE);
     }
+  }
+
+  // Persist an updated user object (e.g. after an in-place profile edit)
+  // so the next cold start's checkAuth() picks it up instead of stale data.
+  async persistUser(user: User): Promise<void> {
+    await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user));
   }
 
   // Get current user from storage

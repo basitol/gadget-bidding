@@ -7,6 +7,10 @@ export interface User {
   avatar_url?: string;
   role: 'bidder' | 'seller' | 'admin';
   is_verified: boolean;
+  business_name?: string;
+  cac_number?: string;
+  seller_kyb_status?: 'not_started' | 'pending' | 'approved' | 'rejected';
+  seller_kyb_rejection_reason?: string;
   created_at: string;
 }
 
