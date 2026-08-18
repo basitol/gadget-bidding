@@ -9,20 +9,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-function normalizePhone(input: string): string {
-  const digits = input.replace(/\D/g, '');
+function normalizeLoginIdentifier(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed.includes('@')) return trimmed.toLowerCase();
+
+  const digits = trimmed.replace(/\D/g, '');
   if (digits.startsWith('234') && digits.length === 13) return `+${digits}`;
   if (digits.startsWith('0') && digits.length === 11) {
     return `+234${digits.slice(1)}`;
   }
   if (digits.length === 10) return `+234${digits}`;
-  return input.trim();
+  return trimmed;
 }
 
 export function LoginPage() {
   const navigate = useNavigate();
   const existing = getStoredUser();
-  const [phone, setPhone] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -37,7 +40,7 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(normalizePhone(phone), password);
+      await login(normalizeLoginIdentifier(identifier), password);
       navigate('/');
     } catch (err: any) {
       setError(err.message || 'Login failed');
@@ -81,12 +84,12 @@ export function LoginPage() {
           <form className="space-y-5" onSubmit={onSubmit}>
             <ErrorAlert>{error}</ErrorAlert>
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone number</Label>
+              <Label htmlFor="identifier">Email or phone</Label>
               <Input
-                id="phone"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="08011111111"
+                id="identifier"
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
+                placeholder="admin@gadgetbid.ng or 08011111111"
                 autoComplete="username"
                 className="h-11"
               />

@@ -3,7 +3,7 @@
  * Create or promote an admin user.
  *
  * Usage:
- *   node scripts/create-admin.js 08011111111 AdminPass123 "Platform Admin"
+ *   node scripts/create-admin.js 08011111111 AdminPass123 "Platform Admin" admin@gadgetbid.ng
  */
 const bcrypt = require('bcrypt');
 const { Client } = require('pg');
@@ -13,6 +13,7 @@ async function main() {
   const phoneArg = process.argv[2] || '08011111111';
   const password = process.argv[3] || 'Admin1234';
   const fullName = process.argv[4] || 'Platform Admin';
+  const email = process.argv[5] || 'admin@gadgetbid.ng';
 
   let phone = phoneArg.replace(/\D/g, '');
   if (phone.startsWith('0') && phone.length === 11) {
@@ -42,17 +43,17 @@ async function main() {
   if (existing.rows.length > 0) {
     await client.query(
       `UPDATE users
-       SET role = 'admin', password_hash = $1, full_name = $2, is_verified = true, updated_at = NOW()
-       WHERE phone_number = $3`,
-      [passwordHash, fullName, phone]
+       SET role = 'admin', password_hash = $1, full_name = $2, email = $3, is_verified = true, updated_at = NOW()
+       WHERE phone_number = $4`,
+      [passwordHash, fullName, email, phone]
     );
     console.log(`Updated existing user to admin: ${phone}`);
   } else {
     const user = await client.query(
-      `INSERT INTO users (phone_number, password_hash, full_name, role, is_verified)
-       VALUES ($1, $2, $3, 'admin', true)
+      `INSERT INTO users (phone_number, password_hash, full_name, email, role, is_verified)
+       VALUES ($1, $2, $3, $4, 'admin', true)
        RETURNING id`,
-      [phone, passwordHash, fullName]
+      [phone, passwordHash, fullName, email]
     );
     await client.query(
       `INSERT INTO wallets (user_id, balance, currency)
@@ -64,6 +65,7 @@ async function main() {
   }
 
   console.log(`Password: ${password}`);
+  console.log(`Email: ${email}`);
   await client.end();
 }
 

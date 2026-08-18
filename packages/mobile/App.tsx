@@ -12,6 +12,7 @@ import {
   Inter_800ExtraBold,
 } from '@expo-google-fonts/inter';
 import { RootNavigator } from './src/navigation';
+import { Toast } from './src/components';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -49,6 +50,7 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="auto" />
         <RootNavigator />
+        <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
+import { useToastStore } from '../../store/toastStore';
 import { authService } from '../../services';
 import {
   isValidNigerianPhone,
@@ -79,6 +80,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   }>({});
 
   const { login, socialLogin, isLoading, error, clearError } = useAuthStore();
+  const showToast = useToastStore(state => state.show);
+
+  // authStore.error is global and would otherwise leak into whichever
+  // screen next reads it — surface it once as a toast, then clear it so it
+  // can't reappear on a screen you've since navigated to.
+  useEffect(() => {
+    if (error) {
+      showToast(error, 'error');
+      clearError();
+    }
+  }, [error, showToast, clearError]);
 
   const validateForm = (): boolean => {
     const newErrors: { identifier?: string; password?: string } = {};
@@ -284,13 +296,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         onSuccess={handleSocialSuccess}
         onError={handleSocialError}
       />
-
-      {error && (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={18} color={colors.error} />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
     </AuthLayout>
   );
 };

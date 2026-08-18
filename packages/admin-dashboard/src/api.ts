@@ -310,13 +310,13 @@ function qs(params: Record<string, string | number | boolean | undefined>) {
   return s ? `?${s}` : '';
 }
 
-export async function login(phone_number: string, password: string) {
+export async function login(identifier: string, password: string) {
   const json = await request<{
     success: boolean;
     data: { user: AdminUser; access_token: string; refresh_token?: string };
   }>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: phone_number, password }),
+    body: JSON.stringify({ identifier, password }),
   });
 
   if (json.data.user.role !== 'admin') {

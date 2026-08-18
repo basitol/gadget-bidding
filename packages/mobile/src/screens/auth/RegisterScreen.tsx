@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
+import { useToastStore } from '../../store/toastStore';
 import {
   isValidNigerianPhone,
   isValidEmail,
@@ -70,6 +71,17 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
   const { register, socialLogin, isLoading, error, clearError } =
     useAuthStore();
+  const showToast = useToastStore(state => state.show);
+
+  // authStore.error is global and would otherwise leak into whichever
+  // screen next reads it — surface it once as a toast, then clear it so it
+  // can't reappear on a screen you've since navigated to.
+  useEffect(() => {
+    if (error) {
+      showToast(error, 'error');
+      clearError();
+    }
+  }, [error, showToast, clearError]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -333,11 +345,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         canProceed={canProceedWithSocial}
       />
 
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
     </AuthLayout>
   );
 };
