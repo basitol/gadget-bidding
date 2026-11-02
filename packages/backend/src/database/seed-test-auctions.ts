@@ -26,7 +26,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'iPhone 15 Pro Max 256GB - Natural Titanium',
       description:
-        'Brand new iPhone 15 Pro Max with A17 Pro chip. Comes with original box and accessories. Never used, still sealed.',
+        'Sealed in box, never activated. 256GB Natural Titanium, all original accessories included.',
       brand: 'Apple',
       model: 'iPhone 15 Pro Max',
       condition: 'new',
@@ -48,7 +48,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Samsung Galaxy S24 Ultra 512GB - Titanium Black',
       description:
-        'Flagship Samsung phone with S Pen. Excellent AI features and 200MP camera. Lightly used for 2 weeks.',
+        'Used for two weeks, includes S Pen. 200MP camera, no marks on the screen or frame.',
       brand: 'Samsung',
       model: 'Galaxy S24 Ultra',
       condition: 'like_new',
@@ -72,7 +72,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'MacBook Pro 14" M3 Pro - Space Black',
       description:
-        'Powerful MacBook Pro with M3 Pro chip. 18GB unified memory and 512GB SSD. Perfect for professionals.',
+        'M3 Pro, 18GB unified memory, 512GB SSD. Bought for editing work, selling because I upgraded. Cycle count under 60.',
       brand: 'Apple',
       model: 'MacBook Pro 14 M3 Pro',
       condition: 'like_new',
@@ -94,7 +94,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Dell XPS 15 9530 - Intel i9, 32GB RAM',
       description:
-        'Premium Windows laptop with stunning OLED display. Great for content creators and developers.',
+        'OLED panel, 32GB RAM. About 8 months old, battery still holds a full workday. Ships in original packaging.',
       brand: 'Dell',
       model: 'XPS 15 9530',
       condition: 'good',
@@ -118,7 +118,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'iPad Pro 13" M4 - Space Black 256GB',
       description:
-        'Latest iPad Pro with M4 chip and stunning tandem OLED display. Includes Apple Pencil Pro.',
+        'M4 iPad Pro bundled with an Apple Pencil Pro. Screen has had a protector on since day one.',
       brand: 'Apple',
       model: 'iPad Pro 13 M4',
       condition: 'new',
@@ -140,7 +140,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Samsung Galaxy Tab S9 Ultra 512GB',
       description:
-        'Massive 14.6 inch Android tablet with S Pen. Perfect for productivity and entertainment.',
+        '14.6-inch Android tablet with S Pen in the box. Used mostly for reading, no dents or scratches.',
       brand: 'Samsung',
       model: 'Galaxy Tab S9 Ultra',
       condition: 'like_new',
@@ -164,7 +164,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Apple Watch Ultra 2 - Titanium with Orange Alpine Loop',
       description:
-        'The ultimate sports watch. 49mm titanium case with precision dual-frequency GPS.',
+        '49mm titanium case with dual-frequency GPS. Used, in excellent condition.',
       brand: 'Apple',
       model: 'Watch Ultra 2',
       condition: 'new',
@@ -186,7 +186,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Samsung Galaxy Watch 6 Classic 47mm - Silver',
       description:
-        'Classic design with rotating bezel. Advanced health monitoring and fitness tracking.',
+        'Rotating bezel model. Ships with two straps (silicone and leather) and the original charger.',
       brand: 'Samsung',
       model: 'Galaxy Watch 6 Classic',
       condition: 'like_new',
@@ -210,7 +210,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Apple AirPods Max - Space Gray',
       description:
-        'Premium over-ear headphones with incredible sound quality and active noise cancellation.',
+        'Over-ear with ANC. Pads are in good shape, everything works as it should. Case and cable included.',
       brand: 'Apple',
       model: 'AirPods Max',
       condition: 'like_new',
@@ -232,7 +232,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Sony WH-1000XM5 - Black',
       description:
-        'Industry-leading noise cancellation with exceptional sound quality. 30-hour battery life.',
+        'ANC still charges to full and lasts about 30 hours. Comes with case, cable, and the box.',
       brand: 'Sony',
       model: 'WH-1000XM5',
       condition: 'good',
@@ -256,7 +256,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Sony A7 IV Full Frame Mirrorless Camera Body',
       description:
-        'Professional full-frame camera with 33MP sensor. Excellent for photo and video.',
+        'Full-frame 33MP body with shutter count around 12k. Records both photo and video, no issues.',
       brand: 'Sony',
       model: 'A7 IV',
       condition: 'like_new',
@@ -278,7 +278,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Canon EOS R6 Mark II with RF 24-105mm Lens',
       description:
-        'Versatile full-frame camera with kit lens. Great for both stills and video content.',
+        'Full-frame body plus 24-70mm kit lens. Second owner, everything functional, small scuff on the base plate.',
       brand: 'Canon',
       model: 'EOS R6 Mark II',
       condition: 'good',
@@ -302,7 +302,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'PlayStation 5 Disc Edition with Extra Controller',
       description:
-        'Latest PS5 console with disc drive. Includes extra DualSense controller and 3 games.',
+        'PS5 disc edition with a second DualSense and three games (titles in photos). Adult owned, rarely used.',
       brand: 'Sony',
       model: 'PlayStation 5',
       condition: 'like_new',
@@ -324,7 +324,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Nintendo Switch OLED Model - White',
       description:
-        'Enhanced Switch with vibrant OLED screen. Perfect for portable gaming.',
+        'Switch with 7-inch OLED screen. Includes dock and Joy-Con controllers.',
       brand: 'Nintendo',
       model: 'Switch OLED',
       condition: 'good',
@@ -348,7 +348,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Apple MagSafe Accessories Bundle',
       description:
-        'Complete MagSafe bundle: Battery Pack, Charger, and Wallet. All original Apple products.',
+        'MagSafe Battery Pack, Charger, and Wallet, all genuine Apple. The wallet shows minor wear on the edges.',
       brand: 'Apple',
       model: 'MagSafe Bundle',
       condition: 'new',
@@ -369,7 +369,7 @@ const testItems: Record<string, AuctionData[]> = {
     {
       title: 'Samsung 3-in-1 Wireless Charging Station',
       description:
-        'Charge your phone, watch, and earbuds simultaneously. Fast wireless charging support.',
+        '3-in-1 stand that charges phone, watch, and earbuds at once. Works with fast wireless charging.',
       brand: 'Samsung',
       model: 'Wireless Charger Trio',
       condition: 'like_new',
@@ -392,7 +392,7 @@ const testItems: Record<string, AuctionData[]> = {
 };
 
 async function seedTestAuctions() {
-  console.log('🚀 Starting test auction seeding...\n');
+  console.log('Starting test auction seeding...\n');
 
   // Find seller (phone ending in 9's)
   const seller = await prisma.user.findFirst({
@@ -410,7 +410,7 @@ async function seedTestAuctions() {
     process.exit(1);
   }
 
-  console.log(`✅ Found seller: ${seller.fullName} (${seller.phoneNumber})\n`);
+  console.log(`Found seller: ${seller.fullName} (${seller.phoneNumber})\n`);
 
   // Get all categories
   const categories = await prisma.gadgetCategory.findMany({
@@ -483,7 +483,7 @@ async function seedTestAuctions() {
   }
 
   console.log('\n' + '='.repeat(60));
-  console.log('✅ Successfully created 16 test auctions!\n');
+  console.log('Successfully created 16 test auctions!\n');
 
   // Group by end time
   const endIn2 = createdAuctions.filter(a => a.endMinutes === 2);

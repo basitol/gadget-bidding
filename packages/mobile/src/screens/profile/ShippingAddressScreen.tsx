@@ -17,6 +17,7 @@ import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { addressService, orderService } from '../../services';
 import { useAuthStore } from '../../store';
 import { ShippingAddress, UserAddress } from '../../types';
+import { useToastStore } from '../../store/toastStore';
 
 type Props = {
   navigation: any;
@@ -145,7 +146,7 @@ export const ShippingAddressScreen: React.FC<Props> = ({
                 clearAddressForm();
               }
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to delete address');
+              useToastStore.getState().show(error.message || 'Failed to delete address', 'error');
             }
           },
         },
@@ -183,23 +184,23 @@ export const ShippingAddressScreen: React.FC<Props> = ({
 
   const handleSave = async () => {
     if (!fullName.trim() || fullName.trim().length < 2) {
-      Alert.alert('Missing info', 'Enter the recipient full name');
+      useToastStore.getState().show('Enter the recipient full name', 'error');
       return;
     }
     if (!phoneNumber.trim()) {
-      Alert.alert('Missing info', 'Enter a phone number for delivery');
+      useToastStore.getState().show('Enter a phone number for delivery', 'error');
       return;
     }
     if (addressLine1.trim().length < 5) {
-      Alert.alert('Missing info', 'Enter a full street address');
+      useToastStore.getState().show('Enter a full street address', 'error');
       return;
     }
     if (!city.trim()) {
-      Alert.alert('Missing info', 'Enter your city');
+      useToastStore.getState().show('Enter your city', 'error');
       return;
     }
     if (!state.trim()) {
-      Alert.alert('Missing info', 'Select your state');
+      useToastStore.getState().show('Select your state', 'error');
       return;
     }
 
@@ -246,12 +247,11 @@ export const ShippingAddressScreen: React.FC<Props> = ({
           gadgetTitle,
         });
       } else {
-        Alert.alert('Saved', 'Shipping address saved', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        useToastStore.getState().show('Shipping address saved', 'success');
+        navigation.goBack();
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to save address');
+      useToastStore.getState().show(error.message || 'Failed to save address', 'error');
     } finally {
       setIsSaving(false);
     }

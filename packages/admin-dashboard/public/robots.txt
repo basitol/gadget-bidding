@@ -1,0 +1,22 @@
+# GadgetBid Ops
+User-agent: *
+Allow: /login
+Allow: /robots.txt
+Allow: /sitemap.xml
+Allow: /llms.txt
+Disallow: /
+Disallow: /gadgets
+Disallow: /auctions
+Disallow: /orders
+Disallow: /backoffice
+Disallow: /buyers
+Disallow: /sellers
+Disallow: /admins
+Disallow: /support
+Disallow: /disputes
+Disallow: /payments
+Disallow: /payouts
+Disallow: /notifications
+Disallow: /audit
+
+Sitemap: https://admin.gadgetsbidding.com/sitemap.xml

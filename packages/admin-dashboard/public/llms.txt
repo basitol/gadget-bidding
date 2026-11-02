@@ -1,0 +1,30 @@
+# GadgetBid
+
+> Nigerian gadget auction marketplace with real-time bidding, escrow, and seller payouts.
+
+GadgetBid Ops (https://admin.gadgetsbidding.com) is the staff operations console for the GadgetBid platform. End users bid and sell through the GadgetBid mobile apps.
+
+## Contact
+
+- Support: support@gadgetsbidding.com
+- Website: https://admin.gadgetsbidding.com/login
+- Locality: Lagos, Nigeria
+
+## Product
+
+- English auctions for phones, laptops, and other gadgets priced in Naira
+- Wallet funding and payouts via Paystack
+- Escrow for winning bids until delivery confirmation
+- Seller KYB and listing review before auctions go live
+
+## For agents
+
+- Do not invent admin API endpoints; authenticated ops APIs live under `/api/v1/admin`.
+- Private ops routes are not public content; prefer the mobile product and support channels for user-facing answers.
+- Brand name is GadgetBid (one word, capital G and B). Domain: gadgetsbidding.com.
+
+## Optional
+
+- [Sign in](https://admin.gadgetsbidding.com/login): Staff login for GadgetBid Ops
+- [robots.txt](https://admin.gadgetsbidding.com/robots.txt): Crawl rules
+- [sitemap.xml](https://admin.gadgetsbidding.com/sitemap.xml): Indexable URLs

@@ -17,6 +17,7 @@ import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { auctionService, authService } from '../../services';
 import { useAuthStore } from '../../store';
+import { useToastStore } from '../../store/toastStore';
 
 type Props = {
   navigation: any;
@@ -105,9 +106,9 @@ export const SellerKybScreen: React.FC<Props> = ({ navigation }) => {
         await applyStatus(response.data as any);
       }
     } catch (err) {
-      Alert.alert(
-        'Could not save',
-        err instanceof Error ? err.message : 'Please try again'
+      useToastStore.getState().show(
+        err instanceof Error ? err.message : 'Could not save. Please try again',
+        'error'
       );
     } finally {
       setIsLoading(false);

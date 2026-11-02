@@ -1,0 +1,5 @@
+# GadgetBid
+User-agent: *
+Allow: /
+
+Sitemap: https://www.gadgetsbidding.com/sitemap.xml

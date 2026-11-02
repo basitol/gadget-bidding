@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { adminApi } from '@/api';
 import { BrandIllustration } from '@/components/BrandIllustration';
 import { BrandPill } from '@/components/BrandMark';
+import { Breadcrumbs } from '@/components/Breadcrumbs';
+import { Seo } from '@/components/Seo';
 import { label, money, when } from '@/lib/format';
 import {
   Badge,
@@ -11,6 +13,7 @@ import {
   Panel,
   statusTone,
 } from '@/components/shared';
+import { PAGES } from '@/lib/site';
 import { InfiniteScroll } from '@/components/InfiniteScroll';
 import { useInfiniteResource } from '@/hooks/usePagedResource';
 import { Button } from '@/components/ui/button';
@@ -125,17 +128,25 @@ export function DashboardPage() {
 
   const error = statsError || feedError;
 
+  const overview = PAGES['/'];
+
   return (
     <>
+      <Seo
+        title={overview.title}
+        description={overview.description}
+        path={overview.path}
+        noindex
+      />
+      <Breadcrumbs items={[{ label: overview.crumb }]} />
       <div className="mb-8 overflow-hidden rounded-2xl bg-muted/60 lg:grid lg:min-h-[280px] lg:grid-cols-2">
         <div className="px-8 py-8 xl:px-12 xl:py-10">
           <BrandPill />
           <h1 className="mt-5 max-w-md text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
-            Run the marketplace, calmly.
+            Marketplace overview
           </h1>
           <p className="mt-4 max-w-sm text-base leading-7 text-muted-foreground xl:text-lg">
-            Live snapshot of listings, auctions, money movement, and risk —
-            everything your team needs to keep GadgetBid moving.
+            Listings, auctions, payments, and open risk items for GadgetBid.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Button asChild>
@@ -143,6 +154,9 @@ export function DashboardPage() {
             </Button>
             <Button asChild variant="secondary">
               <Link to="/payouts">Payouts</Link>
+            </Button>
+            <Button asChild variant="ghost">
+              <Link to="/disputes?status=open">Open disputes</Link>
             </Button>
           </div>
         </div>

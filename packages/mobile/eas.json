@@ -6,44 +6,29 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "simulator": true
-      },
-      "android": {
-        "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "426137391668-0o5ihg4gs0756h37538m68f6tsoeanle.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "426137391668-5pbm5sapoolfj1214ak2hgjqbr37h9om.apps.googleusercontent.com",
-        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "arm64-v8a"
-      }
+      "distribution": "internal"
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "426137391668-0o5ihg4gs0756h37538m68f6tsoeanle.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "426137391668-5pbm5sapoolfj1214ak2hgjqbr37h9om.apps.googleusercontent.com",
-        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "arm64-v8a"
       }
     },
     "production": {
-      "autoIncrement": true,
-      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
-        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "426137391668-0o5ihg4gs0756h37538m68f6tsoeanle.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "426137391668-5pbm5sapoolfj1214ak2hgjqbr37h9om.apps.googleusercontent.com"
+        "EXPO_PUBLIC_API_URL": "https://api.gadgetsbidding.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_URL": "https://api.gadgetsbidding.com"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "internal"
+      }
+    }
   }
 }

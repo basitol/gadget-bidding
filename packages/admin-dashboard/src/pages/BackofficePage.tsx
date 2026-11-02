@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatAddress, label, money, when } from '@/lib/format';
 import { mediaUrl } from '@/lib/media';
+import { toast } from 'sonner';
 
 type QueueStatus =
   | 'sent_to_backoffice'
@@ -164,8 +165,9 @@ export function BackofficePage() {
         ...(action.requiresTracking ? { tracking_number: trackingNumber } : {}),
       });
       await load();
+      toast.success('Order updated');
     } catch (err: any) {
-      setError(err.message || 'Failed to update order');
+      toast.error(err.message || 'Failed to update order');
     } finally {
       setBusyId(null);
     }

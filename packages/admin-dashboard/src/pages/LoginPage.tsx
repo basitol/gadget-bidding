@@ -4,10 +4,12 @@ import { Eye, EyeOff } from 'lucide-react';
 import { getStoredUser, login } from '@/api';
 import { BrandIllustration } from '@/components/BrandIllustration';
 import { BrandMark, BrandPill } from '@/components/BrandMark';
+import { Seo } from '@/components/Seo';
 import { ErrorAlert } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PAGES } from '@/lib/site';
 
 function normalizeLoginIdentifier(input: string): string {
   const trimmed = input.trim();
@@ -49,17 +51,24 @@ export function LoginPage() {
     }
   };
 
+  const loginSeo = PAGES['/login'];
+
   return (
     <div className="grid min-h-svh bg-background lg:grid-cols-2">
+      <Seo
+        title={loginSeo.title}
+        description={loginSeo.description}
+        path={loginSeo.path}
+        noindex={false}
+      />
       <div className="relative hidden flex-col bg-muted/60 lg:flex">
         <div className="relative z-10 shrink-0 px-16 pt-16 xl:px-20 xl:pt-20">
           <BrandPill />
-          <h2 className="mt-6 max-w-md text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
-            Run the marketplace, calmly.
-          </h2>
+          <p className="mt-6 max-w-md text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
+            GadgetBid operations
+          </p>
           <p className="mt-4 max-w-sm text-base leading-7 text-muted-foreground xl:text-lg">
-            Listings, auctions, disputes, and payouts — everything your team
-            needs to keep GadgetBid moving, in one console.
+            Manage listings, auctions, disputes, and payouts.
           </p>
         </div>
         <div className="relative min-h-0 flex-1">
@@ -73,10 +82,10 @@ export function LoginPage() {
             <BrandMark size="lg" />
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-                Welcome back
+                Sign in
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Sign in to GadgetBid operations.
+                Use your GadgetBid admin email or phone.
               </p>
             </div>
           </div>
@@ -128,6 +137,15 @@ export function LoginPage() {
           <p className="mt-8 text-center text-xs text-muted-foreground">
             Restricted to GadgetBid admin accounts. Activity is recorded in
             the audit log.
+          </p>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Need help?{' '}
+            <a
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+              href="mailto:support@gadgetbid.ng"
+            >
+              support@gadgetbid.ng
+            </a>
           </p>
         </div>
       </div>

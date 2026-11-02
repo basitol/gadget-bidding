@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
-import { Button, LoadingScreen } from '../../components';
+import { Button, EmptyState, LoadingScreen } from '../../components';
 import { addressService, orderService } from '../../services';
 import {
   formatCurrency,
@@ -24,6 +24,7 @@ import {
 } from '../../utils';
 import { DisputeType, Order, ShippingAddress, UserAddress } from '../../types';
 import { useAuthStore } from '../../store';
+import { useToastStore } from '../../store/toastStore';
 
 type OrderDetailScreenProps = {
   navigation: any;
@@ -78,7 +79,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
       setOrder(response.data);
     } catch (error) {
       console.error('Failed to load order:', error);
-      Alert.alert('Error', 'Failed to load order details');
+      useToastStore.getState().show('Failed to load order details', 'error');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -160,7 +161,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
         });
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to use saved address');
+      useToastStore.getState().show(error.message || 'Failed to use saved address', 'error');
     } finally {
       setApplyingAddressId(null);
     }
@@ -198,7 +199,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     }
 
     // Show payment options
-    Alert.alert('Payment Options', 'How would you like to pay?', [
+    Alert.alert('Payment options', 'How would you like to pay?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Pay with Paystack',
@@ -211,9 +212,9 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           try {
             await orderService.confirmPayment(order.id);
             loadOrder();
-            Alert.alert('Success', 'Payment confirmed successfully');
+            useToastStore.getState().show('Payment confirmed', 'success');
           } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to confirm payment');
+            useToastStore.getState().show(error.message || 'Failed to confirm payment', 'error');
           } finally {
             setIsProcessing(false);
           }
@@ -240,9 +241,9 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
                 'sent_to_backoffice'
               );
               loadOrder();
-              Alert.alert('Success', 'Backoffice has been notified');
+              useToastStore.getState().show('Backoffice has been notified', 'success');
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to update order');
+              useToastStore.getState().show(error.message || 'Failed to update order', 'error');
             } finally {
               setIsProcessing(false);
             }
@@ -256,7 +257,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     if (!order) return;
 
     Alert.alert(
-      'Confirm Delivery',
+      'Confirm delivery',
       'Have you received this item? This action will complete the order.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -267,11 +268,11 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
             try {
               await orderService.confirmDelivery(order.id);
               loadOrder();
-              Alert.alert('Success', 'Delivery confirmed! Order completed.');
+              useToastStore.getState().show('Delivery confirmed', 'success');
             } catch (error: any) {
-              Alert.alert(
-                'Error',
-                error.message || 'Failed to confirm delivery'
+              useToastStore.getState().show(
+                error.message || 'Failed to confirm delivery',
+                'error'
               );
             } finally {
               setIsProcessing(false);
@@ -286,10 +287,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     if (!order) return;
 
     if (disputeDescription.trim().length < 20) {
-      Alert.alert(
-        'More detail needed',
-        'Please explain the issue in at least 20 characters.'
-      );
+      useToastStore.getState().show('Please explain the issue in at least 20 characters.', 'error');
       return;
     }
 
@@ -303,12 +301,13 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
       setShowDisputeForm(false);
       setDisputeDescription('');
       loadOrder();
-      Alert.alert(
-        'Dispute opened',
-        'Admin has been notified and the payout is held while this is reviewed.'
+      useToastStore.getState().show(
+        'Dispute opened. The payout is held while this is reviewed.',
+        'success',
+        { duration: 6000 }
       );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to open dispute');
+      useToastStore.getState().show(error.message || 'Failed to open dispute', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -372,9 +371,16 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           <Text style={styles.title}>Order Details</Text>
           <View style={styles.placeholder} />
         </View>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Order not found</Text>
-        </View>
+        <EmptyState
+          icon="receipt-outline"
+          title="Order not found"
+          message="The order could not be loaded. It may have been removed or the connection failed."
+          actionLabel="Try again"
+          onAction={() => {
+            setIsLoading(true);
+            loadOrder();
+          }}
+        />
       </SafeAreaView>
     );
   }

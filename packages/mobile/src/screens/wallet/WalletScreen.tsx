@@ -39,6 +39,7 @@ import {
   getTransactionStatusLabel,
 } from '../../utils';
 import { WalletTransaction } from '../../types';
+import { useToastStore } from '../../store/toastStore';
 
 export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
   const navigation = useNavigation();
@@ -93,10 +94,7 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
           setPendingDeposit(null);
           clearVerifyRetry();
           await refreshWallet();
-          Alert.alert(
-            'Payment Confirmed',
-            'Your wallet has been credited. Your new balance is available now.'
-          );
+          useToastStore.getState().show('Your wallet has been credited.', 'success');
         }
       } catch (error) {
         // Paystack can take a few seconds to finalize. Keep retrying so a
@@ -204,16 +202,16 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
   const handleFund = async () => {
     const amount = parseInt(fundAmount, 10);
     if (isNaN(amount) || amount < 100) {
-      Alert.alert('Invalid Amount', 'Minimum deposit is ₦100');
+      useToastStore.getState().show('Minimum deposit is ₦100', 'error');
       return;
     }
 
     setIsProcessing(true);
     try {
       if (!userEmail) {
-        Alert.alert(
-          'Missing Email',
-          'Please add an email to your account before funding your wallet.'
+        useToastStore.getState().show(
+          'Please add an email to your account before funding your wallet.',
+          'error'
         );
         return;
       }
@@ -236,7 +234,7 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
         setShowPaymentWebView(true);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to initiate deposit. Please try again.');
+      useToastStore.getState().show('Failed to initiate deposit. Please try again.', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -248,24 +246,22 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
       (wallet?.balance || 0) - (wallet?.held_balance || 0);
 
     if (isNaN(amount) || amount < 1000) {
-      Alert.alert('Invalid Amount', 'Minimum withdrawal is ₦1,000');
+      useToastStore.getState().show('Minimum withdrawal is ₦1,000', 'error');
       return;
     }
 
     if (amount > availableBalance) {
-      Alert.alert(
-        'Insufficient Balance',
-        `You can only withdraw up to ${formatCurrency(availableBalance)}`
-      );
+      useToastStore.getState().show(`You can only withdraw up to ${formatCurrency(availableBalance)}`, 'error');
       return;
     }
 
     // For now, show a message about withdrawal
-    Alert.alert(
-      'Withdrawal Request',
-      'Withdrawal feature requires bank account verification. Please contact support to complete your withdrawal.',
-      [{ text: 'OK', onPress: () => setShowWithdrawModal(false) }]
+    useToastStore.getState().show(
+      'Withdrawals require bank account verification. Contact support to complete a withdrawal.',
+      'info',
+      { duration: 6000 }
     );
+    setShowWithdrawModal(false);
   };
 
   const getTransactionIcon = (type: string): keyof typeof Ionicons.glyphMap => {

@@ -16,6 +16,7 @@ import {
   SettingsScreen,
   ShippingAddressScreen,
   PolicyScreen,
+  ErrorHistoryScreen,
 } from '../screens/profile';
 import { NotificationsScreen } from '../screens/notifications';
 import { SearchScreen } from '../screens/search';
@@ -121,6 +122,14 @@ export const BuyerNavigator: React.FC = () => {
       />
       <RootStack.Screen name="Settings" component={SettingsScreen as any} />
       <RootStack.Screen name="Policy" component={PolicyScreen as any} />
+      <RootStack.Screen
+        name="ErrorHistory"
+        component={ErrorHistoryScreen as any}
+      />
+      <RootStack.Screen
+        name="ErrorHistory"
+        component={ErrorHistoryScreen as any}
+      />
       {/* Also available above tabs so detail flows can open wallet full-screen */}
       <RootStack.Screen name="Wallet" component={WalletScreen as any} />
     </RootStack.Navigator>

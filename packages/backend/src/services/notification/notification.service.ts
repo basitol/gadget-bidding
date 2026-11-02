@@ -253,7 +253,7 @@ export const notifySellerListingLive = async (
   await createNotification(
     sellerId,
     'auction_created',
-    'Your listing is live!',
+    `Your listing is live: ${gadgetTitle}`,
     `"${gadgetTitle}" has been approved and is now live for bidding.`,
     {},
     ['push', 'sms']
@@ -393,8 +393,8 @@ export const notifyOutbid = async (
   await createNotification(
     userId,
     'outbid',
-    "You've been outbid!",
-    `Someone placed a higher bid of ₦${newHighestBid.toLocaleString()} on "${gadgetTitle}". Place a higher bid to stay in the lead!`,
+    `Outbid on ${gadgetTitle}`,
+    `The highest bid is now ₦${newHighestBid.toLocaleString()}. Place a new bid if you still want this item.`,
     { auctionId, newHighestBid },
     ['push', 'sms']
   );
@@ -413,8 +413,8 @@ export const notifyAuctionWon = async (
   await createNotification(
     userId,
     'auction_won',
-    'Congratulations! You won the auction!',
-    `You won "${gadgetTitle}" for ₦${finalPrice.toLocaleString()}. Order #${orderNumber} has been created. Please confirm payment and provide shipping details.`,
+    `You won ${gadgetTitle}`,
+    `You won "${gadgetTitle}" for ₦${finalPrice.toLocaleString()}. Order #${orderNumber} has been created — complete payment and provide shipping details.`,
     { auctionId, finalPrice, orderNumber },
     ['push', 'sms']
   );
@@ -432,7 +432,7 @@ export const notifyAuctionLost = async (
     userId,
     'auction_lost',
     'Auction ended',
-    `The auction for "${gadgetTitle}" has ended. Unfortunately, you didn't win this time. Check out other auctions!`,
+    `The auction for "${gadgetTitle}" has ended and you didn't win. Your held bid funds have been released.`,
     { auctionId },
     ['push']
   );
@@ -453,7 +453,7 @@ export const notifySellerAuctionEnded = async (
     await createNotification(
       sellerId,
       'auction_won',
-      'Your auction has ended!',
+      `Your auction sold: ${gadgetTitle}`,
       `Your "${gadgetTitle}" sold for ₦${finalPrice.toLocaleString()}. Order #${orderNumber} has been created. Please prepare the item for shipping.`,
       { auctionId, finalPrice, orderNumber },
       ['push', 'sms']
@@ -482,8 +482,8 @@ export const notifyAuctionEndingSoon = async (
   await createNotification(
     userId,
     'auction_ending_soon',
-    'Auction ending soon!',
-    `The auction for "${gadgetTitle}" ends in ${minutesRemaining} minutes. Don't miss your chance!`,
+    `Auction ending soon: ${gadgetTitle}`,
+    `The auction for "${gadgetTitle}" ends in ${minutesRemaining} minutes.`,
     { auctionId, minutesRemaining },
     ['push']
   );
@@ -500,7 +500,7 @@ export const notifyPaymentReceived = async (
   await createNotification(
     sellerId,
     'payment_received',
-    'Payment received!',
+    'Payment received',
     `Payment of ₦${amount.toLocaleString()} received for order #${orderNumber}. Please ship the item.`,
     { orderNumber, amount },
     ['push', 'sms']
@@ -516,13 +516,13 @@ export const notifyOrderShipped = async (
   trackingNumber?: string
 ): Promise<void> => {
   const message = trackingNumber
-    ? `Your order #${orderNumber} has been shipped! Tracking number: ${trackingNumber}`
-    : `Your order #${orderNumber} has been shipped!`;
+    ? `Your order #${orderNumber} has been shipped. Tracking number: ${trackingNumber}`
+    : `Your order #${orderNumber} has been shipped.`;
 
   await createNotification(
     buyerId,
     'order_shipped',
-    'Order shipped!',
+    `Order shipped: #${orderNumber}`,
     message,
     { orderNumber, trackingNumber },
     ['push', 'sms']
@@ -540,7 +540,7 @@ export const notifyOrderDelivered = async (
   await createNotification(
     sellerId,
     'order_delivered',
-    'Order delivered!',
+    `Order delivered: #${orderNumber}`,
     `Order #${orderNumber} has been delivered. ₦${payoutAmount.toLocaleString()} has been credited to your wallet.`,
     { orderNumber, payoutAmount },
     ['push', 'sms']

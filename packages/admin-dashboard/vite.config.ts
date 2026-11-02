@@ -18,6 +18,32 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@gadget-bidding/shared'],
   },
+  build: {
+    sourcemap: false,
+    cssCodeSplit: true,
+    target: 'es2020',
+    chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('socket.io')) return 'socket';
+          if (id.includes('lucide-react')) return 'icons';
+          if (id.includes('@fontsource-variable')) return 'fonts';
+          if (
+            id.includes('react-dom') ||
+            id.includes('/react/') ||
+            id.includes('react-router') ||
+            id.includes('scheduler') ||
+            id.includes('radix-ui') ||
+            id.includes('@radix-ui')
+          ) {
+            return 'vendor';
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

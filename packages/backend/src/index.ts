@@ -24,20 +24,20 @@ async function startServer() {
 
     // Connect to Redis
     await connectRedis();
-    logger.info('✅ Redis connected');
+    logger.info('Redis connected');
 
     // Initialize Socket.io
     initializeSocket(server);
-    logger.info('✅ Socket.io initialized');
+    logger.info('Socket.io initialized');
 
     // Start background jobs
     startAuctionJob();
-    logger.info('✅ Auction job started');
+    logger.info('Auction job started');
 
     // Start server
     server.listen(config.port, () => {
       logger.info(
-        `🚀 Server running on port ${config.port} in ${config.nodeEnv} mode`
+        `Server running on port ${config.port} in ${config.nodeEnv} mode`
       );
       logger.info(
         `📡 API available at http://localhost:${config.port}/api/${config.apiVersion}`

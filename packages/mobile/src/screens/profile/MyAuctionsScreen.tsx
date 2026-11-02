@@ -25,6 +25,7 @@ import {
   mediaUrl,
 } from '../../utils';
 import { Auction } from '../../types';
+import { useToastStore } from '../../store/toastStore';
 
 type MyAuctionsScreenProps = {
   navigation: NativeStackNavigationProp<any>;
@@ -83,7 +84,7 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
 
   const handleCancelAuction = async (auction: Auction) => {
     Alert.alert(
-      'Cancel Auction',
+      'Cancel auction',
       'Are you sure you want to cancel this auction? This action cannot be undone.',
       [
         { text: 'No', style: 'cancel' },
@@ -94,9 +95,9 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
             try {
               await auctionService.cancelAuction(auction.id);
               loadAuctions();
-              Alert.alert('Success', 'Auction has been cancelled');
+              useToastStore.getState().show('Auction cancelled', 'success');
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to cancel auction');
+              useToastStore.getState().show(error.message || 'Failed to cancel auction', 'error');
             }
           },
         },

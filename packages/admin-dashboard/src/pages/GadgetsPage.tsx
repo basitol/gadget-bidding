@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toast } from 'sonner';
 
 const STATUSES = ['pending', 'approved', 'rejected', 'listed', 'sold', 'all'];
 
@@ -88,8 +89,9 @@ export function GadgetsPage() {
       await adminApi.approveGadget(id);
       setSelected(null);
       await load();
+      toast.success('Listing approved');
     } catch (err: any) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to approve listing');
     } finally {
       setBusyId(null);
     }
@@ -106,8 +108,9 @@ export function GadgetsPage() {
       await adminApi.rejectGadget(id, reason);
       setSelected(null);
       await load();
+      toast.success('Listing rejected');
     } catch (err: any) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to reject listing');
     } finally {
       setBusyId(null);
     }
@@ -174,7 +177,7 @@ export function GadgetsPage() {
                         <img
                           className="size-14 rounded-lg object-cover ring-1 ring-border"
                           src={mediaUrl(g.images[0])}
-                          alt=""
+                          alt={g.title || 'Gadget listing photo'}
                         />
                       ) : (
                         <div className="size-14 rounded-lg bg-muted" />
@@ -299,7 +302,7 @@ export function GadgetsPage() {
                     <img
                       key={i}
                       src={mediaUrl(src)}
-                      alt=""
+                      alt={`${selected.title || 'Gadget'} photo ${i + 1}`}
                       className="aspect-square w-full rounded-lg object-cover ring-1 ring-border"
                     />
                   ) : (

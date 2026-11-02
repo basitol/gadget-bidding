@@ -66,6 +66,6 @@ export const sendWelcomeSMS = async (
   phoneNumber: string,
   name: string
 ): Promise<boolean> => {
-  const message = `Welcome to GadgetBid, ${name}! Start bidding on your favorite gadgets now. Happy bidding!`;
+  const message = `Welcome to GadgetBid, ${name}. Your account is ready.`;
   return sendSMS({ to: phoneNumber, message });
 };

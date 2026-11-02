@@ -1,6 +1,8 @@
 import { ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import { BrandPill } from '@/components/BrandMark';
+import { Breadcrumbs, type Crumb } from '@/components/Breadcrumbs';
+import { Seo } from '@/components/Seo';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge as ShadcnBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -219,15 +221,30 @@ export function PageHeader({
   description,
   actions,
   eyebrow = 'GadgetBid Ops',
+  crumbs,
+  path,
+  noindex = true,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
   eyebrow?: string | null;
+  crumbs?: Crumb[];
+  path?: string;
+  noindex?: boolean;
 }) {
+  const breadcrumbItems = crumbs ?? [{ label: title }];
+
   return (
     <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+      <Seo
+        title={title}
+        description={description}
+        path={path}
+        noindex={noindex}
+      />
       <div>
+        <Breadcrumbs items={breadcrumbItems} />
         {eyebrow ? <BrandPill>{eyebrow}</BrandPill> : null}
         <h1
           className={cn(

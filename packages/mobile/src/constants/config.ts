@@ -93,11 +93,12 @@ const DEV_API_HOST = getDevApiHost();
 
 export const API_BASE_URL = __DEV__
   ? `http://${DEV_API_HOST}:3000/api/v1`
-  : 'https://gadget-bidding.onrender.com/api/v1';
+  : process.env.EXPO_PUBLIC_API_URL ||
+    'https://api.gadgetsbidding.com/api/v1';
 
 export const SOCKET_URL = __DEV__
   ? `http://${DEV_API_HOST}:3000`
-  : 'https://gadget-bidding.onrender.com';
+  : process.env.EXPO_PUBLIC_SOCKET_URL || 'https://api.gadgetsbidding.com';
 
 if (__DEV__) {
   // Helps diagnose "timeout" / Network Error when Wi‑Fi IP changes
@@ -121,6 +122,12 @@ export const GOOGLE_ANDROID_CLIENT_ID =
 // Apple — the Sign in with Apple service identifier (your iOS bundle id)
 export const APPLE_CLIENT_ID =
   process.env.EXPO_PUBLIC_APPLE_CLIENT_ID || 'com.gadgetbid.app';
+
+// Sentry — DSNs are public identifiers, safe to ship in the client bundle.
+// Override with EXPO_PUBLIC_SENTRY_DSN to point a build at a different project.
+export const SENTRY_DSN =
+  process.env.EXPO_PUBLIC_SENTRY_DSN ||
+  'https://2c071277392d97f300abeef5bdfa2386@o4512036215324672.ingest.de.sentry.io/4512036238393424';
 
 // Bid Configuration
 export const MIN_BID_INCREMENT = 1000; // ₦1,000 minimum increment

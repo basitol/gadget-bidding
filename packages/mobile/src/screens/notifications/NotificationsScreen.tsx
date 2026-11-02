@@ -17,6 +17,7 @@ import { notificationService } from '../../services';
 import { formatRelativeTime } from '../../utils';
 import { Notification } from '../../types';
 import { useTheme } from '../../hooks';
+import { useToastStore } from '../../store/toastStore';
 
 type NotificationsScreenProps = {
   navigation: NativeStackNavigationProp<any>;
@@ -76,13 +77,13 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch (error) {
-      Alert.alert('Error', 'Failed to mark all as read');
+      useToastStore.getState().show('Failed to mark all as read', 'error');
     }
   };
 
   const handleDelete = async (notification: Notification) => {
     Alert.alert(
-      'Delete Notification',
+      'Delete notification',
       'Are you sure you want to delete this notification?',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -99,7 +100,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
                 setUnreadCount(prev => Math.max(0, prev - 1));
               }
             } catch (error) {
-              Alert.alert('Error', 'Failed to delete notification');
+              useToastStore.getState().show('Failed to delete notification', 'error');
             }
           },
         },

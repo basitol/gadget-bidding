@@ -39,6 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toast } from 'sonner';
 
 type UsersPageProps = {
   fixedRole?: 'bidder' | 'seller' | 'admin';
@@ -160,8 +161,9 @@ export function UsersPage({
     try {
       await adminApi.updateUser(id, body);
       await load();
+      toast.success('User updated');
     } catch (err: any) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to update user');
     } finally {
       setBusyId(null);
     }
@@ -184,8 +186,9 @@ export function UsersPage({
     try {
       await adminApi.reactivateUser(user.id, { reference, note });
       await load();
+      toast.success('Account reactivated');
     } catch (err: any) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to reactivate account');
     } finally {
       setBusyId(null);
     }

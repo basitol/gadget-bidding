@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toast } from 'sonner';
 
 export function DisputesPage() {
   const { prompt } = useConfirmDialog();
@@ -71,8 +72,9 @@ export function DisputesPage() {
     try {
       await adminApi.updateDispute(id, { status: nextStatus, resolution });
       await load();
+      toast.success(`Dispute ${label(nextStatus)}`);
     } catch (err: any) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to update dispute');
     } finally {
       setBusyId(null);
     }

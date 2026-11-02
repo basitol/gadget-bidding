@@ -12,9 +12,10 @@ import {
   Inter_800ExtraBold,
 } from '@expo-google-fonts/inter';
 import { RootNavigator } from './src/navigation';
-import { Toast } from './src/components';
+import { ErrorBoundary, Toast } from './src/components';
+import { Sentry } from './src/config/sentry';
 
-export default function App() {
+function App() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -49,9 +50,13 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="auto" />
-        <RootNavigator />
+        <ErrorBoundary>
+          <RootNavigator />
+        </ErrorBoundary>
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(App);

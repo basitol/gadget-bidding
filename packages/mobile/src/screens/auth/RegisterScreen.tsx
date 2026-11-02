@@ -42,12 +42,12 @@ const COPY: Record<
 > = {
   buyer: {
     title: 'Create buyer account',
-    subtitle: 'Join GadgetBid to discover deals and bid on gadgets',
+    subtitle: 'Bid on gadgets from verified sellers',
     signInLabel: 'Sign in as buyer',
   },
   seller: {
     title: 'Create seller account',
-    subtitle: 'Start listing gadgets and running auctions on GadgetBid',
+    subtitle: 'List your gadgets and run auctions',
     signInLabel: 'Sign in as seller',
   },
 };
@@ -150,9 +150,9 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         interfaceType,
       });
     } catch (err) {
-      Alert.alert(
-        'Registration Failed',
-        err instanceof Error ? err.message : 'Please try again'
+      useToastStore.getState().show(
+        err instanceof Error ? err.message : 'Registration failed. Please try again',
+        'error'
       );
     }
   };
@@ -169,7 +169,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         );
       } catch (err) {
         Alert.alert(
-          'Sign up Failed',
+          'Sign-up failed',
           err instanceof Error
             ? err.message
             : 'Social sign up failed. Please try again.'
@@ -189,9 +189,9 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         ...prev,
         terms: 'You must accept the Terms of Service and Privacy Policy',
       }));
-      Alert.alert(
-        'Almost there',
-        'Please accept the Terms of Service and Privacy Policy before continuing.'
+      useToastStore.getState().show(
+        'Please accept the Terms of Service and Privacy Policy before continuing.',
+        'error'
       );
       return false;
     }

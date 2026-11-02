@@ -20,6 +20,7 @@ import {
   SettingsScreen,
   ShippingAddressScreen,
   PolicyScreen,
+  ErrorHistoryScreen,
 } from '../screens/profile';
 import { AuctionDetailScreen } from '../screens/auction';
 import { WalletScreen } from '../screens/wallet';
@@ -162,6 +163,10 @@ export const SellerNavigator: React.FC = () => {
       />
       <RootStack.Screen name="Settings" component={SettingsScreen as any} />
       <RootStack.Screen name="Policy" component={PolicyScreen as any} />
+      <RootStack.Screen
+        name="ErrorHistory"
+        component={ErrorHistoryScreen as any}
+      />
       <RootStack.Screen
         name="SupportChat"
         component={SupportChatScreen as any}

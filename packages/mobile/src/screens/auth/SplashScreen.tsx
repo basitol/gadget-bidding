@@ -34,7 +34,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
         </LinearGradient>
         <Text style={styles.headline}>GadgetBid</Text>
         <Text style={styles.subheadline}>
-          Nigeria's premier gadget auction platform
+          Bid on gadgets, or sell yours
         </Text>
       </View>
 
@@ -75,7 +75,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
       </TouchableOpacity>
 
       <Text style={styles.note}>
-        Buyers and sellers use separate secure account paths.
+        Buyer and seller accounts are separate.
       </Text>
     </AuthLayout>
   );

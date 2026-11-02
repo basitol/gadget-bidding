@@ -19,10 +19,7 @@ const auctionRooms = new Map<string, Set<string>>(); // auctionId -> Set of user
 export const initializeSocket = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
     cors: {
-      origin:
-        config.isDeployed
-          ? [config.frontendUrl, config.mobileAppUrl]
-          : '*',
+      origin: config.isDeployed ? config.corsOrigins : '*',
       methods: ['GET', 'POST'],
       credentials: true,
     },

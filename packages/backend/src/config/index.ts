@@ -94,6 +94,7 @@ interface Config {
   frontendUrl: string;
   backendUrl: string;
   mobileAppUrl: string;
+  corsOrigins: string[];
 
   // Social auth (Google / Apple)
   google: {
@@ -215,6 +216,18 @@ const config: Config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   backendUrl: process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3000',
   mobileAppUrl: process.env.MOBILE_APP_URL || 'gadgetbid://',
+  corsOrigins: Array.from(
+    new Set(
+      [
+        process.env.FRONTEND_URL || 'http://localhost:3000',
+        process.env.MOBILE_APP_URL || 'gadgetbid://',
+        ...(process.env.CORS_ORIGINS || '')
+          .split(',')
+          .map(origin => origin.trim())
+          .filter(Boolean),
+      ]
+    )
+  ),
 
   // Social auth — comma-separated client IDs (web/android/iOS) that are
   // allowed to mint login tokens for this app.

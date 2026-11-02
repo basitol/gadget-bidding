@@ -30,6 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 function mergeMessages(current: any[], incoming: any[]) {
   const map = new Map<string, any>();
@@ -165,7 +166,7 @@ export function SupportPage() {
       setReply('');
       await load(true);
     } catch (err: any) {
-      setMsgError(err.message);
+      toast.error(err.message || 'Failed to send reply');
     } finally {
       setBusy(false);
     }
@@ -182,8 +183,9 @@ export function SupportPage() {
       setSelected(null);
       setMessages([]);
       await load(true);
+      toast.success('Thread closed');
     } catch (err: any) {
-      setMsgError(err.message);
+      toast.error(err.message || 'Failed to close thread');
     } finally {
       setBusy(false);
     }

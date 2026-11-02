@@ -7,6 +7,8 @@ export { CountdownTimer } from './CountdownTimer';
 export { WalletCard } from './WalletCard';
 export { EmptyState } from './EmptyState';
 export { LoadingScreen } from './LoadingScreen';
+export { ErrorBoundary } from './ErrorBoundary';
+export { ErrorFallback } from './ErrorFallback';
 export { Skeleton, AuctionCardSkeleton } from './Skeleton';
 export { FadeInView } from './FadeInView';
 export { Toast } from './Toast';

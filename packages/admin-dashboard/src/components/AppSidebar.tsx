@@ -106,7 +106,11 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-muted/60">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-5">
-        <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
+        <NavLink
+          to="/"
+          end
+          className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center"
+        >
           <BrandMark size="md" className="group-data-[collapsible=icon]:size-8" />
           <div className="flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
@@ -116,7 +120,7 @@ export function AppSidebar() {
               Operations console
             </span>
           </div>
-        </div>
+        </NavLink>
       </SidebarHeader>
       <SidebarContent className="gap-3">
         <SidebarGroup className="py-1">

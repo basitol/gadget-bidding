@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import config from './index';
+import logger from '../utils/logger';
 
 // Create PostgreSQL connection pool
 const pool = new Pool({
@@ -17,7 +18,7 @@ const pool = new Pool({
 
 // Test connection
 pool.on('connect', () => {
-  console.log('✅ Connected to PostgreSQL database');
+  console.log('Connected to PostgreSQL database');
 });
 
 pool.on('error', (err: Error) => {
@@ -36,10 +37,10 @@ export const query = async <T = any>(
   try {
     const result = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: result.rowCount });
+    logger.debug('Executed query', { text, duration, rows: result.rowCount });
     return result.rows;
   } catch (error) {
-    console.error('Query error:', error);
+    logger.error('Query error:', error);
     throw error;
   }
 };

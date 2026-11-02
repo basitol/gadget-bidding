@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toast } from 'sonner';
 
 export function PayoutsPage() {
   const { confirm, prompt } = useConfirmDialog();
@@ -104,8 +105,9 @@ export function PayoutsPage() {
         payout_reference: reference || null,
       });
       await load();
+      toast.success('Payout updated');
     } catch (err: any) {
-      setError(err.message || 'Failed to update payout');
+      toast.error(err.message || 'Failed to update payout');
     } finally {
       setBusyId(null);
     }

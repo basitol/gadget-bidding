@@ -42,6 +42,7 @@ import {
   BRAND_SUGGESTIONS,
 } from '../../utils';
 import { PLATFORM_FEE_PERCENTAGE } from '@gadget-bidding/shared';
+import { useToastStore } from '../../store/toastStore';
 
 const MAX_PHOTOS = 5;
 
@@ -533,7 +534,7 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
 
   const handleAddImage = () => {
     if (images.length >= MAX_PHOTOS) {
-      Alert.alert('Limit reached', `You can add up to ${MAX_PHOTOS} photos.`);
+      useToastStore.getState().show(`You can add up to ${MAX_PHOTOS} photos.`, 'error');
       return;
     }
 
@@ -551,7 +552,7 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
       return;
     }
 
-    Alert.alert('Add Photo', 'Choose a source', [
+    Alert.alert('Add photo', 'Choose a source', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Take Photo', onPress: takePhoto },
       { text: 'Choose from Library', onPress: pickFromLibrary },
@@ -597,33 +598,25 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
           ...payload,
           status: 'pending',
         });
-        Alert.alert(
-          'Resubmitted for review',
-          'Your updated gadget was submitted for review. An admin will review it and your auction will go live once approved.',
-          [
-            {
-              text: 'Done',
-              onPress: () => navigation.goBack(),
-            },
-          ]
+        useToastStore.getState().show(
+          'Your updated gadget was submitted for review. Your auction will go live once an admin approves it.',
+          'success',
+          { duration: 6000 }
         );
+        navigation.goBack();
         return;
       }
 
       await auctionService.createGadget(payload);
 
-      Alert.alert(
-        'Submitted for review',
-        'Your gadget was listed successfully. An admin will review it and your auction will go live once approved.',
-        [
-          {
-            text: 'Done',
-            onPress: () => navigation.goBack(),
-          },
-        ]
+      useToastStore.getState().show(
+        'Your gadget was submitted for review. Your auction will go live once an admin approves it.',
+        'success',
+        { duration: 6000 }
       );
+      navigation.goBack();
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create gadget');
+      useToastStore.getState().show(error.message || 'Failed to create gadget', 'error');
     } finally {
       setIsLoading(false);
     }

@@ -1,0 +1,41 @@
+Google Play store listing copy for GadgetBid
+Paste into Play Console. Replace the privacy URL only if you use a different host.
+
+Short description (max 80 characters):
+Buy and sell gadgets in timed Nigerian auctions with wallet payments.
+
+Full description:
+GadgetBid is a Nigerian marketplace for phones, laptops, tablets, and other gadgets.
+
+Buyers
+- Browse live English auctions priced in Naira
+- Place bids with a ₦1,000 wallet commitment hold
+- Pay winning bids through your GadgetBid wallet, funded with Paystack
+- Confirm delivery after the item ships from backoffice
+
+Sellers
+- List gadgets for review before they go live
+- Track bids and orders in the app
+- Receive payouts after delivery confirmation, minus a 5% platform fee
+
+Payments
+Wallet funding and order payments use Paystack. GadgetBid does not store card numbers.
+
+Support
+Email support@gadgetsbidding.com
+
+Privacy policy
+https://www.gadgetsbidding.com/privacy/
+
+Category: Shopping
+Default language: English (United States)
+Contact email: support@gadgetsbidding.com
+App access: Login required. Provide reviewer test buyer credentials in Play Console.
+
+Data safety (summary to map in the form)
+Collected: name, email, phone, address, photos, payment transaction metadata, device IDs for notifications
+Not collected: card numbers (Paystack)
+Shared with: Paystack (payments/payouts), Cloudinary (images), Termii (SMS)
+Purpose: app functionality, account management, fraud prevention
+Encrypted in transit: yes
+Users can request deletion: yes

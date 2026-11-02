@@ -47,6 +47,7 @@ import {
 } from '../../utils';
 import { mediaUrls } from '../../utils/images';
 import { Bid } from '../../types';
+import { useToastStore } from '../../store/toastStore';
 
 const { width } = Dimensions.get('window');
 
@@ -143,10 +144,7 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
     const amount = parseInt(bidAmount, 10);
 
     if (isNaN(amount) || amount < getMinBidAmount()) {
-      Alert.alert(
-        'Invalid Bid',
-        `Minimum bid is ${formatCurrency(getMinBidAmount())}`
-      );
+      useToastStore.getState().show(`Minimum bid is ${formatCurrency(getMinBidAmount())}`, 'error');
       return;
     }
 
@@ -154,7 +152,7 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
       (wallet?.balance || 0) - (wallet?.held_balance || 0);
     if (availableBalance < BID_COMMITMENT_AMOUNT) {
       Alert.alert(
-        'Wallet Balance Required',
+        'Wallet balance required',
         `You need at least ${formatCurrency(BID_COMMITMENT_AMOUNT)} available in your wallet to place a bid. You currently have ${formatCurrency(availableBalance)} available.`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -171,15 +169,13 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
     try {
       await placeBid(auctionId, amount);
       setShowBidModal(false);
-      Alert.alert(
-        'Bid Placed!',
-        `Your bid of ${formatCurrency(amount)} has been placed. ${formatCurrency(BID_COMMITMENT_AMOUNT)} is held only if you are the current winning bidder.`
+      useToastStore.getState().show(
+        `Bid of ${formatCurrency(amount)} placed. ${formatCurrency(BID_COMMITMENT_AMOUNT)} is held only while you are the highest bidder.`,
+        'success',
+        { duration: 6000 }
       );
     } catch (err) {
-      Alert.alert(
-        'Bid Failed',
-        error || 'Failed to place bid. Please try again.'
-      );
+      useToastStore.getState().show(error || 'Failed to place bid. Please try again.', 'error');
     } finally {
       setIsBidding(false);
     }
@@ -189,56 +185,38 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
     if (!currentAuction?.buy_now_price) return;
 
     Alert.alert(
-      'Buy Now',
+      'Buy now',
       `Are you sure you want to buy this item for ${formatCurrency(currentAuction.buy_now_price)}? You will be redirected to complete payment.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Buy Now',
+          text: 'Buy now',
           onPress: async () => {
             try {
               const orderInfo = await buyNow(auctionId);
 
               if (orderInfo) {
                 // Navigate to payment screen
-                Alert.alert(
-                  'Order Created!',
-                  `Order #${orderInfo.orderNumber} has been created. Proceed to payment to complete your purchase.`,
-                  [
-                    {
-                      text: 'Pay Now',
-                      onPress: () => {
-                        navigation.navigate('ShippingAddress', {
-                          orderId: orderInfo.orderId,
-                          orderNumber: orderInfo.orderNumber,
-                          amount: orderInfo.amount,
-                          gadgetTitle: currentAuction.gadget?.title,
-                          returnToPayment: true,
-                        });
-                      },
-                    },
-                    {
-                      text: 'Pay Later',
-                      style: 'cancel',
-                      onPress: () => {
-                        navigation.navigate('OrderDetail', {
-                          orderId: orderInfo.orderId,
-                        });
-                      },
-                    },
-                  ]
+                useToastStore.getState().show(
+                  `Order #${orderInfo.orderNumber} created. Complete payment to finish your purchase.`,
+                  'success',
+                  { duration: 6000 }
                 );
+                navigation.navigate('ShippingAddress', {
+                  orderId: orderInfo.orderId,
+                  orderNumber: orderInfo.orderNumber,
+                  amount: orderInfo.amount,
+                  gadgetTitle: currentAuction.gadget?.title,
+                  returnToPayment: true,
+                });
               } else {
-                Alert.alert(
-                  'Purchase Complete',
-                  'Your purchase was successful!'
+                useToastStore.getState().show(
+                  'Payment received and your order has been created.',
+                  'success'
                 );
               }
             } catch (err) {
-              Alert.alert(
-                'Purchase Failed',
-                error || 'Failed to complete purchase.'
-              );
+              useToastStore.getState().show(error || 'Failed to complete purchase.', 'error');
             }
           },
         },

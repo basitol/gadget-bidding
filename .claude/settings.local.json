@@ -17,6 +17,9 @@
       "Bash(TOKEN=:*)"
     ]
   },
+  "enabledMcpjsonServers": [
+    "context-engine"
+  ],
   "hooks": {
     "SessionStart": [
       {
@@ -29,5 +32,6 @@
         ]
       }
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }

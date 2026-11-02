@@ -25,7 +25,11 @@
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "associatedDomains": [
+        "applinks:gadgetsbidding.com",
+        "applinks:www.gadgetsbidding.com"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -36,6 +40,26 @@
       "versionCode": 1,
       "permissions": [
         "android.permission.RECORD_AUDIO"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "gadgetsbidding.com"
+            },
+            {
+              "scheme": "https",
+              "host": "www.gadgetsbidding.com"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {
@@ -65,7 +89,17 @@
           "iosUrlScheme": "com.googleusercontent.apps.426137391668-7uonb8dsd6cchim6tbteclmfga1tflf6"
         }
       ],
-      "expo-updates"
+      "expo-updates",
+      "@sentry/react-native",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

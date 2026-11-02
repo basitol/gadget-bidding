@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toast } from 'sonner';
 
 export function OrdersPage() {
   const { confirm } = useConfirmDialog();
@@ -447,7 +448,7 @@ export function OrdersPage() {
                 <img
                   className="aspect-square w-full rounded-lg object-cover ring-1 ring-border"
                   src={mediaUrl(selected.gadget_image)}
-                  alt=""
+                  alt={selected.gadget_title || 'Order item photo'}
                 />
               ) : (
                 <div className="aspect-square w-full rounded-lg bg-muted" />

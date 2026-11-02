@@ -1,0 +1,6 @@
+{
+  "name": "@gadget-bidding/web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Public website, privacy policy, and App Links for GadgetBid"
+}

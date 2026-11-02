@@ -25,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { toast } from 'sonner';
 
 export function AuctionsPage() {
   const { confirm } = useConfirmDialog();
@@ -86,8 +87,9 @@ export function AuctionsPage() {
     try {
       await adminApi.cancelAuction(auction.id, hasBids);
       await load();
+      toast.success('Auction cancelled');
     } catch (err: any) {
-      setError(err.message || 'Failed to cancel auction');
+      toast.error(err.message || 'Failed to cancel auction');
     } finally {
       setBusyId(null);
     }
@@ -163,7 +165,7 @@ export function AuctionsPage() {
                         <img
                           className="size-14 rounded-lg object-cover ring-1 ring-border"
                           src={mediaUrl(a.gadget.image)}
-                          alt=""
+                          alt={a.gadget?.title || 'Auction item photo'}
                         />
                       ) : (
                         <div className="size-14 rounded-lg bg-muted" />

@@ -369,6 +369,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             subtitle="Bid commitment, fees, refunds, and delivery"
             onPress={() => navigation.navigate('Policy')}
           />
+          <View style={styles.divider} />
+          <SettingRow
+            {...rowProps}
+            icon="warning-outline"
+            title="Error history"
+            subtitle="Recent errors from this device"
+            onPress={() => navigation.navigate('ErrorHistory')}
+          />
         </View>
 
         <View style={[styles.card, styles.logoutCard]}>

@@ -19,6 +19,7 @@ import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
 import { authService } from '../../services';
+import { useToastStore } from '../../store/toastStore';
 
 type OtpVerificationScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'OtpVerification'>;
@@ -106,16 +107,16 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
     const code = otpCode || otp.join('');
 
     if (code.length !== OTP_LENGTH) {
-      Alert.alert('Invalid OTP', 'Please enter the complete 6-digit code');
+      useToastStore.getState().show('Please enter the complete 6-digit code', 'error');
       return;
     }
 
     try {
       await verifyOtp(verificationId, code, interfaceType);
     } catch (err) {
-      Alert.alert(
-        'Verification Failed',
-        err instanceof Error ? err.message : 'Invalid OTP code. Please try again.'
+      useToastStore.getState().show(
+        err instanceof Error ? err.message : 'Invalid code. Please try again.',
+        'error'
       );
       setOtp(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
@@ -135,12 +136,9 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
       setResendTimer(60);
       setOtp(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
-      Alert.alert(
-        'OTP Sent',
-        'A new verification code has been sent to your email'
-      );
+      useToastStore.getState().show('A new verification code has been sent to your email', 'success');
     } catch {
-      Alert.alert('Error', 'Failed to resend OTP. Please try again.');
+      useToastStore.getState().show('Failed to resend the code. Please try again.', 'error');
     } finally {
       setIsResending(false);
     }

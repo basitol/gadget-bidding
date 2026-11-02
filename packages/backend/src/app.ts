@@ -91,9 +91,7 @@ app.use(
 // CORS
 app.use(
   cors({
-    origin: config.isDeployed
-      ? [config.frontendUrl, config.mobileAppUrl]
-      : true,
+    origin: config.isDeployed ? config.corsOrigins : true,
     credentials: config.isDeployed,
   })
 );

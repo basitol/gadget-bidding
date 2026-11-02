@@ -94,7 +94,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
                   </LinearGradient>
                   <Text style={styles.brandName}>GadgetBid</Text>
                   <Text style={styles.brandTagline}>
-                    Nigeria's premier gadget auction platform
+                    Bid on gadgets, or sell yours
                   </Text>
                 </View>
               )}

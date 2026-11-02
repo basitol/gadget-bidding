@@ -8,7 +8,7 @@
 import { prisma } from '../config/prisma';
 
 async function seedCheapTestProduct() {
-  console.log('🚀 Creating cheap test product for payment testing...\n');
+  console.log('Creating cheap test product for payment testing...\n');
 
   // Find seller (phone ending in 9's or any seller)
   let seller = await prisma.user.findFirst({
@@ -29,7 +29,7 @@ async function seedCheapTestProduct() {
     process.exit(1);
   }
 
-  console.log(`✅ Using seller: ${seller.fullName} (${seller.phoneNumber})\n`);
+  console.log(`Using seller: ${seller.fullName} (${seller.phoneNumber})\n`);
 
   // Get accessories category (or any category)
   let category = await prisma.gadgetCategory.findFirst({
@@ -89,7 +89,7 @@ async function seedCheapTestProduct() {
     },
   });
 
-  console.log('✅ Created test product:\n');
+  console.log('Created test product:\n');
   console.log('   Title: TEST ITEM - USB Cable (Payment Test)');
   console.log('   Starting Price: ₦100');
   console.log('   Buy Now Price: ₦200');
@@ -97,7 +97,7 @@ async function seedCheapTestProduct() {
   console.log(`   Ends in: 30 minutes`);
   console.log(`   Auction ID: ${auction.id}`);
   console.log(`   Gadget ID: ${gadget.id}`);
-  console.log('\n🎉 You can now test payments with this cheap item!');
+  console.log('\nYou can now test payments with this cheap item!');
   console.log('   Use "Buy Now" for ₦200 or place bids starting at ₦100');
 }
 

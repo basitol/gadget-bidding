@@ -5,6 +5,7 @@ import axios, {
 } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, STORAGE_KEYS } from '../constants';
+import { useErrorLogStore } from '../store/errorLogStore';
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -72,13 +73,24 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
-// Response interceptor for token refresh
+// Response interceptor for token refresh + error logging
 api.interceptors.response.use(
   response => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
+
+    // Record API failures in the local error log (skip public auth routes —
+    // wrong-password on a login form is not a defect worth persisting).
+    if (!isPublicAuthRequest(originalRequest?.url)) {
+      useErrorLogStore.getState().logError({
+        message: getErrorMessage(error),
+        source: 'api',
+        statusCode: error.response?.status,
+        path: originalRequest?.url,
+      });
+    }
 
     if (
       error.response?.status === 401 &&
@@ -153,10 +165,35 @@ api.interceptors.response.use(
         console.error('Token refresh failed:', refreshError);
         processQueue(refreshError, null);
 
-        // Clear tokens and redirect to login
+        // Clear tokens and route the user back to the login screens.
         await SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
         await SecureStore.deleteItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
         await SecureStore.deleteItemAsync(STORAGE_KEYS.USER);
+
+        try {
+          // Lazy require: authStore's service imports this module, so a static
+          // import would create a load-time cycle.
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useAuthStore } = require('../store/authStore');
+          useAuthStore.setState({
+            user: null,
+            interfaceType: null,
+            isAuthenticated: false,
+            isLoading: false,
+          });
+        } catch (navError) {
+          console.error('Failed to reset auth state:', navError);
+        }
+
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useToastStore } = require('../store/toastStore');
+          useToastStore
+            .getState()
+            .show('Session expired, please sign in again', 'info');
+        } catch (toastError) {
+          console.error('Failed to show session toast:', toastError);
+        }
 
         return Promise.reject(refreshError);
       } finally {
@@ -186,6 +223,10 @@ export const getErrorMessage = (error: unknown): string => {
   };
 
   if (axios.isAxiosError(error)) {
+    if (!error.response) {
+      return 'No internet connection. Please check your network and try again.';
+    }
+
     const data = error.response?.data as
       | {
           error?: string;

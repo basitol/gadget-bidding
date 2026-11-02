@@ -1556,8 +1556,43 @@ export const getAuditLogs = async (req: Request, res: Response) => {
     const { page, limit } = parsePage(req);
     const skip = (page - 1) * limit;
 
+    const action = (req.query.action as string | undefined)?.trim();
+    const resourceType = (req.query.resource_type as string | undefined)?.trim();
+    const resourceId = (req.query.resource_id as string | undefined)?.trim();
+    const userId = (req.query.user_id as string | undefined)?.trim();
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+
+    const createdAt: { gte?: Date; lte?: Date } = {};
+    if (from) {
+      const fromDate = new Date(from);
+      if (Number.isNaN(fromDate.getTime())) {
+        sendError(res, "'from' must be a valid ISO date", 400);
+        return;
+      }
+      createdAt.gte = fromDate;
+    }
+    if (to) {
+      const toDate = new Date(to);
+      if (Number.isNaN(toDate.getTime())) {
+        sendError(res, "'to' must be a valid ISO date", 400);
+        return;
+      }
+      toDate.setHours(23, 59, 59, 999);
+      createdAt.lte = toDate;
+    }
+
+    const where: Prisma.AuditLogWhereInput = {
+      ...(action ? { action } : {}),
+      ...(resourceType ? { resourceType } : {}),
+      ...(resourceId ? { resourceId } : {}),
+      ...(userId ? { userId } : {}),
+      ...(Object.keys(createdAt).length ? { createdAt } : {}),
+    };
+
     const [logs, total] = await Promise.all([
       prisma.auditLog.findMany({
+        where,
         include: {
           user: {
             select: { id: true, fullName: true, phoneNumber: true },
@@ -1567,7 +1602,7 @@ export const getAuditLogs = async (req: Request, res: Response) => {
         skip,
         take: limit,
       }),
-      prisma.auditLog.count(),
+      prisma.auditLog.count({ where }),
     ]);
 
     sendPaginated(

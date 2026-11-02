@@ -10,6 +10,7 @@ export function BrandMark({
 }) {
   return (
     <div
+      aria-hidden
       className={cn(
         'grid place-items-center rounded-xl bg-slate-950 text-white',
         size === 'lg' && 'size-12',

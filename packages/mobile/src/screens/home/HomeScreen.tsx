@@ -155,7 +155,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     {
       id: 'notifications',
       title: 'Notifications',
-      subtitle: 'Stay in the loop',
+      subtitle: 'Bids, orders, and payments',
       icon: 'notifications-outline',
       color: colors.accent,
       onPress: () => navigation.navigate('Notifications'),

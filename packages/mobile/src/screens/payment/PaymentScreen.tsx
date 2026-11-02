@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { orderService } from '../../services';
 import { formatCurrency } from '../../utils';
+import { useToastStore } from '../../store/toastStore';
 
 type PaymentScreenProps = {
   navigation: any;
@@ -102,35 +103,30 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       const response = await orderService.verifyPayment(orderId, reference);
 
       if (response.data?.payment_status === 'paid') {
-        Alert.alert(
-          'Payment Successful!',
-          `Your payment for order #${orderNumber} was successful. The seller will be notified to ship your item.`,
-          [
-            {
-              text: 'View Order',
-              onPress: () => {
-                navigation.replace('OrderDetail', { orderId });
-              },
-            },
-          ]
+        useToastStore.getState().show(
+          `Payment for order #${orderNumber} received. The seller will be notified to ship your item.`,
+          'success',
+          { duration: 6000 }
         );
+        navigation.replace('OrderDetail', { orderId });
       } else {
         throw new Error('Payment verification failed');
       }
     } catch (err: any) {
       console.error('Payment verification error:', err);
-      Alert.alert(
-        'Verification Issue',
+      useToastStore.getState().show(
         'We could not verify your payment. If you were charged, please contact support.',
-        [
-          { text: 'Try Again', onPress: initializePayment },
-          {
-            text: 'Go Back',
-            onPress: () => navigation.goBack(),
-            style: 'cancel',
-          },
-        ]
+        'error',
+        { duration: 6000 }
       );
+      Alert.alert('Payment not verified', 'How would you like to continue?', [
+        { text: 'Try again', onPress: initializePayment },
+        {
+          text: 'Go back',
+          onPress: () => navigation.goBack(),
+          style: 'cancel',
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -138,7 +134,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
   const handleCancel = () => {
     Alert.alert(
-      'Cancel Payment',
+      'Cancel payment',
       'Are you sure you want to cancel this payment?',
       [
         { text: 'Continue Payment', style: 'cancel' },

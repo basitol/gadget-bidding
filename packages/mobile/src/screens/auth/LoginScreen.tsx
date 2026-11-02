@@ -130,9 +130,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         interfaceType,
       });
     } catch (err) {
-      Alert.alert(
-        'Could not resend code',
-        err instanceof Error ? err.message : 'Please try again'
+      useToastStore.getState().show(
+        err instanceof Error ? err.message : 'Could not resend code. Please try again.',
+        'error'
       );
     }
   };
@@ -168,7 +168,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         return;
       }
 
-      Alert.alert('Login Failed', message);
+      useToastStore.getState().show(message, 'error');
     }
   };
 
@@ -178,11 +178,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         await socialLogin(result.provider, result.idToken, interfaceType);
       } catch (err) {
-        Alert.alert(
-          'Login Failed',
-          err instanceof Error
-            ? err.message
-            : 'Social login failed. Please try again.'
+        useToastStore.getState().show(
+          err instanceof Error ? err.message : 'Social login failed. Please try again.',
+          'error'
         );
       }
     },

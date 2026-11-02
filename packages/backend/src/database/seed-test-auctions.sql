@@ -45,7 +45,7 @@ BEGIN
     VALUES (
         seller_id, cat_smartphones,
         'iPhone 15 Pro Max 256GB - Natural Titanium',
-        'Brand new iPhone 15 Pro Max with A17 Pro chip. Comes with original box and accessories. Never used, still sealed.',
+        Sealed in box, never activated. 256GB Natural Titanium, all original accessories included.,
         'Apple', 'iPhone 15 Pro Max',
         'new',
         '{"Storage": "256GB", "Color": "Natural Titanium", "Display": "6.7 inch Super Retina XDR", "Chip": "A17 Pro", "Camera": "48MP Main"}'::jsonb,
@@ -61,7 +61,7 @@ BEGIN
     VALUES (
         seller_id, cat_smartphones,
         'Samsung Galaxy S24 Ultra 512GB - Titanium Black',
-        'Flagship Samsung phone with S Pen. Excellent AI features and 200MP camera. Lightly used for 2 weeks.',
+        Used for two weeks, includes S Pen. 200MP camera, no marks on the screen or frame.,
         'Samsung', 'Galaxy S24 Ultra',
         'like_new',
         '{"Storage": "512GB", "RAM": "12GB", "Display": "6.8 inch Dynamic AMOLED", "Camera": "200MP Main", "Battery": "5000mAh"}'::jsonb,
@@ -81,7 +81,7 @@ BEGIN
     VALUES (
         seller_id, cat_laptops,
         'MacBook Pro 14" M3 Pro - Space Black',
-        'Powerful MacBook Pro with M3 Pro chip. 18GB unified memory and 512GB SSD. Perfect for professionals.',
+        M3 Pro, 18GB unified memory, 512GB SSD. Bought for editing work, selling because I upgraded. Cycle count under 60.,
         'Apple', 'MacBook Pro 14 M3 Pro',
         'like_new',
         '{"Chip": "M3 Pro", "RAM": "18GB", "Storage": "512GB SSD", "Display": "14.2 inch Liquid Retina XDR", "Battery": "Up to 17 hours"}'::jsonb,
@@ -97,7 +97,7 @@ BEGIN
     VALUES (
         seller_id, cat_laptops,
         'Dell XPS 15 9530 - Intel i9, 32GB RAM',
-        'Premium Windows laptop with stunning OLED display. Great for content creators and developers.',
+        OLED panel, 32GB RAM. About 8 months old, battery still holds a full workday. Ships in original packaging.,
         'Dell', 'XPS 15 9530',
         'good',
         '{"Processor": "Intel Core i9-13900H", "RAM": "32GB DDR5", "Storage": "1TB NVMe SSD", "Display": "15.6 inch 3.5K OLED", "GPU": "RTX 4060"}'::jsonb,
@@ -117,7 +117,7 @@ BEGIN
     VALUES (
         seller_id, cat_tablets,
         'iPad Pro 13" M4 - Space Black 256GB',
-        'Latest iPad Pro with M4 chip and stunning tandem OLED display. Includes Apple Pencil Pro.',
+        M4 iPad Pro bundled with an Apple Pencil Pro. Screen has had a protector on since day one.,
         'Apple', 'iPad Pro 13 M4',
         'new',
         '{"Chip": "M4", "Storage": "256GB", "Display": "13 inch Ultra Retina XDR OLED", "Connectivity": "WiFi + Cellular", "Accessories": "Apple Pencil Pro included"}'::jsonb,
@@ -133,7 +133,7 @@ BEGIN
     VALUES (
         seller_id, cat_tablets,
         'Samsung Galaxy Tab S9 Ultra 512GB',
-        'Massive 14.6 inch Android tablet with S Pen. Perfect for productivity and entertainment.',
+        14.6-inch Android tablet with S Pen in the box. Used mostly for reading, no dents or scratches.,
         'Samsung', 'Galaxy Tab S9 Ultra',
         'like_new',
         '{"Storage": "512GB", "RAM": "12GB", "Display": "14.6 inch Dynamic AMOLED 2X", "Processor": "Snapdragon 8 Gen 2", "S Pen": "Included"}'::jsonb,
@@ -153,7 +153,7 @@ BEGIN
     VALUES (
         seller_id, cat_smartwatches,
         'Apple Watch Ultra 2 - Titanium with Orange Alpine Loop',
-        'The ultimate sports watch. 49mm titanium case with precision dual-frequency GPS.',
+        49mm titanium case with dual-frequency GPS. Used, in excellent condition.,
         'Apple', 'Watch Ultra 2',
         'new',
         '{"Case Size": "49mm", "Material": "Titanium", "Display": "Always-On Retina LTPO OLED", "Water Resistance": "100m", "Battery": "Up to 36 hours"}'::jsonb,
@@ -169,7 +169,7 @@ BEGIN
     VALUES (
         seller_id, cat_smartwatches,
         'Samsung Galaxy Watch 6 Classic 47mm - Silver',
-        'Classic design with rotating bezel. Advanced health monitoring and fitness tracking.',
+        Rotating bezel model. Ships with two straps (silicone and leather) and the original charger.,
         'Samsung', 'Galaxy Watch 6 Classic',
         'like_new',
         '{"Case Size": "47mm", "Display": "1.5 inch Super AMOLED", "Processor": "Exynos W930", "Battery": "425mAh", "OS": "Wear OS 4"}'::jsonb,
@@ -189,7 +189,7 @@ BEGIN
     VALUES (
         seller_id, cat_headphones,
         'Apple AirPods Max - Space Gray',
-        'Premium over-ear headphones with incredible sound quality and active noise cancellation.',
+        Over-ear with ANC. Pads are in good shape, everything works as it should. Case and cable included.,
         'Apple', 'AirPods Max',
         'like_new',
         '{"Driver": "Apple-designed dynamic", "ANC": "Active Noise Cancellation", "Transparency": "Yes", "Spatial Audio": "Dolby Atmos", "Battery": "20 hours"}'::jsonb,
@@ -205,7 +205,7 @@ BEGIN
     VALUES (
         seller_id, cat_headphones,
         'Sony WH-1000XM5 - Black',
-        'Industry-leading noise cancellation with exceptional sound quality. 30-hour battery life.',
+        ANC still charges to full and lasts about 30 hours. Comes with case, cable, and the box.,
         'Sony', 'WH-1000XM5',
         'good',
         '{"Driver": "30mm", "ANC": "Industry-leading", "Codec": "LDAC, AAC, SBC", "Battery": "30 hours", "Quick Charge": "3 min = 3 hours"}'::jsonb,
@@ -225,7 +225,7 @@ BEGIN
     VALUES (
         seller_id, cat_cameras,
         'Sony A7 IV Full Frame Mirrorless Camera Body',
-        'Professional full-frame camera with 33MP sensor. Excellent for photo and video.',
+        Full-frame 33MP body with shutter count around 12k. Records both photo and video, no issues.,
         'Sony', 'A7 IV',
         'like_new',
         '{"Sensor": "33MP Full Frame", "Video": "4K 60fps", "ISO": "100-51200", "AF Points": "759", "Stabilization": "5-axis IBIS"}'::jsonb,
@@ -241,7 +241,7 @@ BEGIN
     VALUES (
         seller_id, cat_cameras,
         'Canon EOS R6 Mark II with RF 24-105mm Lens',
-        'Versatile full-frame camera with kit lens. Great for both stills and video content.',
+        Full-frame body plus 24-70mm kit lens. Second owner, everything functional, small scuff on the base plate.,
         'Canon', 'EOS R6 Mark II',
         'good',
         '{"Sensor": "24.2MP Full Frame", "Video": "4K 60fps, 6K RAW", "ISO": "100-102400", "AF": "Dual Pixel CMOS AF II", "Lens": "RF 24-105mm f/4L IS USM"}'::jsonb,
@@ -261,7 +261,7 @@ BEGIN
     VALUES (
         seller_id, cat_gaming,
         'PlayStation 5 Disc Edition with Extra Controller',
-        'Latest PS5 console with disc drive. Includes extra DualSense controller and 3 games.',
+        PS5 disc edition with a second DualSense and three games (titles in photos). Adult owned, rarely used.,
         'Sony', 'PlayStation 5',
         'like_new',
         '{"Storage": "825GB SSD", "Resolution": "4K 120Hz", "Ray Tracing": "Yes", "Controller": "2x DualSense", "Games": "3 included"}'::jsonb,
@@ -277,7 +277,7 @@ BEGIN
     VALUES (
         seller_id, cat_gaming,
         'Nintendo Switch OLED Model - White',
-        'Enhanced Switch with vibrant OLED screen. Perfect for portable gaming.',
+        Switch with 7-inch OLED screen. Includes dock and Joy-Con controllers.,
         'Nintendo', 'Switch OLED',
         'good',
         '{"Display": "7 inch OLED", "Storage": "64GB", "Dock": "Wired LAN port", "Battery": "4.5-9 hours", "Joy-Con": "White"}'::jsonb,
@@ -297,7 +297,7 @@ BEGIN
     VALUES (
         seller_id, cat_accessories,
         'Apple MagSafe Accessories Bundle',
-        'Complete MagSafe bundle: Battery Pack, Charger, and Wallet. All original Apple products.',
+        MagSafe Battery Pack, Charger, and Wallet, all genuine Apple. The wallet shows minor wear on the edges.,
         'Apple', 'MagSafe Bundle',
         'new',
         '{"Items": "Battery Pack + Charger + Wallet", "Compatibility": "iPhone 12 and later", "Battery Capacity": "1460mAh", "Charger Output": "15W"}'::jsonb,
@@ -313,7 +313,7 @@ BEGIN
     VALUES (
         seller_id, cat_accessories,
         'Samsung 3-in-1 Wireless Charging Station',
-        'Charge your phone, watch, and earbuds simultaneously. Fast wireless charging support.',
+        3-in-1 stand that charges phone, watch, and earbuds at once. Works with fast wireless charging.,
         'Samsung', 'Wireless Charger Trio',
         'like_new',
         '{"Devices": "Phone + Watch + Earbuds", "Phone Output": "15W", "Watch Output": "10W", "Earbuds Output": "5W", "Cable": "USB-C included"}'::jsonb,

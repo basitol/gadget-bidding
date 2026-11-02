@@ -267,7 +267,7 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
           title={activeTab === 'all' ? 'No Bids Yet' : 'No Winning Bids'}
           message={
             activeTab === 'all'
-              ? 'Start bidding on auctions to see your bids here'
+              ? "Bids you place on auctions will show up here"
               : "You don't have any winning bids at the moment"
           }
           actionLabel="Browse Auctions"

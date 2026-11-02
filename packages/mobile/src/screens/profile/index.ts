@@ -6,3 +6,4 @@ export { OrderDetailScreen } from './OrderDetailScreen';
 export { SettingsScreen } from './SettingsScreen';
 export { ShippingAddressScreen } from './ShippingAddressScreen';
 export { PolicyScreen } from './PolicyScreen';
+export { ErrorHistoryScreen } from './ErrorHistoryScreen';

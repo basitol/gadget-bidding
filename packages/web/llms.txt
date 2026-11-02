@@ -1,0 +1,25 @@
+# GadgetBid
+
+> Nigerian gadget auction marketplace with real-time bidding, escrow, and seller payouts.
+
+Public site: https://www.gadgetsbidding.com
+App: GadgetBid mobile apps (package com.gadgetbid.app)
+Operations: https://admin.gadgetsbidding.com
+API: https://api.gadgetsbidding.com
+
+## Contact
+
+- Support: support@gadgetsbidding.com
+- Locality: Lagos, Nigeria
+
+## Product
+
+- English auctions for phones, laptops, and other gadgets priced in Naira
+- Wallet funding and payouts via Paystack
+- Escrow for winning bids until delivery confirmation
+- Seller listing review before auctions go live
+
+## Legal
+
+- [Privacy policy](https://www.gadgetsbidding.com/privacy/)
+- [Terms of use](https://www.gadgetsbidding.com/terms/)
