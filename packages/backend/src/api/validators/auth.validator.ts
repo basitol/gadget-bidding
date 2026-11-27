@@ -109,3 +109,74 @@ export const validateResendOTP: ValidationChain[] = [
     .notEmpty()
     .withMessage('Phone number or email is required'),
 ];
+
+/* ---------- Email-first buyer sign-up ---------- */
+
+export const validateSignupStart: ValidationChain[] = [
+  body('email').trim().isEmail().withMessage('Enter a valid email address'),
+];
+
+export const validateSignupVerify: ValidationChain[] = [
+  body('verification_id').isUUID().withMessage('Invalid sign-up session'),
+  body('otp')
+    .trim()
+    .matches(/^[0-9]{6}$/)
+    .withMessage('Enter the 6-digit code'),
+];
+
+export const validateSignupResend: ValidationChain[] = [
+  body('verification_id').isUUID().withMessage('Invalid sign-up session'),
+];
+
+export const validateSignupComplete: ValidationChain[] = [
+  body('verification_id').isUUID().withMessage('Invalid sign-up session'),
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('Use at least 8 characters')
+    .matches(/[A-Za-z]/)
+    .withMessage('Include at least one letter')
+    .matches(/[0-9]/)
+    .withMessage('Include at least one number'),
+  body('first_name').trim().isLength({ min: 1, max: 100 }).withMessage('Enter your first name'),
+  body('last_name').trim().isLength({ min: 1, max: 100 }).withMessage('Enter your last name'),
+  body('username')
+    .trim()
+    .toLowerCase()
+    .matches(/^[a-z0-9_]{3,20}$/)
+    .withMessage('Usernames are 3–20 letters, numbers or _'),
+  body('interests').optional().isObject().withMessage('Invalid interests'),
+  body('interests.categories').optional().isArray({ max: 12 }),
+  body('interests.budget').optional({ nullable: true }).isString().isLength({ max: 20 }),
+  body('accepted_terms')
+    .custom(value => value === true)
+    .withMessage('You must accept the Terms of Service and Privacy Policy'),
+];
+
+/* ---------- Password reset ---------- */
+
+export const validatePasswordForgot: ValidationChain[] = [
+  body('email').trim().isEmail().withMessage('Enter a valid email address'),
+];
+
+export const validatePasswordVerify: ValidationChain[] = [
+  body('verification_id').isUUID().withMessage('This reset has expired. Start again.'),
+  body('otp')
+    .trim()
+    .matches(/^[0-9]{6}$/)
+    .withMessage('Enter the 6-digit code'),
+];
+
+export const validatePasswordResend: ValidationChain[] = [
+  body('verification_id').isUUID().withMessage('This reset has expired. Start again.'),
+];
+
+export const validatePasswordReset: ValidationChain[] = [
+  body('verification_id').isUUID().withMessage('This reset has expired. Start again.'),
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('Use at least 8 characters')
+    .matches(/[A-Za-z]/)
+    .withMessage('Include at least one letter')
+    .matches(/[0-9]/)
+    .withMessage('Include at least one number'),
+];

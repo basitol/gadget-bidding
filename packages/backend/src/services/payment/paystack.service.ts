@@ -29,7 +29,9 @@ export const initializePayment = async (
   email: string,
   amount: number,
   userId: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
+  /** Limit the checkout to these methods, e.g. ['bank_transfer'] or ['ussd']. */
+  channels?: string[]
 ): Promise<PaystackInitializeResponse> => {
   try {
     const reference = `PAY-${crypto.randomUUID()}`;
@@ -48,6 +50,7 @@ export const initializePayment = async (
           user_id: userId,
           ...metadata,
         },
+        ...(channels?.length ? { channels } : {}),
       },
       {
         headers: {

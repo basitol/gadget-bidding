@@ -6,6 +6,7 @@ import * as walletService from '../../services/wallet/wallet.service';
 import * as orderService from '../../services/order/order.service';
 import prisma from '../../config/prisma';
 import logger from '../../utils/logger';
+import * as savedCardService from '../../services/buyer/savedCard.service';
 
 /**
  * Paystack webhook handler
@@ -152,6 +153,7 @@ async function handleChargeSuccess(
       amount,
       gatewayResponse
     );
+    if (gateway === 'paystack') await savedCardService.saveFromGateway(pendingTx.userId, data);
     return;
   }
 
@@ -167,6 +169,7 @@ async function handleChargeSuccess(
     source: 'webhook',
     gateway,
   });
+  if (gateway === 'paystack') await savedCardService.saveFromGateway(pendingTx.userId, data);
 }
 
 async function handleTransferSuccess(data: Record<string, unknown>) {

@@ -10,6 +10,8 @@ import {
 } from '../../services/socket/socket.service';
 import * as auditService from '../../services/audit/audit.service';
 import logger from '../../utils/logger';
+import { bidderLabel } from '../../utils/bidderLabel';
+import * as autoBidService from '../../services/buyer/autobid.service';
 
 /**
  * Place a bid on an auction
@@ -36,7 +38,7 @@ export const placeBid = async (req: Request, res: Response) => {
       bid,
       bidder: {
         id: req.user.user_id,
-        full_name: (req.user as any).full_name || 'Anonymous',
+        full_name: bidderLabel(req.user.user_id),
       },
       amount: amount,
       timestamp: new Date(),
@@ -52,7 +54,14 @@ export const placeBid = async (req: Request, res: Response) => {
         newHighestBid: amount,
         message: `You've been outbid! New highest bid: ₦${amount.toLocaleString()}`,
       });
+      // Saved notification + push to their phone (socket only reaches an open app).
+      notificationService
+        .notifyOutbidForAuction(previousHighBidderId, auction_id, amount)
+        .catch(err => logger.error('Outbid notification failed:', err));
     }
+
+    // Anyone with an auto-bid on this auction may answer straight away.
+    void autoBidService.resolveAutoBids(auction_id);
 
     sendSuccess(res, bid, 'Bid placed successfully', 201);
   } catch (error: any) {

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as notificationController from '../controllers/notification.controller';
 import { authenticate } from '../middlewares/auth.middleware';
-import { param, query } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import { notificationMutationRateLimiter } from '../middlewares/security.middleware';
 
@@ -34,6 +34,63 @@ router.get(
   authenticate,
   notificationController.getUnreadCount
 );
+
+/**
+ * @route   POST /api/v1/notifications/push-token
+ * @desc    Save this device's Expo push token
+ * @access  Private
+ */
+router.post(
+  '/push-token',
+  notificationMutationRateLimiter,
+  authenticate,
+  [
+    body('token').isString().isLength({ min: 10, max: 255 }),
+    body('platform').isIn(['ios', 'android']),
+  ],
+  handleValidationErrors,
+  notificationController.registerPushToken
+);
+
+/**
+ * @route   DELETE /api/v1/notifications/push-token
+ * @desc    Forget this device's push token
+ * @access  Private
+ */
+router.delete(
+  '/push-token',
+  notificationMutationRateLimiter,
+  authenticate,
+  [body('token').isString().isLength({ min: 10, max: 255 })],
+  handleValidationErrors,
+  notificationController.removePushToken
+);
+
+/**
+ * @route   GET|PUT /api/v1/notifications/preferences
+ * @desc    Alert switches from Settings (bids, orders, marketing)
+ * @access  Private
+ */
+router.get('/preferences', authenticate, notificationController.getPreferences);
+router.put(
+  '/preferences',
+  notificationMutationRateLimiter,
+  authenticate,
+  [
+    body('bids').optional().isBoolean(),
+    body('orders').optional().isBoolean(),
+    body('marketing').optional().isBoolean(),
+  ],
+  handleValidationErrors,
+  notificationController.updatePreferences
+);
+
+/**
+ * @route   POST /api/v1/notifications/push-test
+ * @desc    Send yourself a test push (development only)
+ * @access  Private
+ */
+router.post('/push-test', notificationMutationRateLimiter, authenticate, notificationController.sendTestPush);
 
 /**
  * @route   PUT /api/v1/notifications/read-all

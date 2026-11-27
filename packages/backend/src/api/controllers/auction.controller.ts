@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as auctionService from '../../services/auction/auction.service';
 import logger from '../../utils/logger';
+import { bidderLabel } from '../../utils/bidderLabel';
 
 /**
  * Create a new auction
@@ -185,17 +186,27 @@ export const getAuctionBids = async (req: Request, res: Response) => {
     );
     const total = parseInt(countResult[0].total);
 
-    // Get bids
-    const bids = await query(
-      `SELECT b.*,
-              u.full_name as bidder_name, u.avatar_url as bidder_avatar
+    // Get bids. Bidders are anonymous to everyone else ("Bidder •••7"); you can see which are yours.
+    const rows = await query(
+      `SELECT b.id, b.auction_id, b.bidder_id, b.amount, b.bid_time, b.is_winning, b.is_auto_bid, b.status
        FROM bids b
-       JOIN users u ON b.bidder_id = u.id
        WHERE b.auction_id = $1
-       ORDER BY b.created_at DESC
+       ORDER BY b.bid_time DESC
        LIMIT $2 OFFSET $3`,
       [id, limit, offset]
     );
+    const viewerId = (req as any).user?.user_id as string | undefined;
+    const bids = rows.map((b: any) => ({
+      id: b.id,
+      auction_id: b.auction_id,
+      amount: Number(b.amount),
+      bid_time: b.bid_time,
+      is_winning: b.is_winning,
+      is_auto_bid: b.is_auto_bid,
+      status: b.status,
+      is_mine: !!viewerId && b.bidder_id === viewerId,
+      bidder_name: bidderLabel(b.bidder_id),
+    }));
 
     sendPaginated(res, bids, page, limit, total);
   } catch (error: any) {

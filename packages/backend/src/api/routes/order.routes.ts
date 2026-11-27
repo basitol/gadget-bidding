@@ -83,6 +83,18 @@ router.put(
 );
 
 /**
+ * @route   PUT /api/v1/orders/:orderId/delivery-method
+ * @desc    Choose home delivery or free hub pickup (before paying)
+ */
+router.put(
+  '/:orderId/delivery-method',
+  authenticate,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.setDeliveryMethod
+);
+
+/**
  * @route   POST /api/v1/orders/:orderId/confirm-payment
  * @desc    Confirm payment for order (wallet-based)
  * @access  Private (Buyer only)
@@ -161,6 +173,20 @@ router.post(
   orderValidator.validateDisputeCreate,
   handleValidationErrors,
   orderController.createDispute
+);
+
+/**
+ * @route   POST /api/v1/orders/:orderId/receipt
+ * @desc    Email the buyer a receipt for a paid order
+ * @access  Private (Buyer only)
+ */
+router.post(
+  '/:orderId/receipt',
+  authenticate,
+  paymentVerificationRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.emailReceipt
 );
 
 export default router;

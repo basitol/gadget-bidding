@@ -26,6 +26,8 @@ import notificationRoutes from './api/routes/notification.routes';
 import supportRoutes from './api/routes/support.routes';
 import adminRoutes from './api/routes/admin.routes';
 import sellerRoutes from './api/routes/seller.routes';
+import meRoutes from './api/routes/me.routes';
+import storeRoutes from './api/routes/store.routes';
 import * as walletController from './api/controllers/wallet.controller';
 
 const app: Application = express();
@@ -175,6 +177,8 @@ app.use(
 
 // API Routes (webhooks mounted above with raw parser)
 app.use(`/api/${config.apiVersion}/auth`, authRoutes);
+app.use(`/api/${config.apiVersion}/me`, meRoutes);
+app.use(`/api/${config.apiVersion}/stores`, storeRoutes);
 app.use(`/api/${config.apiVersion}/wallet`, walletRoutes);
 app.use(`/api/${config.apiVersion}/gadgets`, gadgetRoutes);
 app.use(`/api/${config.apiVersion}/auctions`, auctionRoutes);

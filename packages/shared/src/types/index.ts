@@ -212,6 +212,8 @@ export interface CreateGadgetRequest {
 export type AuctionStatus = 'scheduled' | 'active' | 'ended' | 'cancelled';
 
 export interface Auction {
+  /** Flat delivery charge (₦) a winner pays on top of the bid. */
+  delivery_fee?: number;
   id: string;
   gadget_id: string;
   seller_id: string;
@@ -323,6 +325,11 @@ export interface UserAddress extends ShippingAddress {
 }
 
 export interface Order {
+  /** Included in total_amount. */
+  delivery_fee?: number;
+  delivery_method?: 'delivery' | 'pickup';
+  /** total_amount minus delivery_fee. */
+  item_amount?: number;
   id: string;
   auction_id: string;
   buyer_id: string;
@@ -340,8 +347,22 @@ export interface Order {
   tracking_number?: string;
   disputes?: Dispute[];
   open_dispute?: boolean;
+  /** Each payment/fulfillment status change, oldest first (buyer tracking timeline). */
+  events?: OrderEvent[];
+  /** Unpaid orders: when the payment window closes. */
+  payment_due_at?: string;
+  /** Buyer view: "Visa ending 4242", "Bank transfer", "Wallet". */
+  paid_with?: string | null;
+  /** Buyer view: the delivery address can still change (item hasn't left the hub). */
+  address_editable?: boolean;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface OrderEvent {
+  kind: 'payment' | 'fulfillment';
+  status: string;
+  at: string;
 }
 
 export interface OrderWithDetails extends Order {
@@ -373,6 +394,9 @@ export type NotificationType =
   | 'support_message'
   | 'payment_received'
   | 'payment_failed'
+  | 'payment_reminder'
+  | 'saved_search_match'
+  | 'store_new_listing'
   | 'payment_initiated'
   | 'order_created'
   | 'order_shipped'

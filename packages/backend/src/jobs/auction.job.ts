@@ -4,6 +4,9 @@ import * as orderService from '../services/order/order.service';
 import * as notificationService from '../services/notification/notification.service';
 import { query } from '../config/database';
 import logger from '../utils/logger';
+import * as savedSearchService from '../services/buyer/savedSearch.service';
+import * as storeService from '../services/buyer/store.service';
+import * as buyerAlerts from '../services/notification/buyerAlerts';
 
 let auctionJobInterval: NodeJS.Timeout | null = null;
 
@@ -50,7 +53,8 @@ const processExpiredAuctions = async (): Promise<void> => {
               auction.id,
               gadgetTitle,
               result.finalPrice,
-              order.order_number
+              order.order_number,
+              (order as any).id
             );
 
             // Notify seller
@@ -152,9 +156,98 @@ const notifyAuctionsEndingSoon = async (): Promise<void> => {
       );
 
       socketService.broadcastAuctionEndingSoon(auction.id, minutesRemaining);
+
+      // Bidders and watchers get one "ending soon" alert per auction (this runs every 30s).
+      const rows = await query(
+        `SELECT p.user_id AS bidder_id, g.title, bool_and(p.watching) AS watching
+         FROM (
+           SELECT bidder_id AS user_id, false AS watching FROM bids WHERE auction_id = $1
+           UNION
+           SELECT user_id, true AS watching FROM watchlist WHERE auction_id = $1
+         ) p
+         JOIN auctions a ON a.id = $1
+         JOIN gadgets g ON g.id = a.gadget_id
+         WHERE p.user_id IS NOT NULL
+         GROUP BY p.user_id, g.title`,
+        [auction.id]
+      );
+      for (const row of rows) {
+        if (
+          await notificationService.alreadyNotified(
+            row.bidder_id,
+            'auction_ending_soon',
+            'auctionId',
+            auction.id
+          )
+        ) {
+          continue;
+        }
+        await notificationService.notifyAuctionEndingSoon(
+          row.bidder_id,
+          auction.id,
+          row.title || 'an item',
+          Math.max(1, minutesRemaining),
+          row.watching === true
+        );
+      }
     }
   } catch (error) {
     logger.error('Error notifying auctions ending soon:', error);
+  }
+};
+
+/** Remind winners to pay when this many hours are left on the payment window. */
+const PAYMENT_REMINDER_HOURS_LEFT = Number(process.env.PAYMENT_REMINDER_HOURS_LEFT || 6);
+
+/**
+ * Remind winners who haven't paid yet, once, before their order expires.
+ */
+const remindUnpaidOrders = async (): Promise<void> => {
+  try {
+    const windowHours = orderService.ORDER_PAYMENT_EXPIRY_HOURS;
+    const rows = await query(
+      `SELECT o.id, o.order_number, o.buyer_id, o.total_amount, o.created_at, g.title
+       FROM orders o
+       LEFT JOIN auctions a ON a.id = o.auction_id
+       LEFT JOIN gadgets g ON g.id = a.gadget_id
+       WHERE o.payment_status = 'pending'
+         AND o.fulfillment_status = 'pending'
+         AND o.created_at <= NOW() - make_interval(secs => $1)
+         AND o.created_at > NOW() - make_interval(secs => $2)
+       LIMIT 100`,
+      [
+        Math.max(0, windowHours - PAYMENT_REMINDER_HOURS_LEFT) * 3600,
+        windowHours * 3600,
+      ]
+    );
+    for (const o of rows) {
+      if (await notificationService.alreadyNotified(o.buyer_id, 'payment_reminder', 'orderId', o.id)) {
+        continue;
+      }
+      const hoursLeft =
+        windowHours - (Date.now() - new Date(o.created_at).getTime()) / 3_600_000;
+      await notificationService.notifyPaymentReminder(
+        o.buyer_id,
+        o.id,
+        o.order_number,
+        o.title || 'your win',
+        Number(o.total_amount),
+        hoursLeft
+      );
+    }
+  } catch (error) {
+    logger.error('Error sending payment reminders:', error);
+  }
+};
+
+/**
+ * Saved searches: tell people when a matching auction goes live (once per auction).
+ */
+const notifySavedSearchMatches = async (): Promise<void> => {
+  try {
+    await savedSearchService.notifyNewMatches();
+  } catch (error) {
+    logger.error('Error matching saved searches:', error);
   }
 };
 
@@ -181,6 +274,10 @@ export const startAuctionJob = (): void => {
     await activateScheduledAuctions();
     await expirePendingOrders();
     await notifyAuctionsEndingSoon();
+    await remindUnpaidOrders();
+    await notifySavedSearchMatches();
+    await storeService.notifyFollowersOfNewListings().catch(err => logger.error('Store follower alerts failed:', err));
+    await buyerAlerts.remindConfirmDelivery().catch(err => logger.error('Confirm-delivery reminders failed:', err));
   }, 30000); // 30 seconds
 
   logger.info('Auction processing job started');

@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import * as sellerSummary from '../../services/buyer/sellerSummary.service';
 import * as auctionController from '../controllers/auction.controller';
 import * as auctionValidator from '../validators/auction.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
-import { authenticate, sellerOnly } from '../middlewares/auth.middleware';
+import { authenticate, sellerOnly, optionalAuth } from '../middlewares/auth.middleware';
 
 const router: Router = Router();
 
@@ -49,8 +50,21 @@ router.get(
  * @desc    Get auction bids
  * @access  Public
  */
+/**
+ * @route   GET /api/v1/auctions/:id/seller
+ * @desc    Public seller summary: code, verified business, rating, sales
+ */
+router.get('/:id/seller', auctionValidator.validateAuctionId, handleValidationErrors, async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await sellerSummary.forAuction(req.params.id as string) });
+  } catch (error: any) {
+    res.status(404).json({ success: false, error: error.message || 'Not found' });
+  }
+});
+
 router.get(
   '/:id/bids',
+  optionalAuth, // so each viewer can see which bids are theirs (is_mine)
   auctionValidator.validateAuctionId,
   handleValidationErrors,
   auctionController.getAuctionBids

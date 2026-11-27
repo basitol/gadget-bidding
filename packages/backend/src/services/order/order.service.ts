@@ -12,7 +12,10 @@ import {
   PaystackInitializeResponse,
 } from '@gadget-bidding/shared';
 import * as paystackService from '../payment/paystack.service';
+import config from '../../config';
+import * as buyerAlerts from '../notification/buyerAlerts';
 import * as notificationService from '../notification/notification.service';
+import * as emailService from '../notification/email.service';
 import * as riskService from '../risk/risk.service';
 import { applyBalanceDelta } from '../../utils/wallet-balance';
 import logger from '../../utils/logger';
@@ -32,7 +35,7 @@ const generateOrderNumber = (): string => {
   return `GB-${timestamp}-${random}`;
 };
 
-const ORDER_PAYMENT_EXPIRY_HOURS = Number(
+export const ORDER_PAYMENT_EXPIRY_HOURS = Number(
   process.env.ORDER_PAYMENT_EXPIRY_HOURS || BID_PAYMENT_DEADLINE_HOURS
 );
 
@@ -80,6 +83,9 @@ const transformOrder = (order: any): Order => ({
   seller_id: order.sellerId,
   order_number: order.orderNumber,
   total_amount: toNumber(order.totalAmount),
+  delivery_fee: toNumber(order.deliveryFee),
+  delivery_method: order.deliveryMethod ?? 'delivery',
+  item_amount: toNumber(order.totalAmount) - toNumber(order.deliveryFee),
   platform_fee: toNumber(order.platformFee),
   seller_payout: toNumber(order.sellerPayout),
   payout_status: order.payoutStatus,
@@ -130,14 +136,16 @@ export const createOrderFromAuction = async (
     const platformFee = (finalPrice * PLATFORM_FEE_PERCENTAGE) / 100;
     const sellerPayout = finalPrice - platformFee;
 
-    // Create order
+    // Create order: winning bid + flat delivery (delivery goes to the platform, not the seller)
+    const deliveryFee = config.deliveryFee;
     const order = await tx.order.create({
       data: {
         auctionId,
         buyerId: winnerId,
         sellerId: auction.gadget?.sellerId,
         orderNumber: generateOrderNumber(),
-        totalAmount: finalPrice,
+        totalAmount: finalPrice + deliveryFee,
+        deliveryFee,
         platformFee,
         sellerPayout,
         payoutStatus: 'pending',
@@ -189,6 +197,7 @@ export const getOrderById = async (
       disputes: {
         orderBy: { createdAt: 'desc' },
       },
+      events: { orderBy: { createdAt: 'asc' } },
     },
   });
 
@@ -230,6 +239,7 @@ export const getOrderByNumber = async (
       disputes: {
         orderBy: { createdAt: 'desc' },
       },
+      events: { orderBy: { createdAt: 'asc' } },
     },
   });
 
@@ -280,6 +290,7 @@ export const getBuyerOrders = async (
         disputes: {
           orderBy: { createdAt: 'desc' },
         },
+        events: { orderBy: { createdAt: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -334,6 +345,7 @@ export const getSellerOrders = async (
         disputes: {
           orderBy: { createdAt: 'desc' },
         },
+        events: { orderBy: { createdAt: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -348,7 +360,7 @@ export const getSellerOrders = async (
   };
 };
 
-const hasCompleteShippingAddress = (address: unknown): boolean => {
+export const hasCompleteShippingAddress = (address: unknown): boolean => {
   if (!address || typeof address !== 'object') return false;
   const a = address as Record<string, unknown>;
   return Boolean(
@@ -448,7 +460,7 @@ export const offerOrderToSecondPlaceBidder = async (
       where: { id: orderId },
       data: {
         buyerId: secondBid.bidderId,
-        totalAmount: secondAmount,
+        totalAmount: secondAmount + toNumber(order.deliveryFee),
         platformFee,
         sellerPayout,
         paymentStatus: 'pending',
@@ -474,9 +486,10 @@ export const offerOrderToSecondPlaceBidder = async (
   await notificationService.createNotification(
     result.bidder.id,
     'auction_won',
-    'Second chance to buy',
-    `The winning bidder missed payment for "${result.gadgetTitle}". You are next in line at ₦${result.bidder.amount.toLocaleString()}. Complete payment within ${BID_PAYMENT_DEADLINE_HOURS} hours to secure it.`,
+    'Second chance offer',
+    `The winner didn't pay. ${result.gadgetTitle} can be yours for your bid of ₦${result.bidder.amount.toLocaleString()}. Pay within ${BID_PAYMENT_DEADLINE_HOURS} hours to secure it.`,
     {
+      secondChance: true,
       orderId: result.order.id,
       orderNumber: result.order.order_number,
       auctionId: result.order.auction_id,
@@ -504,26 +517,48 @@ export const offerOrderToSecondPlaceBidder = async (
 /**
  * Update shipping address
  */
+/** Fulfillment steps before the item leaves the hub; the delivery address can still change. */
+export const ADDRESS_EDITABLE_STATUSES: FulfillmentStatus[] = [
+  'pending',
+  'processing',
+  'sent_to_backoffice',
+  'received_by_backoffice',
+];
+
 export const updateShippingAddress = async (
   orderId: string,
   buyerId: string,
   address: ShippingAddress
 ): Promise<Order> => {
+  // Before paying (checkout), or after paying until the item leaves the hub.
   const order = await prisma.order.updateMany({
     where: {
       id: orderId,
       buyerId,
-      paymentStatus: 'pending',
-      fulfillmentStatus: 'pending',
+      OR: [
+        { paymentStatus: 'pending', fulfillmentStatus: 'pending' },
+        {
+          paymentStatus: 'paid',
+          deliveryMethod: 'delivery',
+          fulfillmentStatus: { in: ADDRESS_EDITABLE_STATUSES },
+        },
+      ],
     },
     data: {
       shippingAddress: address as any,
+      updatedAt: new Date(),
     },
   });
 
   if (order.count === 0) {
+    const exists = await prisma.order.findFirst({
+      where: { id: orderId, buyerId },
+      select: { id: true },
+    });
     throw new Error(
-      'Order not found, unauthorized, or payment already started'
+      exists
+        ? "This order has left the hub, so its address can't change now. Contact support if you need help."
+        : 'Order not found or unauthorized'
     );
   }
 
@@ -554,7 +589,7 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
       throw new Error('Order already paid');
     }
 
-    if (!hasCompleteShippingAddress(order.shippingAddress)) {
+    if (order.deliveryMethod !== 'pickup' && !hasCompleteShippingAddress(order.shippingAddress)) {
       throw new Error(
         'Please add a shipping address before paying for this order'
       );
@@ -727,6 +762,8 @@ export const updateFulfillmentStatus = async (
 
     return transformOrder(updatedOrder);
   });
+
+  void buyerAlerts.notifyBuyerFulfillment(updated.id, status);
 
   if (status === 'sent_to_backoffice') {
     notificationService
@@ -1195,7 +1232,8 @@ export const initializeOrderPayment = async (
   orderId: string,
   buyerId: string,
   email: string,
-  callbackUrl?: string
+  callbackUrl?: string,
+  channel?: 'card' | 'bank_transfer' | 'ussd'
 ): Promise<PaystackInitializeResponse> => {
   // Get order
   const order = await prisma.order.findFirst({
@@ -1215,7 +1253,7 @@ export const initializeOrderPayment = async (
     throw new Error('Order already paid');
   }
 
-  if (!hasCompleteShippingAddress(order.shippingAddress)) {
+  if (order.deliveryMethod !== 'pickup' && !hasCompleteShippingAddress(order.shippingAddress)) {
     throw new Error(
       'Please add a shipping address before paying for this order'
     );
@@ -1235,7 +1273,8 @@ export const initializeOrderPayment = async (
       order_number: order.orderNumber,
       gadget_title: gadgetTitle,
       callback_url: callbackUrl,
-    }
+    },
+    channel ? [channel] : undefined
   );
 
   // Create payment transaction record
@@ -1292,12 +1331,17 @@ export const verifyOrderPayment = async (
   }
 
   // Process the payment
-  return processOrderPayment(
+  const paid = await processOrderPayment(
     orderId,
     reference,
     verification.amount,
     verification.gatewayResponse
   );
+  // Keep the card for one-tap payments next time (lazy import: savedCard imports this file).
+  import('../buyer/savedCard.service')
+    .then(c => c.saveFromGateway(buyerId, verification.gatewayResponse))
+    .catch(() => {});
+  return paid;
 };
 
 /**
@@ -1754,6 +1798,9 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
     seller_id: order.sellerId,
     order_number: order.orderNumber,
     total_amount: toNumber(order.totalAmount),
+    delivery_fee: toNumber(order.deliveryFee),
+    item_amount: toNumber(order.totalAmount) - toNumber(order.deliveryFee),
+    delivery_method: order.deliveryMethod ?? 'delivery',
     platform_fee: toNumber(order.platformFee),
     seller_payout: toNumber(order.sellerPayout),
     payout_status: order.payoutStatus,
@@ -1769,12 +1816,23 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
     ),
     created_at: order.createdAt?.toISOString(),
     updated_at: order.updatedAt?.toISOString(),
+    payment_due_at: order.createdAt
+      ? new Date(
+          order.createdAt.getTime() + ORDER_PAYMENT_EXPIRY_HOURS * 3600_000
+        ).toISOString()
+      : undefined,
+    events: order.events?.map((e: any) => ({
+      kind: e.kind,
+      status: e.status,
+      at: e.createdAt?.toISOString(),
+    })),
     auction: order.auction
       ? {
           id: order.auction.id,
           starting_price: toNumber(order.auction.startingPrice),
           current_price: toNumber(order.auction.currentPrice),
           end_time: order.auction.endTime?.toISOString(),
+          total_bids: order.auction.totalBids ?? 0,
         }
       : undefined,
     gadget: order.auction?.gadget
@@ -1803,4 +1861,93 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
         }
       : undefined,
   } as unknown as OrderWithDetails;
+};
+
+/**
+ * Buyer picks home delivery (flat fee) or free pickup at the hub. Only before paying.
+ */
+export const setDeliveryMethod = async (
+  orderId: string,
+  buyerId: string,
+  method: 'delivery' | 'pickup'
+): Promise<Order> => {
+  const order = await prisma.order.findFirst({ where: { id: orderId, buyerId } });
+  if (!order) throw new Error('Order not found or unauthorized');
+  if (order.paymentStatus !== 'pending') throw new Error('This order is already paid');
+  const itemAmount = toNumber(order.totalAmount) - toNumber(order.deliveryFee);
+  const deliveryFee = method === 'pickup' ? 0 : config.deliveryFee;
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      deliveryMethod: method,
+      deliveryFee,
+      totalAmount: itemAmount + deliveryFee,
+      updatedAt: new Date(),
+    },
+  });
+  return transformOrder(updated);
+};
+
+/* ---------------- Buyer order page extras ---------------- */
+
+const titleCase = (s: string) => s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase();
+
+/** How the buyer paid, e.g. "Visa ending 4242", "Bank transfer", "Wallet". Null when unknown. */
+export const paymentMethodLabel = async (
+  orderId: string,
+  orderNumber: string
+): Promise<string | null> => {
+  const tx = await prisma.paymentTransaction.findFirst({
+    where: { status: 'success', metadata: { path: ['order_id'], equals: orderId } },
+    orderBy: { updatedAt: 'desc' },
+  });
+  if (tx) {
+    const raw = (tx.gatewayResponse ?? {}) as Record<string, any>;
+    const gr = (raw.data && typeof raw.data === 'object' ? raw.data : raw) as Record<string, any>;
+    const auth = gr.authorization ?? gr.cardDetails ?? {};
+    const last4 = auth.last4 ?? auth.last_4digits;
+    const brand = auth.card_type ?? auth.cardType ?? auth.brand;
+    const channel = String(gr.channel ?? gr.paymentMethod ?? tx.paymentMethod ?? '').toLowerCase();
+    if (last4) return `${brand ? titleCase(String(brand)) : 'Card'} ending ${last4}`;
+    if (channel.includes('transfer')) return 'Bank transfer';
+    if (channel.includes('ussd')) return 'USSD';
+    if (channel.includes('card')) return 'Card';
+    return null;
+  }
+  const walletPayment = await prisma.walletTransaction.findFirst({
+    where: { reference: `${orderNumber}-BUYER-PAYMENT`, transactionType: 'purchase' },
+    select: { id: true },
+  });
+  return walletPayment ? 'Wallet' : null;
+};
+
+/** Emails the buyer a receipt for a paid order. */
+export const emailReceipt = async (orderId: string, buyerId: string): Promise<{ email: string }> => {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, buyerId },
+    include: {
+      auction: { include: { gadget: { select: { title: true } } } },
+      buyer: { select: { email: true } },
+      events: { where: { kind: 'payment', status: 'paid' }, orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+  });
+  if (!order) throw new Error('Order not found or unauthorized');
+  if (order.paymentStatus !== 'paid') throw new Error("There's no receipt yet. It's ready once you've paid.");
+  const email = order.buyer?.email;
+  if (!email) {
+    throw new Error('Add an email to your account first, then try again.');
+  }
+
+  const sent = await emailService.sendOrderReceiptEmail(email, {
+    orderNumber: order.orderNumber,
+    itemTitle: order.auction?.gadget?.title ?? 'Your gadget',
+    itemAmount: toNumber(order.totalAmount) - toNumber(order.deliveryFee),
+    deliveryFee: toNumber(order.deliveryFee),
+    deliveryMethod: order.deliveryMethod === 'pickup' ? 'pickup' : 'delivery',
+    total: toNumber(order.totalAmount),
+    paidWith: await paymentMethodLabel(order.id, order.orderNumber),
+    paidAt: order.events[0]?.createdAt ?? order.updatedAt ?? null,
+  });
+  if (!sent) throw new Error("We couldn't send the receipt just now. Try again in a minute.");
+  return { email };
 };

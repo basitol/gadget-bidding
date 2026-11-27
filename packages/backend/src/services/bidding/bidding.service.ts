@@ -8,6 +8,7 @@ import {
 } from '@gadget-bidding/shared';
 import * as walletService from '../wallet/wallet.service';
 import logger from '../../utils/logger';
+import { bidderLabel } from '../../utils/bidderLabel';
 import config from '../../config';
 
 // Helper to convert Prisma Decimal to number
@@ -33,7 +34,8 @@ const transformBid = (bid: any): Bid => ({
  */
 export const placeBid = async (
   bidderId: string,
-  data: PlaceBidRequest
+  data: PlaceBidRequest,
+  opts: { isAutoBid?: boolean } = {}
 ): Promise<{ bid: Bid; previousHighBidderId?: string }> => {
   return prisma.$transaction(async tx => {
     // Get auction with gadget
@@ -153,7 +155,7 @@ export const placeBid = async (
         bidderId,
         amount: data.amount,
         isWinning: true,
-        isAutoBid: false,
+        isAutoBid: opts.isAutoBid === true,
         status: 'active',
       },
     });
@@ -405,12 +407,13 @@ export const getAuctionBids = async (
   return {
     bids: bids.map(bid => ({
       ...transformBid(bid),
+      // Anonymous to other users; see utils/bidderLabel.
       bidder: {
-        id: bid.bidder?.id,
-        full_name: bid.bidder?.fullName,
-        avatar_url: bid.bidder?.avatarUrl,
+        id: '',
+        full_name: bidderLabel(bid.bidder?.id),
+        avatar_url: undefined,
       },
-    })) as BidWithBidder[],
+    })) as unknown as BidWithBidder[],
     total,
   };
 };

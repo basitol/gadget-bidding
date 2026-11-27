@@ -37,6 +37,7 @@ const transformAuction = (
   status: auction.status as AuctionStatus,
   winner_id: auction.winnerId,
   total_bids: auction.totalBids || 0,
+  delivery_fee: config.deliveryFee,
   auto_extend_enabled: auction.autoExtendEnabled,
   auto_extend_minutes: auction.autoExtendMinutes,
   created_at: auction.createdAt?.toISOString(),

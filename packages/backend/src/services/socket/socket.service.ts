@@ -3,6 +3,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import config from '../../config';
 import logger from '../../utils/logger';
+import { bidderLabel } from '../../utils/bidderLabel';
 import * as biddingService from '../bidding/bidding.service';
 import * as auctionService from '../auction/auction.service';
 import type { JwtPayload } from '../../utils/jwt';
@@ -149,7 +150,7 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
             bid,
             bidder: {
               id: userId,
-              full_name: socket.data.user?.full_name || 'Anonymous',
+              full_name: bidderLabel(userId),
             },
             amount: data.amount,
             timestamp: new Date(),
@@ -164,10 +165,19 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
               newHighestBid: data.amount,
               message: `You've been outbid! New highest bid: ₦${data.amount.toLocaleString()}`,
             });
+            // Saved notification + push. Imported lazily: notification.service imports this file.
+            import('../notification/notification.service')
+              .then(n => n.notifyOutbidForAuction(previousHighBidderId, data.auctionId, data.amount))
+              .catch(err => logger.error('Outbid notification failed:', err));
           }
 
           // Confirm to bidder
           socket.emit('bid:confirmed', { bid });
+
+          // Let auto-bids answer (lazy import: autobid.service imports this file).
+          import('../buyer/autobid.service')
+            .then(a => a.resolveAutoBids(data.auctionId))
+            .catch(err => logger.error('Auto-bid resolution failed:', err));
 
           logger.info(`Bid placed via socket: ${bid.id}`);
         } catch (error: any) {

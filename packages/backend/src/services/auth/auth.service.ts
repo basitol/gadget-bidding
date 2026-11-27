@@ -1,9 +1,10 @@
+import { randomUUID } from 'crypto';
 import prisma from '../../config/prisma';
 import { hashPassword, comparePassword } from '../../utils/password';
 import { generateAccessToken, generateRefreshToken } from '../../utils/jwt';
 import { generateOTP, getOTPExpiry, isOTPExpired } from '../../utils/otp';
 import { sendOTPSMS } from '../notification/sms.service';
-import { sendOTPEmail } from '../notification/email.service';
+import { sendOTPEmail, sendPasswordResetEmail } from '../notification/email.service';
 import config from '../../config';
 import {
   User,
@@ -24,6 +25,8 @@ const USER_SELECT: {
   id: true;
   phoneNumber: true;
   email: true;
+  username: true;
+  twoFactorEnabled: true;
   fullName: true;
   avatarUrl: true;
   role: true;
@@ -39,6 +42,8 @@ const USER_SELECT: {
   id: true,
   phoneNumber: true,
   email: true,
+  username: true,
+  twoFactorEnabled: true,
   fullName: true,
   avatarUrl: true,
   role: true,
@@ -57,6 +62,8 @@ const toPublicUser = (user: Record<string, any>): User =>
     id: user.id,
     phone_number: user.phoneNumber,
     email: user.email || undefined,
+    username: user.username || undefined,
+    two_factor_enabled: user.twoFactorEnabled ?? false,
     full_name: user.fullName,
     avatar_url: user.avatarUrl || undefined,
     role: normalizeUserRole(user.role),
@@ -336,11 +343,78 @@ export const loginUser = async (data: UserLogin): Promise<AuthTokens> => {
 
   assertAccountTypeAccess(data.account_type, user.role);
 
+  // 2-step sign-in: password was right; now prove access to the email.
+  if (user.twoFactorEnabled && user.email) {
+    return (await startTwoFactorChallenge(user)) as unknown as AuthTokens;
+  }
+
   const { access_token, refresh_token } = await issueTokensForUser(user);
 
   logger.info(`User logged in: ${user.id} (${user.phoneNumber})`);
 
   return { access_token, refresh_token, user: toPublicUser(user) };
+};
+
+/* ---------------- 2-step sign-in ---------------- */
+
+const TWO_FACTOR = 'email';
+
+const maskEmail = (email: string) => {
+  const [name, domain] = email.split('@');
+  return `${name.slice(0, 2)}${'•'.repeat(Math.max(1, name.length - 2))}@${domain}`;
+};
+
+const startTwoFactorChallenge = async (user: { id: string; email: string | null }) => {
+  const otp = generateOTP();
+  // Only the newest code counts.
+  await prisma.userVerification.deleteMany({
+    where: { userId: user.id, verificationType: TWO_FACTOR, target: 'login', isVerified: false },
+  });
+  const v = await prisma.userVerification.create({
+    data: {
+      userId: user.id,
+      verificationType: TWO_FACTOR,
+      verificationCode: otp,
+      target: 'login',
+      expiresAt: getOTPExpiry(config.otpExpiryMinutes),
+    },
+  });
+  sendOTPEmail(user.email!, otp).catch(err => logger.error('Failed to send sign-in code:', err));
+  if (config.nodeEnv === 'development') logger.info(`[DEV] Sign-in code for ${user.email}: ${otp}`);
+  return {
+    two_factor_required: true,
+    verification_id: v.id,
+    email_hint: maskEmail(user.email!),
+  };
+};
+
+export const completeTwoFactorLogin = async (data: {
+  verification_id: string;
+  otp: string;
+  account_type?: 'buyer' | 'seller';
+}): Promise<AuthTokens> => {
+  const v = await prisma.userVerification.findFirst({
+    where: { id: data.verification_id, verificationType: TWO_FACTOR, target: 'login' },
+    include: { user: true },
+  });
+  if (!v || !v.user || v.isVerified) throw new Error('This sign-in has expired. Log in again.');
+  if (!v.expiresAt || isOTPExpired(v.expiresAt)) throw new Error('That code has expired. Log in again.');
+  if (v.verificationCode !== data.otp) throw new Error("That code isn't right. Check it and try again.");
+  assertAccountTypeAccess(data.account_type, v.user.role);
+
+  await prisma.userVerification.delete({ where: { id: v.id } });
+  const { access_token, refresh_token } = await issueTokensForUser(v.user);
+  logger.info(`User logged in with 2-step: ${v.user.id}`);
+  return { access_token, refresh_token, user: toPublicUser(v.user) };
+};
+
+export const setTwoFactor = async (userId: string, enabled: boolean, password: string) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error('Account not found');
+  if (!(await comparePassword(password, user.passwordHash))) throw new Error('That password is wrong');
+  if (enabled && !user.email) throw new Error('Add an email to your account first');
+  await prisma.user.update({ where: { id: userId }, data: { twoFactorEnabled: enabled } });
+  return { two_factor_enabled: enabled };
 };
 
 /**
@@ -576,7 +650,7 @@ async function runSocialLoginTransaction(
             identity.fullName?.trim() ||
             (identity.email
               ? identity.email.split('@')[0].replace(/[._-]+/g, ' ').trim()
-              : 'GadgetBid User'),
+              : 'Gadgets Bidding User'),
           passwordHash: randomPassword,
           avatarUrl: identity.avatarUrl || null,
           role: roleForAccountType(data.account_type),
@@ -604,3 +678,284 @@ async function runSocialLoginTransaction(
     return { access_token, refresh_token, user: toPublicUser(user) };
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* Email-first buyer sign-up                                           */
+/* 1. startEmailSignup   → emails a 6-digit code, returns verification_id */
+/* 2. verifyEmailSignup  → checks the code                              */
+/* 3. completeEmailSignup → creates the account and signs the user in   */
+/* ------------------------------------------------------------------ */
+
+// Pre-account checks: type 'email' with no user attached (the DB only allows phone | email | kyc).
+const SIGNUP_EMAIL = 'email';
+/** After the code is confirmed, the user has this long to finish the remaining steps. */
+const SIGNUP_COMPLETE_WINDOW_MINUTES = 60;
+export const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const emailTaken = async (email: string) =>
+  !!(await prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+    select: { id: true },
+  }));
+
+export const startEmailSignup = async (
+  rawEmail: string
+): Promise<{ verification_id: string; email: string; expires_in: number }> => {
+  const email = normalizeEmail(rawEmail);
+  if (await emailTaken(email)) {
+    throw new Error('An account with this email already exists. Log in instead.');
+  }
+
+  const otp = generateOTP();
+  const verification = await prisma.userVerification.create({
+    data: {
+      verificationType: SIGNUP_EMAIL,
+      verificationCode: otp,
+      target: email,
+      expiresAt: getOTPExpiry(config.otpExpiryMinutes),
+    },
+  });
+
+  sendOTPEmail(email, otp).catch(err => logger.error('Failed to send sign-up email code:', err));
+  if (config.nodeEnv === 'development') {
+    logger.info(`[DEV] Sign-up code for ${email}: ${otp}`);
+  }
+
+  return {
+    verification_id: verification.id,
+    email,
+    expires_in: config.otpExpiryMinutes * 60,
+  };
+};
+
+const findSignupVerification = async (verification_id: string) => {
+  const v = await prisma.userVerification.findFirst({
+    where: { id: verification_id, verificationType: SIGNUP_EMAIL, userId: null },
+  });
+  if (!v || !v.target) throw new Error('This sign-up has expired. Start again.');
+  return v;
+};
+
+export const verifyEmailSignup = async (data: {
+  verification_id: string;
+  otp: string;
+}): Promise<{ verification_id: string; email: string }> => {
+  const v = await findSignupVerification(data.verification_id);
+  if (v.isVerified) return { verification_id: v.id, email: v.target! };
+  if (!v.expiresAt || isOTPExpired(v.expiresAt)) {
+    throw new Error('That code has expired. Send a new one.');
+  }
+  if (v.verificationCode !== data.otp) {
+    throw new Error("That code isn't right. Check it and try again.");
+  }
+
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + SIGNUP_COMPLETE_WINDOW_MINUTES);
+  await prisma.userVerification.update({
+    where: { id: v.id },
+    data: { isVerified: true, expiresAt },
+  });
+  return { verification_id: v.id, email: v.target! };
+};
+
+export const resendEmailSignup = async (verification_id: string) => {
+  const v = await findSignupVerification(verification_id);
+  if (v.isVerified) throw new Error('This email is already confirmed.');
+  const otp = generateOTP();
+  await prisma.userVerification.update({
+    where: { id: v.id },
+    data: { verificationCode: otp, expiresAt: getOTPExpiry(config.otpExpiryMinutes) },
+  });
+  sendOTPEmail(v.target!, otp).catch(err => logger.error('Failed to resend sign-up email code:', err));
+  if (config.nodeEnv === 'development') {
+    logger.info(`[DEV] Sign-up code for ${v.target}: ${otp}`);
+  }
+  return { verification_id: v.id, expires_in: config.otpExpiryMinutes * 60 };
+};
+
+export const isUsernameAvailable = async (raw: string): Promise<boolean> => {
+  const username = raw.trim().toLowerCase();
+  if (!USERNAME_PATTERN.test(username)) return false;
+  const existing = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+  return !existing;
+};
+
+export const completeEmailSignup = async (data: {
+  verification_id: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  username: string;
+  interests?: { categories?: string[]; budget?: string };
+  accepted_terms: boolean;
+}): Promise<AuthTokens> => {
+  if (data.accepted_terms !== true) {
+    throw new Error('You must accept the Terms of Service and Privacy Policy to create an account');
+  }
+  const username = data.username.trim().toLowerCase();
+  if (!USERNAME_PATTERN.test(username)) {
+    throw new Error('Usernames are 3–20 letters, numbers or _');
+  }
+
+  return prisma.$transaction(async tx => {
+    const v = await tx.userVerification.findFirst({
+      where: { id: data.verification_id, verificationType: SIGNUP_EMAIL, userId: null },
+    });
+    if (!v || !v.target || !v.isVerified) {
+      throw new Error('Confirm your email before creating your account.');
+    }
+    if (!v.expiresAt || isOTPExpired(v.expiresAt)) {
+      throw new Error('This sign-up has expired. Start again.');
+    }
+    const email = v.target;
+
+    const clash = await tx.user.findFirst({
+      where: {
+        OR: [{ email: { equals: email, mode: 'insensitive' } }, { username }],
+      },
+      select: { email: true, username: true },
+    });
+    if (clash?.username === username) throw new Error('That username is taken. Try another.');
+    if (clash) throw new Error('An account with this email already exists. Log in instead.');
+
+    const interests = data.interests
+      ? {
+          categories: (data.interests.categories ?? []).slice(0, 12).map(String),
+          budget: data.interests.budget ? String(data.interests.budget) : null,
+        }
+      : undefined;
+
+    const user = await tx.user.create({
+      data: {
+        // Phone is collected later (checkout / KYB); reserve a non-routable placeholder.
+        phoneNumber: await makeSyntheticPhone(),
+        email,
+        username,
+        fullName: `${data.first_name.trim()} ${data.last_name.trim()}`.trim(),
+        passwordHash: await hashPassword(data.password),
+        role: roleForAccountType('buyer'),
+        isVerified: true,
+        acceptedTermsAt: new Date(),
+        interests,
+        wallet: { create: { balance: 0, currency: 'NGN' } },
+      },
+      select: USER_SELECT,
+    });
+
+    // The check is spent; it can't be reused for another account.
+    await tx.userVerification.delete({ where: { id: v.id } });
+
+    const { access_token, refresh_token } = await issueTokensForUser(user, tx);
+    logger.info(`User signed up with email: ${user.id}`);
+    return { access_token, refresh_token, user: toPublicUser(user) } as AuthTokens;
+  });
+};
+
+/** The signed-in user's public profile, fresh from the database. */
+export const getPublicUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: USER_SELECT });
+  return user ? toPublicUser(user) : null;
+};
+
+/* ------------------------------------------------------------------ */
+/* Password reset                                                      */
+/* 1. startPasswordReset    → emails a 6-digit code                     */
+/* 2. verifyPasswordReset   → checks the code                           */
+/* 3. completePasswordReset → sets the new password, signs out sessions */
+/* The response never says whether the email has an account.           */
+/* ------------------------------------------------------------------ */
+
+// Type 'email' (the DB only allows phone | email | kyc), tied to the user, target marks the purpose.
+const RESET_TARGET = 'password_reset';
+/** After the code is confirmed, the user has this long to choose a new password. */
+const RESET_COMPLETE_WINDOW_MINUTES = 15;
+
+const findResetVerification = async (verification_id: string) => {
+  const v = await prisma.userVerification.findFirst({
+    where: { id: verification_id, verificationType: SIGNUP_EMAIL, target: RESET_TARGET },
+    include: { user: { select: { id: true, email: true } } },
+  });
+  return v?.user ? v : null;
+};
+
+export const startPasswordReset = async (
+  rawEmail: string
+): Promise<{ verification_id: string; expires_in: number }> => {
+  const email = normalizeEmail(rawEmail);
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+    select: { id: true, email: true },
+  });
+  const expires_in = config.otpExpiryMinutes * 60;
+  // Unknown email: answer exactly as if it worked, so nobody can probe for accounts.
+  if (!user?.email) return { verification_id: randomUUID(), expires_in };
+
+  const otp = generateOTP();
+  await prisma.userVerification.deleteMany({
+    where: { userId: user.id, verificationType: SIGNUP_EMAIL, target: RESET_TARGET },
+  });
+  const v = await prisma.userVerification.create({
+    data: {
+      userId: user.id,
+      verificationType: SIGNUP_EMAIL,
+      verificationCode: otp,
+      target: RESET_TARGET,
+      expiresAt: getOTPExpiry(config.otpExpiryMinutes),
+    },
+  });
+  sendPasswordResetEmail(user.email, otp).catch(err => logger.error('Failed to send reset code:', err));
+  if (config.nodeEnv === 'development') logger.info(`[DEV] Password reset code for ${user.email}: ${otp}`);
+  return { verification_id: v.id, expires_in };
+};
+
+export const verifyPasswordReset = async (data: {
+  verification_id: string;
+  otp: string;
+}): Promise<{ verification_id: string }> => {
+  const v = await findResetVerification(data.verification_id);
+  if (!v) throw new Error("That code isn't right. Check it and try again.");
+  if (v.isVerified) return { verification_id: v.id };
+  if (!v.expiresAt || isOTPExpired(v.expiresAt)) throw new Error('That code has expired. Send a new one.');
+  if (v.verificationCode !== data.otp) throw new Error("That code isn't right. Check it and try again.");
+
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + RESET_COMPLETE_WINDOW_MINUTES);
+  await prisma.userVerification.update({ where: { id: v.id }, data: { isVerified: true, expiresAt } });
+  return { verification_id: v.id };
+};
+
+export const resendPasswordReset = async (verification_id: string) => {
+  const expires_in = config.otpExpiryMinutes * 60;
+  const v = await findResetVerification(verification_id);
+  // Unknown session (or unknown email at step 1): same answer, nothing sent.
+  if (!v || v.isVerified || !v.user?.email) return { verification_id, expires_in };
+  const otp = generateOTP();
+  await prisma.userVerification.update({
+    where: { id: v.id },
+    data: { verificationCode: otp, expiresAt: getOTPExpiry(config.otpExpiryMinutes) },
+  });
+  sendPasswordResetEmail(v.user.email, otp).catch(err => logger.error('Failed to resend reset code:', err));
+  if (config.nodeEnv === 'development') logger.info(`[DEV] Password reset code for ${v.user.email}: ${otp}`);
+  return { verification_id: v.id, expires_in };
+};
+
+export const completePasswordReset = async (data: {
+  verification_id: string;
+  password: string;
+}): Promise<{ email: string }> => {
+  const v = await findResetVerification(data.verification_id);
+  if (!v || !v.isVerified) throw new Error('Confirm the code we emailed you first.');
+  if (!v.expiresAt || isOTPExpired(v.expiresAt)) throw new Error('This reset has expired. Start again.');
+
+  const passwordHash = await hashPassword(data.password);
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: v.user!.id }, data: { passwordHash, updatedAt: new Date() } }),
+    // A new password signs every other device out.
+    prisma.refreshToken.updateMany({ where: { userId: v.user!.id, isRevoked: false }, data: { isRevoked: true } }),
+    prisma.userVerification.delete({ where: { id: v.id } }),
+  ]);
+  logger.info(`Password reset for user ${v.user!.id}`);
+  return { email: v.user!.email! };
+};

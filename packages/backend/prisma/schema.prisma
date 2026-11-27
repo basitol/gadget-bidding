@@ -10,24 +10,31 @@ datasource db {
 // ============== MODELS ==============
 
 model User {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  phoneNumber  String    @unique @map("phone_number") @db.VarChar(15)
-  email        String?   @unique @db.VarChar(255)
-  fullName     String    @map("full_name") @db.VarChar(255)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  avatarUrl    String?   @map("avatar_url")
-  role         String    @default("bidder") @db.VarChar(20)
-  isVerified   Boolean?  @default(false) @map("is_verified")
-  isActive     Boolean?  @default(true) @map("is_active")
-  businessName String?   @map("business_name") @db.VarChar(255)
-  cacNumber    String?   @map("cac_number") @db.VarChar(50)
-  sellerKybStatus         String    @default("not_started") @map("seller_kyb_status") @db.VarChar(20)
-  sellerKybSubmittedAt    DateTime? @map("seller_kyb_submitted_at") @db.Timestamp(6)
-  sellerKybReviewedAt     DateTime? @map("seller_kyb_reviewed_at") @db.Timestamp(6)
-  sellerKybRejectionReason String?  @map("seller_kyb_rejection_reason") @db.VarChar(500)
-  acceptedTermsAt DateTime? @map("accepted_terms_at") @db.Timestamp(6)
-  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phoneNumber              String    @unique @map("phone_number") @db.VarChar(15)
+  email                    String?   @unique @db.VarChar(255)
+  username                 String?   @unique @db.VarChar(20)
+  fullName                 String    @map("full_name") @db.VarChar(255)
+  passwordHash             String    @map("password_hash") @db.VarChar(255)
+  avatarUrl                String?   @map("avatar_url")
+  role                     String    @default("bidder") @db.VarChar(20)
+  isVerified               Boolean?  @default(false) @map("is_verified")
+  isActive                 Boolean?  @default(true) @map("is_active")
+  businessName             String?   @map("business_name") @db.VarChar(255)
+  cacNumber                String?   @map("cac_number") @db.VarChar(50)
+  sellerKybStatus          String    @default("not_started") @map("seller_kyb_status") @db.VarChar(20)
+  sellerKybSubmittedAt     DateTime? @map("seller_kyb_submitted_at") @db.Timestamp(6)
+  sellerKybReviewedAt      DateTime? @map("seller_kyb_reviewed_at") @db.Timestamp(6)
+  sellerKybRejectionReason String?   @map("seller_kyb_rejection_reason") @db.VarChar(500)
+  acceptedTermsAt          DateTime? @map("accepted_terms_at") @db.Timestamp(6)
+  /// What the buyer said they're hunting for at sign-up: { categories: string[], budget: string }
+  interests                Json?
+  /// Alert switches from Settings: { bids, orders, marketing }. Null = defaults.
+  notificationPrefs        Json?     @map("notification_prefs")
+  /// 2-step sign-in: an emailed code after the password.
+  twoFactorEnabled         Boolean   @default(false) @map("two_factor_enabled")
+  createdAt                DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt                DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
   wallet              Wallet?
@@ -49,6 +56,15 @@ model User {
   supportMessages     SupportMessage[]
   addresses           UserAddress[]
   socialAccounts      SocialAccount[]
+  pushTokens          PushToken[]
+  watchlist           Watch[]
+  autoBids            AutoBid[]
+  savedSearches       SavedSearch[]
+  savedCards          SavedCard[]
+  ratingsGiven        Rating[]             @relation("RatingsGiven")
+  ratingsReceived     Rating[]             @relation("RatingsReceived")
+  following           Follow[]             @relation("Following")
+  followers           Follow[]             @relation("Followers")
 
   @@index([phoneNumber], map: "idx_users_phone")
   @@index([role], map: "idx_users_role")
@@ -126,16 +142,16 @@ model GadgetCategory {
 }
 
 model Gadget {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId        String?   @map("seller_id") @db.Uuid
-  categoryId      String?   @map("category_id") @db.Uuid
-  title           String    @db.VarChar(255)
-  description     String
-  brand           String?   @db.VarChar(100)
-  model           String?   @db.VarChar(100)
-  condition       String    @db.VarChar(20)
-  specifications  Json?
-  images          String[]
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId             String?   @map("seller_id") @db.Uuid
+  categoryId           String?   @map("category_id") @db.Uuid
+  title                String    @db.VarChar(255)
+  description          String
+  brand                String?   @db.VarChar(100)
+  model                String?   @db.VarChar(100)
+  condition            String    @db.VarChar(20)
+  specifications       Json?
+  images               String[]
   status               String?   @default("pending") @db.VarChar(20)
   rejectionReason      String?   @map("rejection_reason")
   auctionStartingPrice Decimal?  @map("auction_starting_price") @db.Decimal(15, 2)
@@ -178,11 +194,13 @@ model Auction {
   updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  gadget Gadget? @relation(fields: [gadgetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  seller User?   @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  winner User?   @relation("WonAuctions", fields: [winnerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  bids   Bid[]
-  order  Order?
+  gadget   Gadget?   @relation(fields: [gadgetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  seller   User?     @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  winner   User?     @relation("WonAuctions", fields: [winnerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bids     Bid[]
+  order    Order?
+  watchers Watch[]
+  autoBids AutoBid[]
 
   @@index([sellerId], map: "idx_auctions_seller")
   @@index([status, startTime, endTime], map: "idx_auctions_status")
@@ -238,6 +256,10 @@ model Order {
   totalAmount       Decimal   @map("total_amount") @db.Decimal(15, 2)
   platformFee       Decimal?  @default(0.00) @map("platform_fee") @db.Decimal(15, 2)
   sellerPayout      Decimal   @map("seller_payout") @db.Decimal(15, 2)
+  /// Flat delivery charge included in totalAmount (goes to the platform, not the seller).
+  deliveryFee       Decimal   @default(0) @map("delivery_fee") @db.Decimal(15, 2)
+  /// 'delivery' (to the buyer's address) or 'pickup' (collect at the Computer Village hub, free).
+  deliveryMethod    String    @default("delivery") @map("delivery_method") @db.VarChar(10)
   payoutStatus      String?   @default("pending") @map("payout_status") @db.VarChar(20)
   payoutPaidAt      DateTime? @map("payout_paid_at") @db.Timestamp(6)
   payoutReference   String?   @map("payout_reference") @db.VarChar(100)
@@ -253,6 +275,8 @@ model Order {
   buyer    User?     @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   seller   User?     @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   disputes Dispute[]
+  ratings  Rating[]
+  events   OrderEvent[]
 
   @@index([buyerId, paymentStatus], map: "idx_orders_buyer")
   @@index([orderNumber], map: "idx_orders_order_number")
@@ -260,6 +284,21 @@ model Order {
   @@index([payoutStatus, fulfillmentStatus], map: "idx_orders_payout")
   @@index([paymentStatus, fulfillmentStatus], map: "idx_orders_status")
   @@map("orders")
+}
+
+/// One row per payment/fulfillment status change, written by the orders_record_event DB trigger.
+model OrderEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId   String   @map("order_id") @db.Uuid
+  /// 'payment' or 'fulfillment'
+  kind      String   @db.VarChar(20)
+  status    String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([orderId, createdAt], map: "idx_order_events_order")
+  @@map("order_events")
 }
 
 model Dispute {
@@ -328,6 +367,8 @@ model UserVerification {
   userId           String?   @map("user_id") @db.Uuid
   verificationType String    @map("verification_type") @db.VarChar(20)
   verificationCode String?   @map("verification_code") @db.VarChar(10)
+  /// For checks made before an account exists (email-first sign-up): the address being verified.
+  target           String?   @db.VarChar(255)
   isVerified       Boolean?  @default(false) @map("is_verified")
   expiresAt        DateTime? @map("expires_at") @db.Timestamp(6)
   createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
@@ -336,6 +377,7 @@ model UserVerification {
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId], map: "idx_user_verifications_user")
+  @@index([target], map: "idx_user_verifications_target")
   @@map("user_verifications")
 }
 
@@ -457,4 +499,128 @@ model SupportMessage {
 
   @@index([threadId, createdAt], map: "idx_support_messages_thread")
   @@map("support_messages")
+}
+
+/// Expo push tokens, one row per installed app. A user can have several devices.
+model PushToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  token      String    @unique @db.VarChar(255)
+  platform   String    @db.VarChar(10)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime  @default(now()) @map("updated_at") @db.Timestamp(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId], map: "idx_push_tokens_user")
+  @@map("push_tokens")
+}
+
+/// Auctions a user is watching (heart). Watchers get "ending soon" alerts.
+model Watch {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  auctionId String   @map("auction_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, auctionId], map: "watchlist_user_auction_key")
+  @@index([auctionId], map: "idx_watchlist_auction")
+  @@map("watchlist")
+}
+
+/// Proxy bidding: the system bids for the user, one increment at a time, up to maxAmount.
+model AutoBid {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  auctionId   String   @map("auction_id") @db.Uuid
+  maxAmount   Decimal  @map("max_amount") @db.Decimal(15, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  /// Send an alert when bidding passes maxAmount.
+  notifyOnMax Boolean  @default(true) @map("notify_on_max")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, auctionId], map: "auto_bids_user_auction_key")
+  @@index([auctionId, isActive], map: "idx_auto_bids_auction_active")
+  @@map("auto_bids")
+}
+
+/// "Alert me when it's listed": matched against auctions as they go live.
+model SavedSearch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  query          String?   @db.VarChar(120)
+  categorySlug   String?   @map("category_slug") @db.VarChar(100)
+  maxPrice       Decimal?  @map("max_price") @db.Decimal(15, 2)
+  lastNotifiedAt DateTime? @map("last_notified_at") @db.Timestamp(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId], map: "idx_saved_searches_user")
+  @@map("saved_searches")
+}
+
+/// Cards saved from successful Paystack payments. authorizationCode is never sent to the app.
+model SavedCard {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  provider          String   @default("paystack") @db.VarChar(20)
+  authorizationCode String   @map("authorization_code") @db.VarChar(100)
+  signature         String   @db.VarChar(100)
+  email             String   @db.VarChar(255)
+  brand             String   @db.VarChar(30)
+  last4             String   @db.VarChar(4)
+  expMonth          String   @map("exp_month") @db.VarChar(2)
+  expYear           String   @map("exp_year") @db.VarChar(4)
+  bank              String?  @db.VarChar(100)
+  isDefault         Boolean  @default(false) @map("is_default")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, signature], map: "saved_cards_user_signature_key")
+  @@map("saved_cards")
+}
+
+/// After delivery, buyer and seller rate each other (1–5) once per order.
+model Rating {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId   String   @map("order_id") @db.Uuid
+  raterId   String   @map("rater_id") @db.Uuid
+  rateeId   String   @map("ratee_id") @db.Uuid
+  score     Int      @db.SmallInt
+  comment   String?  @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rater User  @relation("RatingsGiven", fields: [raterId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ratee User  @relation("RatingsReceived", fields: [rateeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([orderId, raterId], map: "ratings_order_rater_key")
+  @@index([rateeId], map: "idx_ratings_ratee")
+  @@map("ratings")
+}
+
+/// A buyer following a seller's store. Followers hear about new listings.
+model Follow {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  followerId String   @map("follower_id") @db.Uuid
+  sellerId   String   @map("seller_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  follower User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  seller   User @relation("Followers", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([followerId, sellerId], map: "follows_follower_seller_key")
+  @@index([sellerId], map: "idx_follows_seller")
+  @@map("follows")
 }

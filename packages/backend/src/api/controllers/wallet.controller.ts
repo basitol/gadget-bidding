@@ -4,6 +4,7 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as walletService from '../../services/wallet/wallet.service';
 import * as paystackService from '../../services/payment/paystack.service';
 import * as monnifyService from '../../services/payment/monnify.service';
+import * as savedCardService from '../../services/buyer/savedCard.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as auditService from '../../services/audit/audit.service';
 import { query } from '../../config/database';
@@ -178,6 +179,9 @@ export const verifyPayment = async (req: Request, res: Response) => {
       source: 'verify',
       gateway,
     });
+    if (gateway === 'paystack') {
+      await savedCardService.saveFromGateway(req.user.user_id, verification.gatewayResponse);
+    }
 
     sendSuccess(res, {
       message: result.alreadyProcessed
@@ -275,7 +279,7 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
 
   let paymentStatus: 'success' | 'pending' = 'success';
   let paymentMessage =
-    'Your payment process is complete. Tap below to return to GadgetBid.';
+    'Your payment process is complete. Tap below to return to Gadgets Bidding.';
 
   if (reference) {
     try {
@@ -299,6 +303,9 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
             source: 'verify',
             gateway,
           });
+          if (gateway === 'paystack') {
+            await savedCardService.saveFromGateway(userId, verification.gatewayResponse);
+          }
         } else {
           paymentStatus = 'pending';
           paymentMessage =
@@ -322,7 +329,7 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Payment Complete - GadgetBid</title>
+  <title>Payment Complete - Gadgets Bidding</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0F0F0F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
     .card { background: #1A1A1A; border: 1px solid #2E2E2E; border-radius: 16px; padding: 36px 24px; max-width: 380px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
@@ -338,7 +345,7 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
     <h1>${heading}</h1>
     <p>${paymentMessage}</p>
     <p>If the app does not open automatically, tap the button below.</p>
-    <a href="${deepLinkUrl}" class="btn">Open GadgetBid App</a>
+    <a href="${deepLinkUrl}" class="btn">Open Gadgets Bidding App</a>
   </div>
   <script>
     function openApp() {

@@ -103,6 +103,85 @@ router.post(
 );
 
 /**
+ * Email-first buyer sign-up:
+ *   POST /signup/email → POST /signup/verify → POST /signup/complete
+ * @access Public
+ */
+router.post(
+  '/signup/email',
+  otpRateLimiter,
+  authValidator.validateSignupStart,
+  handleValidationErrors,
+  authController.signupStart
+);
+router.post(
+  '/signup/verify',
+  otpRateLimiter,
+  authValidator.validateSignupVerify,
+  handleValidationErrors,
+  authController.signupVerify
+);
+router.post(
+  '/signup/resend',
+  otpRateLimiter,
+  authValidator.validateSignupResend,
+  handleValidationErrors,
+  authController.signupResend
+);
+router.post(
+  '/signup/complete',
+  authRateLimiter,
+  authValidator.validateSignupComplete,
+  handleValidationErrors,
+  authController.signupComplete
+);
+router.get('/username-available', authRateLimiter, authController.usernameAvailable);
+
+/**
+ * Password reset:
+ *   POST /password/forgot → POST /password/verify → POST /password/reset
+ * @access Public
+ */
+router.post(
+  '/password/forgot',
+  otpRateLimiter,
+  authValidator.validatePasswordForgot,
+  handleValidationErrors,
+  authController.passwordForgot
+);
+router.post(
+  '/password/verify',
+  otpRateLimiter,
+  authValidator.validatePasswordVerify,
+  handleValidationErrors,
+  authController.passwordVerify
+);
+router.post(
+  '/password/resend',
+  otpRateLimiter,
+  authValidator.validatePasswordResend,
+  handleValidationErrors,
+  authController.passwordResend
+);
+router.post(
+  '/password/reset',
+  authRateLimiter,
+  authValidator.validatePasswordReset,
+  handleValidationErrors,
+  authController.passwordReset
+);
+
+/** 2-step sign-in */
+router.post(
+  '/login/2fa',
+  otpRateLimiter,
+  authValidator.validateSignupVerify,
+  handleValidationErrors,
+  authController.loginTwoFactor
+);
+router.put('/2fa', authRateLimiter, authenticate, authController.setTwoFactor);
+
+/**
  * @route   GET /api/v1/auth/me
  * @desc    Get current user profile
  * @access  Private

@@ -122,9 +122,9 @@ export const validateAuctionFilters: ValidationChain[] = [
     .withMessage('Maximum price must be a non-negative number'),
   query('sort_by')
     .optional()
-    .isIn(['newest', 'price_asc', 'price_desc', 'ending_soon'])
+    .isIn(['newest', 'price_asc', 'price_desc', 'ending_soon', 'bid_count'])
     .withMessage(
-      'Sort by must be one of: newest, price_asc, price_desc, ending_soon'
+      'Sort by must be one of: newest, price_asc, price_desc, ending_soon, bid_count'
     ),
   query('page')
     .optional()

@@ -6,6 +6,7 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import logger from '../../utils/logger';
 import * as gadgetService from '../../services/gadget/gadget.service';
 import * as orderService from '../../services/order/order.service';
+import * as buyerAlerts from '../../services/notification/buyerAlerts';
 import * as auctionService from '../../services/auction/auction.service';
 import * as supportService from '../../services/support/support.service';
 import * as riskService from '../../services/risk/risk.service';
@@ -670,6 +671,8 @@ export const updateOrder = async (req: Request, res: Response) => {
       payout_status,
       payout_reference,
     });
+
+    if (fulfillment_status) void buyerAlerts.notifyBuyerFulfillment(id, fulfillment_status);
 
     await audit(req, 'order_update', 'order', id, {
       payment_status,

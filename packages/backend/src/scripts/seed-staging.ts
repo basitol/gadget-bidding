@@ -55,7 +55,7 @@ const users: SeedUserConfig[] = [
       process.env.STAGING_SEED_ADMIN_PHONE || '+2348010000001'
     ),
     email: process.env.STAGING_SEED_ADMIN_EMAIL || 'admin@gadgetbid.test',
-    fullName: process.env.STAGING_SEED_ADMIN_NAME || 'GadgetBid Admin',
+    fullName: process.env.STAGING_SEED_ADMIN_NAME || 'Gadgets Bidding Admin',
     password: process.env.STAGING_SEED_ADMIN_PASSWORD || 'AdminTest123!',
     role: 'admin',
     walletBalance: numberFromEnv('STAGING_SEED_ADMIN_WALLET', 0),
@@ -65,7 +65,7 @@ const users: SeedUserConfig[] = [
       process.env.STAGING_SEED_SELLER_PHONE || '+2348020000002'
     ),
     email: process.env.STAGING_SEED_SELLER_EMAIL || 'seller@gadgetbid.test',
-    fullName: process.env.STAGING_SEED_SELLER_NAME || 'GadgetBid Test Seller',
+    fullName: process.env.STAGING_SEED_SELLER_NAME || 'Gadgets Bidding Test Seller',
     password: process.env.STAGING_SEED_SELLER_PASSWORD || 'SellerTest123!',
     role: 'seller',
     walletBalance: numberFromEnv('STAGING_SEED_SELLER_WALLET', 0),
@@ -75,7 +75,7 @@ const users: SeedUserConfig[] = [
       process.env.STAGING_SEED_BUYER_PHONE || '+2348030000003'
     ),
     email: process.env.STAGING_SEED_BUYER_EMAIL || 'buyer@gadgetbid.test',
-    fullName: process.env.STAGING_SEED_BUYER_NAME || 'GadgetBid Test Buyer',
+    fullName: process.env.STAGING_SEED_BUYER_NAME || 'Gadgets Bidding Test Buyer',
     password: process.env.STAGING_SEED_BUYER_PASSWORD || 'BuyerTest123!',
     role: 'bidder',
     walletBalance: numberFromEnv('STAGING_SEED_BUYER_WALLET', 10000),
@@ -188,10 +188,10 @@ const seedBuyerAddress = async (buyerId: string) => {
 
   const data = {
     label: 'Home',
-    fullName: 'GadgetBid Test Buyer',
+    fullName: 'Gadgets Bidding Test Buyer',
     phoneNumber: '+2348030000003',
     addressLine1: '1 Test Street',
-    addressLine2: 'Near GadgetBid staging office',
+    addressLine2: 'Near Gadgets Bidding staging office',
     city: 'Ikeja',
     state: 'Lagos',
     postalCode: '100001',
@@ -284,7 +284,7 @@ const seedDemoAuction = async (sellerId: string) => {
 const main = async () => {
   requireSeedConfirmation();
 
-  console.log('Seeding GadgetBid staging baseline...');
+  console.log('Seeding Gadgets Bidding staging baseline...');
 
   await seedCategories();
 

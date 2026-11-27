@@ -191,3 +191,119 @@ export const getCurrentUser = async (req: Request, res: Response) => {
     sendError(res, error.message || 'Failed to get user profile', 400);
   }
 };
+
+/* ---------- Email-first buyer sign-up ---------- */
+
+/** POST /api/v1/auth/signup/email — email a 6-digit code to start sign-up */
+export const signupStart = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.startEmailSignup(req.body.email);
+    sendSuccess(res, result, 'We sent you a 6-digit code', 201);
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not start sign-up', 400);
+  }
+};
+
+/** POST /api/v1/auth/signup/verify — confirm the emailed code */
+export const signupVerify = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.verifyEmailSignup(req.body);
+    sendSuccess(res, result, 'Email confirmed');
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not confirm the code', 400);
+  }
+};
+
+/** POST /api/v1/auth/signup/resend — send a fresh code */
+export const signupResend = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.resendEmailSignup(req.body.verification_id);
+    sendSuccess(res, result, 'A new code is on its way');
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not resend the code', 400);
+  }
+};
+
+/** GET /api/v1/auth/username-available?username= */
+export const usernameAvailable = async (req: Request, res: Response) => {
+  try {
+    const available = await authService.isUsernameAvailable(String(req.query.username || ''));
+    sendSuccess(res, { available });
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not check that username', 400);
+  }
+};
+
+/** POST /api/v1/auth/signup/complete — create the account and sign in */
+export const signupComplete = async (req: Request, res: Response) => {
+  try {
+    const tokens = await authService.completeEmailSignup(req.body);
+    sendSuccess(res, tokens, 'Account created', 201);
+  } catch (error: any) {
+    logger.error('Email sign-up error:', error);
+    sendError(res, error.message || 'Could not create your account', 400);
+  }
+};
+
+/** POST /api/v1/auth/login/2fa — finish a 2-step sign-in with the emailed code */
+export const loginTwoFactor = async (req: Request, res: Response) => {
+  try {
+    const tokens = await authService.completeTwoFactorLogin(req.body);
+    sendSuccess(res, tokens, 'Login successful');
+  } catch (error: any) {
+    sendError(res, error.message || 'Login failed', 401);
+  }
+};
+
+/** PUT /api/v1/auth/2fa { enabled, password } — turn 2-step sign-in on or off */
+export const setTwoFactor = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    const result = await authService.setTwoFactor(req.user.user_id, req.body.enabled === true, req.body.password);
+    sendSuccess(res, result, result.two_factor_enabled ? '2-step sign-in is on' : '2-step sign-in is off');
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not change 2-step sign-in', 400);
+  }
+};
+
+/* ---------- Password reset ---------- */
+
+/** POST /api/v1/auth/password/forgot — email a 6-digit reset code (same answer for unknown emails) */
+export const passwordForgot = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.startPasswordReset(req.body.email);
+    sendSuccess(res, result, 'If that email has an account, we sent it a code', 201);
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not start the reset', 400);
+  }
+};
+
+/** POST /api/v1/auth/password/verify — confirm the emailed code */
+export const passwordVerify = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.verifyPasswordReset(req.body);
+    sendSuccess(res, result, 'Code confirmed');
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not confirm the code', 400);
+  }
+};
+
+/** POST /api/v1/auth/password/resend — send a fresh code */
+export const passwordResend = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.resendPasswordReset(req.body.verification_id);
+    sendSuccess(res, result, 'A new code is on its way');
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not resend the code', 400);
+  }
+};
+
+/** POST /api/v1/auth/password/reset — set the new password */
+export const passwordReset = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.completePasswordReset(req.body);
+    sendSuccess(res, result, 'Password changed');
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not change your password', 400);
+  }
+};
