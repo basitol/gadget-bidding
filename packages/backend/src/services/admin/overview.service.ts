@@ -4,6 +4,9 @@ import config from '../../config';
 import {
   BIDDING_PAUSE_DAYS,
   CONFIRM_WINDOW_HOURS,
+  DROPOFF_RULE,
+  dropoffDueOf,
+  inspectionPassed,
   MISSED_PAYMENT_LIMIT,
   MISSED_PAYMENT_LOOKBACK_DAYS,
   OFFER_WINDOW_HOURS,
@@ -79,9 +82,17 @@ const dueFrom = (from: Date | null | undefined, hours: number) =>
 
 const money = (n: number) => `₦${Math.round(n).toLocaleString('en-NG')}`;
 
+/** Where an order at the hub is with its check. */
+const hubStep = (inspection: unknown) => {
+  if (!inspection) return 'waiting for the check';
+  if (inspectionPassed(inspection)) return 'passed the check, ready to leave';
+  const i = inspection as { passed?: number; total?: number };
+  return `didn't pass the check (${i.passed ?? 0} of ${i.total ?? 0})`;
+};
+
 /** Everything waiting on our team, soonest due first. */
 export const getAttention = async (limit = 50) => {
-  const [sellers, gadgets, disputes, hubOrders, payouts] = await Promise.all([
+  const [sellers, gadgets, disputes, hubOrders, payouts, awaitingDropoff] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'seller', sellerKybStatus: 'pending' },
       select: { id: true, fullName: true, businessName: true, sellerKybSubmittedAt: true, createdAt: true },
@@ -112,6 +123,7 @@ export const getAttention = async (limit = 50) => {
         id: true,
         orderNumber: true,
         updatedAt: true,
+        inspection: true,
         auction: { select: { gadget: { select: { title: true } } } },
         events: { where: { kind: 'fulfillment', status: 'received_by_backoffice' }, select: { createdAt: true }, take: 1, orderBy: { createdAt: 'desc' } },
       },
@@ -122,7 +134,28 @@ export const getAttention = async (limit = 50) => {
       _sum: { sellerPayout: true },
       _count: true,
     }),
+    // Paid, but the seller hasn't brought it to the hub yet (overdue ones are picked out below).
+    prisma.order.findMany({
+      where: { paymentStatus: 'paid', fulfillmentStatus: { in: ['pending', 'processing'] } },
+      select: {
+        id: true,
+        orderNumber: true,
+        sellerId: true,
+        paymentStatus: true,
+        fulfillmentStatus: true,
+        auction: { select: { gadget: { select: { title: true } } } },
+        events: { where: { kind: 'payment', status: 'paid' }, select: { kind: true, status: true, createdAt: true }, orderBy: { createdAt: 'asc' } },
+      },
+      take: 200,
+    }),
   ]);
+
+  // Sellers who missed the drop-off deadline (6 pm the next working day after payment).
+  const nowMs = Date.now();
+  const overdueDropoffs = awaitingDropoff
+    .map(o => ({ o, due: dropoffDueOf(o) }))
+    .filter((x): x is { o: (typeof awaitingDropoff)[number]; due: Date } => !!x.due && x.due.getTime() < nowMs)
+    .slice(0, limit);
 
   const items: AttentionItem[] = [
     ...sellers.map(s => ({
@@ -157,9 +190,18 @@ export const getAttention = async (limit = 50) => {
       kind: 'hub' as const,
       queue: 'Inspection hub',
       title: o.auction?.gadget?.title ?? 'Device at hub',
-      sub: `Order ${o.orderNumber} · waiting for the check`,
+      sub: `Order ${o.orderNumber} · ${hubStep(o.inspection)}`,
       due_at: dueFrom(o.events[0]?.createdAt ?? o.updatedAt, REVIEW_TARGET_HOURS.hub),
       route: `/backoffice?order=${o.id}`,
+    })),
+    ...overdueDropoffs.map(({ o, due }) => ({
+      id: `dropoff-${o.id}`,
+      kind: 'hub' as const,
+      queue: 'Inspection hub',
+      title: o.auction?.gadget?.title ?? 'Paid order',
+      sub: `Order ${o.orderNumber} · drop-off overdue · seller ${o.sellerId ? sellerCode(o.sellerId) : 'unknown'}`,
+      due_at: due.toISOString(),
+      route: `/orders?search=${encodeURIComponent(o.orderNumber)}`,
     })),
   ];
 
@@ -262,6 +304,7 @@ export const getRules = () => ({
   rules: [
     { key: 'pay_window', label: 'Time to pay after winning', value: `${ORDER_PAYMENT_EXPIRY_HOURS} hours` },
     { key: 'second_chance', label: 'Second-chance offer', value: `${OFFER_WINDOW_HOURS} hours to accept` },
+    { key: 'dropoff', label: 'Seller drops it at the hub', value: DROPOFF_RULE, note: 'Computer Village hub, open Monday to Saturday' },
     { key: 'missed_payments', label: 'Missed payments', value: `${MISSED_PAYMENT_LIMIT} in ${MISSED_PAYMENT_LOOKBACK_DAYS} days pauses bidding for ${BIDDING_PAUSE_DAYS} days` },
     { key: 'confirm_window', label: 'Buyer confirms delivery', value: `${CONFIRM_WINDOW_HOURS} hours, then we confirm for them` },
     { key: 'return_window', label: 'Return after a refund decision', value: `${RETURN_WINDOW_DAYS} days` },

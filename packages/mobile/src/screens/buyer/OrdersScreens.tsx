@@ -31,6 +31,7 @@ import { BottomSheet, useSequentialFill } from '../../components/motion';
 import { fonts } from '../../constants';
 import { addressService, orderService } from '../../services';
 import { meService, MissedPayment } from '../../services/me.service';
+import { dropoffByLabel } from '../../services/order.service';
 import {
   getAlertPrefs,
   getPushPermission,
@@ -61,6 +62,10 @@ type Stage =
   | 'refunded';
 
 const isPickup = (o: any) => o?.delivery_method === 'pickup';
+/** The hub recorded its check and every point passed. */
+const passedHubCheck = (o: any) => !!o?.inspection && o.inspection.passed === o.inspection.total;
+/** "7 of 7 checks" */
+const checksLabel = (o: any) => (o?.inspection ? `${o.inspection.passed} of ${o.inspection.total} checks` : null);
 
 const stageOf = (o: any, now = Date.now()): Stage => {
   if (o.payment_status === 'refunded') return 'refunded';
@@ -74,7 +79,8 @@ const stageOf = (o: any, now = Date.now()): Stage => {
     case 'sent_to_backoffice':
       return 'at_hub';
     case 'received_by_backoffice':
-      return 'checked';
+      // At the hub; it counts as checked once the hub's inspection passed.
+      return passedHubCheck(o) ? 'checked' : 'at_hub';
     case 'shipped':
       // Pickup orders are ready at the hub once checked; there's no courier leg.
       return isPickup(o) ? 'checked' : 'on_the_way';
@@ -429,7 +435,15 @@ const OrderCard: React.FC<{ order: any; now: number; navigation: any; onChanged:
 
 /* ================= Order detail ================= */
 
-type Step = { key: string; title: string; reached: boolean; at: string | null; extra?: string | null };
+type Step = {
+  key: string;
+  title: string;
+  reached: boolean;
+  at: string | null;
+  extra?: string | null;
+  /** Shown instead of "Not yet" before the step happens. */
+  pending?: string | null;
+};
 
 const buildSteps = (o: any): Step[] => {
   const stage = stageOf(o);
@@ -448,12 +462,20 @@ const buildSteps = (o: any): Step[] => {
       at: eventAt(o, 'payment', 'paid'),
       extra: o.paid_with ?? null,
     },
-    { key: 'at_hub', title: 'Seller dropped it at the hub', reached: reached('at_hub'), at: eventAt(o, 'fulfillment', 'sent_to_backoffice') },
+    {
+      key: 'at_hub',
+      title: reached('at_hub') ? 'Seller dropped it at the hub' : 'Seller drops it at the hub',
+      reached: reached('at_hub'),
+      at: eventAt(o, 'fulfillment', 'sent_to_backoffice') ?? eventAt(o, 'fulfillment', 'received_by_backoffice'),
+      // "By tomorrow, 6:00 pm" (Lagos), while the seller still has to drop it off.
+      pending: dropoffByLabel(o.dropoff_due_at),
+    },
     {
       key: 'checked',
       title: pickup ? 'Passed hub check · ready to collect' : 'Passed hub check',
       reached: reached('checked'),
-      at: eventAt(o, 'fulfillment', 'received_by_backoffice'),
+      at: o.inspection?.at ?? eventAt(o, 'fulfillment', 'received_by_backoffice'),
+      extra: checksLabel(o),
     },
   ];
   if (!pickup) {
@@ -493,8 +515,11 @@ const statusCopy = (o: any, stage: Stage, now: number): { chip: string; tone: To
       return { chip: 'Waiting for payment', tone: 'amber', note: `Pay in ${payLeft(o, now)}`, title: 'Pay to secure your win' };
     case 'expired':
       return { chip: 'Payment window closed', tone: 'red', note: null, title: 'The time to pay has passed' };
-    case 'paid':
-      return { chip: 'Paid', tone: 'blue', note: 'Drop-off usually within a day', title: 'Waiting for the seller to drop it off' };
+    case 'paid': {
+      const by = dropoffByLabel(o.dropoff_due_at);
+      const note = by ? `Drop-off ${by.charAt(0).toLowerCase()}${by.slice(1)}` : 'Drop-off usually within a day';
+      return { chip: 'Paid', tone: 'blue', note, title: 'Waiting for the seller to drop it off' };
+    }
     case 'at_hub':
       return { chip: 'At hub', tone: 'blue', note: 'Check usually done today', title: 'Being checked at our hub' };
     case 'checked':
@@ -511,6 +536,13 @@ const statusCopy = (o: any, stage: Stage, now: number): { chip: string; tone: To
     case 'refunded':
       return { chip: 'Refunded', tone: 'violet', note: null, title: 'Your money was refunded' };
   }
+};
+
+/** "Home · Abdulbasit Quadri": the saved address's name, when the buyer picked one at checkout. */
+const addressTitle = (a: { label?: string; full_name?: string }) => {
+  const label = a.label?.trim();
+  // "Delivery address" is the default name for addresses saved without one; it adds nothing here.
+  return label && label.toLowerCase() !== 'delivery address' ? `${label} · ${a.full_name ?? ''}`.trim() : a.full_name ?? '';
 };
 
 const maskPhone = (p?: string) => {
@@ -637,7 +669,7 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
       <PrimaryButton label="Pay now" onPress={() => navigation.navigate('Checkout', { orderId: order.id })} />
     ) : stage === 'on_the_way' && !caseActive(order) ? (
       <PrimaryButton label="Confirm delivery" onPress={() => confirmDelivery(order, load)} />
-    ) : pickup && stage === 'checked' && !caseActive(order) ? (
+    ) : pickup && stage === 'checked' && order.fulfillment_status === 'shipped' && !caseActive(order) ? (
       <PrimaryButton label="I collected it" onPress={() => confirmDelivery(order, load)} />
     ) : inFlight && updatesOn === false ? (
       <SecondaryButton label="Get delivery updates" onPress={turnOnUpdates} />
@@ -701,7 +733,7 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
               </>
             ) : address ? (
               <>
-                <Text style={styles.addressTitle}>{address.full_name}</Text>
+                <Text style={styles.addressTitle}>{addressTitle(address)}</Text>
                 <Text style={styles.addressSub}>
                   {[address.address_line1, address.address_line2, address.city, address.state].filter(Boolean).join(', ')}
                   {address.phone_number ? ` · ${maskPhone(address.phone_number)}` : ''}
@@ -817,7 +849,11 @@ const AfterDelivery: React.FC<{
 
   const rows: { title: string; sub: string; at: string | null; now?: boolean }[] = [
     { title: 'Paid', sub: 'Held safely in escrow', at: eventAt(order, 'payment', 'paid') },
-    { title: 'Checked at hub', sub: 'Matched the listing', at: eventAt(order, 'fulfillment', 'received_by_backoffice') },
+    {
+      title: 'Checked at hub',
+      sub: ['Matched the listing', checksLabel(order)].filter(Boolean).join(' · '),
+      at: order.inspection?.at ?? eventAt(order, 'fulfillment', 'received_by_backoffice'),
+    },
     ...(pickup
       ? []
       : [
@@ -955,7 +991,7 @@ const Timeline: React.FC<{ steps: Step[]; done: boolean }> = ({ steps, done }) =
         const state = s.reached ? (i === latest && !done ? 'now' : 'done') : 'todo';
         const sub = s.reached
           ? [s.at ? stamp(s.at) : 'Done', s.extra].filter(Boolean).join(' · ')
-          : 'Not yet';
+          : s.pending || 'Not yet';
         return (
           <View key={s.key} style={styles.tlRow}>
             <View style={styles.tlRail}>
@@ -976,7 +1012,7 @@ const Timeline: React.FC<{ steps: Step[]; done: boolean }> = ({ steps, done }) =
               <Text style={[styles.tlTitle, state === 'now' && styles.tlTitleNow, state === 'todo' && styles.tlTitleTodo]}>
                 {s.title}
               </Text>
-              <Text style={[styles.tlSub, state === 'todo' && styles.tlSubTodo]}>{sub}</Text>
+              <Text style={[styles.tlSub, state === 'todo' && !s.pending && styles.tlSubTodo]}>{sub}</Text>
             </View>
           </View>
         );
@@ -1074,6 +1110,7 @@ const AddressSheet: React.FC<{
     setBusy(true);
     try {
       await orderService.updateShippingAddress(orderId, {
+        label: a.label,
         full_name: a.full_name,
         phone_number: a.phone_number,
         address_line1: a.address_line1,

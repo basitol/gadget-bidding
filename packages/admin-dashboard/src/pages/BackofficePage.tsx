@@ -1,37 +1,31 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  CheckCircle2,
-  PackageCheck,
-  PackageOpen,
-  RefreshCcw,
-  Truck,
-} from 'lucide-react';
-import { adminApi } from '@/api';
-import {
-  Badge,
-  Empty,
-  ErrorAlert,
-  PageHeader,
-  Panel,
-} from '@/components/shared';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { formatAddress, label, money, when } from '@/lib/format';
-import { mediaUrl } from '@/lib/media';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import { adminApi, type InspectionCheck, type OrderInspection } from '@/api';
+import { SectionCard } from '@/components/attention';
+import { Badge, ErrorAlert, PageHeader } from '@/components/shared';
+import { Icon3d, type Icon3dName } from '@/components/shell/Icon3d';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { refreshQueues } from '@/hooks/useQueues';
+import { formatAddress, friendlyTime, money } from '@/lib/format';
+import { mediaUrl } from '@/lib/media';
+import { TINTS, type Tint } from '@/lib/nav';
+import { cn } from '@/lib/utils';
 
-type QueueStatus =
-  | 'sent_to_backoffice'
-  | 'received_by_backoffice'
-  | 'shipped'
-  | 'delivered';
+type QueueStatus = 'sent_to_backoffice' | 'received_by_backoffice' | 'shipped' | 'delivered';
 
 type Queue = {
   status: QueueStatus;
   title: string;
-  description: string;
-  icon: React.ReactNode;
-  color: string;
+  description: (checks: number) => string;
+  icon: Icon3dName;
+  tint: Tint;
   empty: string;
 };
 
@@ -39,88 +33,80 @@ const queues: Queue[] = [
   {
     status: 'sent_to_backoffice',
     title: 'Seller sent to us',
-    description: 'Items sellers have handed over or dispatched to backoffice.',
-    icon: <PackageOpen className="size-5" />,
-    color: 'text-amber-700 dark:text-amber-400',
-    empty: 'No inbound seller deliveries.',
+    description: () => "The seller says it's on the way. Mark it received once it's at the hub.",
+    icon: 'box',
+    tint: 'amber',
+    empty: 'Nothing on its way to the hub.',
   },
   {
     status: 'received_by_backoffice',
-    title: 'Ready to ship',
-    description: 'Items that passed the hub check and are ready for buyer delivery.',
-    icon: <PackageCheck className="size-5" />,
-    color: 'text-sky-700 dark:text-sky-400',
-    empty: 'No items waiting for shipping.',
+    title: 'At the hub',
+    description: n => `Run the ${n || 7}-point check. It leaves the hub only when every check passes.`,
+    icon: 'phonecheck',
+    tint: 'blue',
+    empty: 'Nothing waiting for the check.',
   },
   {
     status: 'shipped',
     title: 'Out for delivery',
-    description: 'Items shipped by backoffice to buyers.',
-    icon: <Truck className="size-5" />,
-    color: 'text-violet-700 dark:text-violet-400',
-    empty: 'No active outbound deliveries.',
+    description: () => 'On its way to the buyer, or waiting at the hub for pickup.',
+    icon: 'truck',
+    tint: 'blue',
+    empty: 'Nothing out for delivery.',
   },
   {
     status: 'delivered',
     title: 'Delivered',
-    description: 'Completed deliveries now eligible for payout handling.',
-    icon: <CheckCircle2 className="size-5" />,
-    color: 'text-emerald-700 dark:text-emerald-400',
-    empty: 'No delivered orders yet.',
+    description: () => 'Delivered or collected. The payout follows once the buyer confirms.',
+    icon: 'wallet',
+    tint: 'green',
+    empty: 'No deliveries yet.',
   },
 ];
 
-const nextAction: Partial<
-  Record<
-    QueueStatus,
-    {
-      label: string;
-      nextStatus: QueueStatus;
-      requiresTracking?: boolean;
-    }
-  >
-> = {
-  sent_to_backoffice: {
-    label: 'Passed hub check',
-    nextStatus: 'received_by_backoffice',
-  },
-  received_by_backoffice: {
-    label: 'Ship to buyer',
-    nextStatus: 'shipped',
-    requiresTracking: true,
-  },
-  shipped: {
-    label: 'Mark delivered',
-    nextStatus: 'delivered',
-  },
+const isPickup = (order: any) => order.delivery_method === 'pickup';
+
+/** Every check on the list was recorded and passed. */
+const inspectionPassed = (inspection: OrderInspection | null | undefined, checks: InspectionCheck[]) =>
+  !!inspection &&
+  (checks.length ? checks : inspection.checks).every(c => inspection.checks.some(x => x.key === c.key && x.passed));
+
+type Move = { label: string; next: QueueStatus; tracking?: boolean };
+
+/** The next step for an order, or why there isn't one yet. */
+const nextMove = (order: any, checks: InspectionCheck[]): Move | null => {
+  switch (order.fulfillment_status as QueueStatus) {
+    case 'sent_to_backoffice':
+      return { label: 'Mark received at hub', next: 'received_by_backoffice' };
+    case 'received_by_backoffice':
+      if (!inspectionPassed(order.inspection, checks)) return null;
+      return isPickup(order)
+        ? { label: 'Mark ready to collect', next: 'shipped' }
+        : { label: 'Ship to buyer', next: 'shipped', tracking: true };
+    case 'shipped':
+      return { label: isPickup(order) ? 'Mark collected' : 'Mark delivered', next: 'delivered' };
+    default:
+      return null;
+  }
 };
 
 export function BackofficePage() {
-  const [ordersByStatus, setOrdersByStatus] = useState<Record<string, any[]>>(
-    {}
-  );
-  const [trackingByOrder, setTrackingByOrder] = useState<
-    Record<string, string>
-  >({});
+  const [ordersByStatus, setOrdersByStatus] = useState<Record<string, any[]>>({});
+  const [checks, setChecks] = useState<InspectionCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [params] = useSearchParams();
+  const focusId = params.get('order');
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError('');
     try {
       const results = await Promise.all(
         queues.map(queue =>
-          adminApi.orders({
-            payment_status: 'paid',
-            fulfillment_status: queue.status,
-            page: 1,
-            limit: 50,
-          })
+          adminApi.orders({ payment_status: 'paid', fulfillment_status: queue.status, page: 1, limit: 50 })
         )
       );
-
       setOrdersByStatus(
         queues.reduce<Record<string, any[]>>((next, queue, index) => {
           next[queue.status] = results[index]?.data || [];
@@ -128,7 +114,7 @@ export function BackofficePage() {
         }, {})
       );
     } catch (err: any) {
-      setError(err.message || 'Failed to load backoffice queue');
+      setError(err.message || "Couldn't load the hub queues");
     } finally {
       setLoading(false);
     }
@@ -136,7 +122,16 @@ export function BackofficePage() {
 
   useEffect(() => {
     load();
+    adminApi
+      .inspectionChecks()
+      .then(r => setChecks(r.data))
+      .catch(err => setError(err.message || "Couldn't load the hub checklist"));
   }, [load]);
+
+  // Opened from Overview / Tasks: bring that order into view.
+  useEffect(() => {
+    if (!loading && focusId) document.getElementById(`order-${focusId}`)?.scrollIntoView({ block: 'center' });
+  }, [loading, focusId]);
 
   const totals = useMemo(
     () =>
@@ -147,37 +142,33 @@ export function BackofficePage() {
     [ordersByStatus]
   );
 
-  const updateFulfillment = async (order: any, queue: Queue) => {
-    const action = nextAction[queue.status];
-    if (!action) return;
-
-    const trackingNumber = trackingByOrder[order.id]?.trim();
-    if (action.requiresTracking && !trackingNumber) {
-      setError('Add a tracking number before shipping to buyer.');
+  const move = async (order: any, step: Move, trackingNumber?: string) => {
+    if (step.tracking && !trackingNumber?.trim()) {
+      toast.error('Add the courier tracking number, then ship it.');
       return;
     }
-
     setBusyId(order.id);
-    setError('');
     try {
       await adminApi.updateOrder(order.id, {
-        fulfillment_status: action.nextStatus,
-        ...(action.requiresTracking ? { tracking_number: trackingNumber } : {}),
+        fulfillment_status: step.next,
+        ...(step.tracking ? { tracking_number: trackingNumber!.trim() } : {}),
       });
       await load();
-      toast.success('Order updated');
+      refreshQueues();
+      toast.success(`${order.order_number} moved on`);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to update order');
+      toast.error(err.message || "Couldn't update the order");
     } finally {
       setBusyId(null);
     }
   };
 
   return (
-    <>
+    <div className="pb-16">
       <PageHeader
-        title="Backoffice intake"
-        description="Track items from seller handoff to backoffice receipt, buyer shipping, delivery, and payout readiness."
+        title="Inspection hub"
+        description="Every item comes through our Computer Village hub. Receive it, check it against the listing, then send it to the buyer or hand it over at pickup."
+        path="/backoffice"
         actions={
           <Button variant="secondary" onClick={load} disabled={loading}>
             <RefreshCcw className="size-4" />
@@ -188,195 +179,337 @@ export function BackofficePage() {
 
       <ErrorAlert>{error}</ErrorAlert>
 
-      <div className="mb-4 grid gap-3 md:grid-cols-4">
+      <div className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {queues.map(queue => (
-          <div
-            key={queue.status}
-            className="rounded-xl border bg-card p-4 shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-muted-foreground">
-                {queue.title}
+          <div key={queue.status} className="gb-elev rounded-[24px] border border-white/80 bg-white/90 p-4">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 place-items-center rounded-[12px]" style={{ backgroundColor: TINTS[queue.tint].bg }}>
+                <Icon3d name={queue.icon} size={26} />
               </span>
-              <span className={queue.color}>{queue.icon}</span>
+              <span className="text-[14px] font-medium text-slate">{queue.title}</span>
             </div>
-            <div className="mt-2 text-3xl font-semibold tracking-tight">
-              {totals[queue.status] || 0}
+            <div className="mt-3 text-[32px] font-medium leading-none tracking-[-0.02em] text-ink tabular-nums">
+              {loading ? '–' : totals[queue.status] || 0}
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Paid orders in this stage
-            </div>
+            <div className="mt-2 text-[13px] text-hint">Paid orders at this step</div>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-4">
         {queues.map(queue => {
           const orders = ordersByStatus[queue.status] || [];
-          const action = nextAction[queue.status];
-
           return (
-            <Panel key={queue.status} className="overflow-hidden">
-              <div className="border-b bg-muted/60 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-semibold tracking-tight">
-                      {queue.title}
-                    </h2>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {queue.description}
-                    </p>
-                  </div>
-                  <span
-                    className={`grid size-10 shrink-0 place-items-center rounded-lg bg-background ${queue.color}`}
-                  >
-                    {queue.icon}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-3 p-3">
+            <SectionCard
+              key={queue.status}
+              icon={<Icon3d name={queue.icon} size={26} />}
+              title={queue.title}
+              meta={loading ? undefined : String(orders.length)}
+            >
+              <p className="px-6 pt-4 text-[13px] text-slate">{queue.description(checks.length)}</p>
+              <div className="space-y-3 p-4">
                 {loading ? (
-                  <Empty>Loading…</Empty>
+                  <Skeleton className="h-40 rounded-[18px]" />
                 ) : orders.length === 0 ? (
-                  <Empty>{queue.empty}</Empty>
+                  <p className="px-2 py-6 text-center text-[14px] text-slate">{queue.empty}</p>
                 ) : (
                   orders.map(order => (
-                    <BackofficeOrderCard
+                    <OrderCard
                       key={order.id}
                       order={order}
-                      action={action}
+                      checks={checks}
+                      focused={order.id === focusId}
                       busy={busyId === order.id}
-                      trackingValue={
-                        trackingByOrder[order.id] || order.tracking_number || ''
-                      }
-                      onTrackingChange={value =>
-                        setTrackingByOrder(prev => ({
-                          ...prev,
-                          [order.id]: value,
-                        }))
-                      }
-                      onAction={() => updateFulfillment(order, queue)}
+                      onMove={(step, tracking) => move(order, step, tracking)}
+                      onInspected={load}
                     />
                   ))
                 )}
               </div>
-            </Panel>
+            </SectionCard>
           );
         })}
       </div>
-    </>
+    </div>
   );
 }
 
-function BackofficeOrderCard({
+function OrderCard({
   order,
-  action,
+  checks,
+  focused,
   busy,
-  trackingValue,
-  onTrackingChange,
-  onAction,
+  onMove,
+  onInspected,
 }: {
   order: any;
-  action?: {
-    label: string;
-    nextStatus: QueueStatus;
-    requiresTracking?: boolean;
-  };
+  checks: InspectionCheck[];
+  focused: boolean;
   busy: boolean;
-  trackingValue: string;
-  onTrackingChange: (value: string) => void;
-  onAction: () => void;
+  onMove: (step: Move, tracking?: string) => void;
+  onInspected: () => void;
 }) {
+  const [tracking, setTracking] = useState<string>(order.tracking_number || '');
+  const trackingId = useId();
+  const step = nextMove(order, checks);
+  const pickup = isPickup(order);
+  const atHub = order.fulfillment_status === 'received_by_backoffice';
+  const onHold = !!order.open_dispute;
+
   return (
-    <article className="rounded-2xl border bg-card p-3 shadow-sm">
+    <article
+      id={`order-${order.id}`}
+      className={cn('rounded-[18px] border border-line bg-white p-4', focused && 'ring-2 ring-blue-brand')}
+    >
       <div className="flex gap-3">
         {order.gadget_image ? (
           <img
             src={mediaUrl(order.gadget_image)}
-            alt={order.gadget_title || 'Order item'}
-            className="size-14 rounded-xl object-cover"
+            alt=""
+            className="size-14 shrink-0 rounded-[12px] bg-fill object-cover"
           />
         ) : (
-          <div className="grid size-14 place-items-center rounded-xl bg-primary/10 text-primary">
-            <PackageCheck className="size-5" />
-          </div>
+          <span className="grid size-14 shrink-0 place-items-center rounded-[12px] bg-fill">
+            <Icon3d name="phonecheck" size={28} />
+          </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-primary">
-            {order.order_number}
-          </div>
-          <div className="truncate text-sm font-medium">
-            {order.gadget_title || 'Gadget'}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {when(order.updated_at || order.created_at)}
-          </div>
+          <div className="truncate text-[15px] font-medium text-ink">{order.gadget_title || 'Gadget'}</div>
+          <div className="truncate text-[13px] text-slate">{order.order_number}</div>
+          <div className="text-[13px] text-hint">{friendlyTime(order.updated_at || order.created_at)}</div>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1">
-        <Badge tone="ok">{label(order.payment_status)}</Badge>
-        <Badge tone="info">{label(order.fulfillment_status)}</Badge>
-        {order.open_dispute ? <Badge tone="danger">Open Dispute</Badge> : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Badge tone="ok">Paid</Badge>
+        <Badge tone="neutral">{pickup ? 'Pickup at hub' : 'Delivery'}</Badge>
+        {onHold ? <Badge tone="danger">Open dispute</Badge> : null}
       </div>
 
-      <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
-        <div>
-          <span className="font-medium text-foreground">Seller:</span>{' '}
+      <dl className="mt-3 divide-y divide-line text-[13px]">
+        <Fact k="Seller">
           {order.seller?.full_name || '—'}
           {order.seller?.phone_number ? ` · ${order.seller.phone_number}` : ''}
-        </div>
-        <div>
-          <span className="font-medium text-foreground">Buyer:</span>{' '}
+        </Fact>
+        <Fact k="Buyer">
           {order.buyer?.full_name || '—'}
           {order.buyer?.phone_number ? ` · ${order.buyer.phone_number}` : ''}
-        </div>
-        <div>
-          <span className="font-medium text-foreground">Payout:</span>{' '}
-          {money(order.seller_payout)}
-        </div>
-      </div>
+        </Fact>
+        <Fact k="Payout">{money(order.seller_payout)}</Fact>
+        {order.tracking_number && !step?.tracking ? <Fact k="Tracking">{order.tracking_number}</Fact> : null}
+      </dl>
 
-      {order.has_shipping ? (
-        <div className="mt-3 rounded-xl bg-muted/50 p-2 text-xs">
-          <div className="mb-1 font-medium">Buyer delivery address</div>
-          <div className="whitespace-pre-line text-muted-foreground">
-            {formatAddress(order.shipping_address)}
+      {pickup ? (
+        <div className="mt-3 rounded-[12px] bg-fill p-3 text-[13px] text-ink">The buyer collects it at the hub.</div>
+      ) : order.has_shipping ? (
+        <div className="mt-3 rounded-[12px] bg-fill p-3 text-[13px]">
+          <div className="font-medium text-ink">
+            Deliver to{order.shipping_address?.label ? ` · ${order.shipping_address.label}` : ''}
           </div>
+          <div className="mt-1 whitespace-pre-line text-slate">{formatAddress(order.shipping_address)}</div>
         </div>
       ) : (
         <div className="mt-3">
-          <Badge tone="danger">Missing Shipping Address</Badge>
+          <Badge tone="danger">No delivery address</Badge>
         </div>
       )}
 
-      {action?.requiresTracking ? (
-        <Input
-          className="mt-3"
-          value={trackingValue}
-          onChange={event => onTrackingChange(event.target.value)}
-          placeholder="Courier tracking number"
-        />
-      ) : order.tracking_number ? (
-        <div className="mt-3 rounded-xl bg-muted/50 p-2 text-xs">
-          <span className="font-medium">Tracking:</span> {order.tracking_number}
+      {atHub ? <InspectionPanel order={order} checks={checks} disabled={onHold} onSaved={onInspected} /> : null}
+
+      {step ? (
+        <div className="mt-4 space-y-3">
+          {step.tracking ? (
+            <div className="space-y-2">
+              <Label htmlFor={trackingId}>Courier tracking number</Label>
+              <Input
+                id={trackingId}
+                value={tracking}
+                onChange={e => setTracking(e.target.value)}
+                className="h-10 rounded-[12px]"
+              />
+            </div>
+          ) : null}
+          <Button
+            className="h-10 w-full rounded-[10px]"
+            disabled={busy || onHold || (!!step.tracking && !tracking.trim())}
+            onClick={() => onMove(step, tracking)}
+          >
+            {busy ? 'Updating…' : step.label}
+          </Button>
+          {onHold ? (
+            <p className="text-[13px] text-slate">On hold while the dispute is open.</p>
+          ) : step.tracking && !tracking.trim() ? (
+            <p className="text-[13px] text-slate">Add the tracking number to ship it.</p>
+          ) : null}
+        </div>
+      ) : order.fulfillment_status === 'delivered' ? (
+        <div className="mt-4 rounded-[12px] bg-[#EEF9F2] p-3 text-center text-[14px] font-medium text-[#2E9E5E]">
+          {pickup ? 'Collected' : 'Delivered'}
         </div>
       ) : null}
-
-      {action ? (
-        <Button
-          className="mt-3 w-full"
-          disabled={busy || order.open_dispute}
-          onClick={onAction}
-        >
-          {busy ? 'Updating…' : action.label}
-        </Button>
-      ) : (
-        <div className="mt-3 rounded-xl bg-emerald-500/10 p-2 text-center text-sm font-medium text-emerald-700">
-          Delivery complete
-        </div>
-      )}
     </article>
+  );
+}
+
+function Fact({ k, children }: { k: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3 py-1.5">
+      <dt className="w-16 shrink-0 text-slate">{k}</dt>
+      <dd className="min-w-0 flex-1 truncate text-ink">{children}</dd>
+    </div>
+  );
+}
+
+/** The 7-point hub check: tick what passed, add a note for anything that didn't, then save. */
+function InspectionPanel({
+  order,
+  checks,
+  disabled,
+  onSaved,
+}: {
+  order: any;
+  checks: InspectionCheck[];
+  disabled: boolean;
+  onSaved: () => void;
+}) {
+  const recorded: OrderInspection | null = order.inspection ?? null;
+  const passed = inspectionPassed(recorded, checks);
+  const [editing, setEditing] = useState(false);
+  const [ticks, setTicks] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries((recorded?.checks ?? []).map(c => [c.key, c.passed]))
+  );
+  const [note, setNote] = useState(recorded && !passed ? recorded.note ?? '' : '');
+  const [busy, setBusy] = useState(false);
+  const noteId = useId();
+
+  const ticked = checks.filter(c => ticks[c.key]).length;
+  const allTicked = checks.length > 0 && ticked === checks.length;
+  const showForm = !recorded || editing;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const res = await adminApi.recordInspection(order.id, {
+        checks: Object.fromEntries(checks.map(c => [c.key, !!ticks[c.key]])),
+        note: note.trim() || undefined,
+      });
+      toast.success(res.message || (res.data.all_passed ? 'Passed the hub check' : 'Check saved'));
+      setEditing(false);
+      onSaved();
+      refreshQueues();
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't save the check");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      {recorded && !showForm ? <InspectionResult inspection={recorded} passed={passed} /> : null}
+
+      {recorded && !showForm ? (
+        <Button
+          variant="ghost"
+          className="mt-2 h-9 rounded-[10px] px-3 text-[14px] text-blue-press"
+          disabled={disabled}
+          onClick={() => setEditing(true)}
+        >
+          Check it again
+        </Button>
+      ) : null}
+
+      {showForm ? (
+        <>
+          <fieldset disabled={disabled || busy}>
+            <legend className="text-[13px] font-medium uppercase tracking-[0.04em] text-slate">
+              Hub check · {ticked} of {checks.length}
+            </legend>
+            {checks.length === 0 ? (
+              <Skeleton className="mt-2 h-40 rounded-[12px]" />
+            ) : (
+              <ul className="mt-2 divide-y divide-line rounded-[12px] border border-line">
+                {checks.map(c => (
+                  <li key={c.key}>
+                    <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-[14px] text-ink">
+                      <Checkbox
+                        checked={!!ticks[c.key]}
+                        onCheckedChange={v => setTicks(t => ({ ...t, [c.key]: v === true }))}
+                      />
+                      <span>{c.label}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-3 space-y-2">
+              <Label htmlFor={noteId}>{allTicked ? 'Note (optional)' : 'Note: what didn’t pass'}</Label>
+              <Textarea
+                id={noteId}
+                value={note}
+                maxLength={500}
+                onChange={e => setNote(e.target.value)}
+                className="min-h-[68px] rounded-[12px]"
+              />
+            </div>
+          </fieldset>
+
+          <div className="mt-3 space-y-2">
+            {allTicked ? (
+              <Button className="h-10 w-full rounded-[10px]" disabled={disabled || busy} onClick={save}>
+                {busy ? 'Saving…' : 'Pass inspection'}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="h-10 w-full rounded-[10px] border-[#D9536A] text-[#D9536A] hover:bg-[#FDF0F2] hover:text-[#D9536A]"
+                disabled={disabled || busy || checks.length === 0 || !note.trim()}
+                onClick={save}
+              >
+                {busy ? 'Saving…' : 'Record failed check'}
+              </Button>
+            )}
+            {!allTicked && checks.length > 0 && !note.trim() ? (
+              <p className="text-[13px] text-slate">
+                Tick every check that passed. If one didn’t, add a note saying what, then record it.
+              </p>
+            ) : null}
+            {recorded && editing ? (
+              <Button
+                variant="ghost"
+                className="h-9 w-full rounded-[10px] text-[14px]"
+                disabled={busy}
+                onClick={() => setEditing(false)}
+              >
+                Keep the last result
+              </Button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** A recorded check: score, what failed, the note, and who checked it when. */
+function InspectionResult({ inspection, passed }: { inspection: OrderInspection; passed: boolean }) {
+  const failed = inspection.checks.filter(c => !c.passed);
+  return (
+    <div className={cn('rounded-[12px] p-3', passed ? 'bg-[#EEF9F2]' : 'bg-[#FDF0F2]')}>
+      <div className={cn('text-[14px] font-medium', passed ? 'text-[#2E9E5E]' : 'text-[#D9536A]')}>
+        {passed ? 'Passed' : 'Didn’t pass'} · {inspection.passed} of {inspection.total} checks
+      </div>
+      {failed.length ? (
+        <ul className="mt-1 list-disc pl-5 text-[13px] text-ink">
+          {failed.map(c => (
+            <li key={c.key}>{c.label}</li>
+          ))}
+        </ul>
+      ) : null}
+      {inspection.note ? <p className="mt-1 text-[13px] text-ink">“{inspection.note}”</p> : null}
+      <p className="mt-1 text-[13px] text-slate">
+        Checked{inspection.by?.name ? ` by ${inspection.by.name}` : ''} · {friendlyTime(inspection.at)}
+      </p>
+    </div>
   );
 }

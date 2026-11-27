@@ -20,10 +20,36 @@ const orderInfo = async (orderId: string) => {
       totalAmount: true,
       createdAt: true,
       trackingNumber: true,
+      deliveryMethod: true,
       auction: { select: { gadget: { select: { title: true } } } },
     },
   });
   return o ? { ...o, title: o.auction?.gadget?.title || 'Your gadget' } : null;
+};
+
+/**
+ * The hub's check passed (all points): tell the buyer once per order. Re-checks that pass
+ * again don't send a second alert.
+ */
+export const notifyBuyerInspectionPassed = async (orderId: string, passed: number, total: number) => {
+  try {
+    const o = await orderInfo(orderId);
+    if (!o?.buyerId) return;
+    if (await alreadyNotified(o.buyerId, 'fulfillment_updated', 'orderId', o.id, 'hub_passed')) return;
+    const pickup = o.deliveryMethod === 'pickup';
+    await createNotification(
+      o.buyerId,
+      'fulfillment_updated',
+      'Passed hub inspection',
+      `Your ${o.title} matched the listing (${passed} of ${total} checks). ${
+        pickup ? "We'll tell you when it's ready to collect." : 'It leaves the hub soon.'
+      }`,
+      { orderId: o.id, orderNumber: o.orderNumber, status: 'inspection_passed', reminder: 'hub_passed' },
+      ['push']
+    );
+  } catch (error) {
+    logger.warn('Inspection-passed alert failed:', error);
+  }
 };
 
 export const notifyBuyerFulfillment = async (orderId: string, status: string) => {
@@ -44,11 +70,14 @@ export const notifyBuyerFulfillment = async (orderId: string, status: string) =>
         ['push']
       );
     } else if (status === 'received_by_backoffice') {
+      // At the hub and being checked. "Passed hub inspection" waits for the inspection
+      // (notifyBuyerInspectionPassed). Only say it's arrived if the drop-off alert didn't.
+      if (await alreadyNotified(o.buyerId, 'fulfillment_updated', 'orderId', o.id)) return;
       await createNotification(
         o.buyerId,
         'fulfillment_updated',
-        'Passed hub inspection',
-        `Your ${o.title} matched the listing. It leaves the hub soon.`,
+        'At our hub for inspection',
+        `Your ${o.title} is at our Computer Village hub. We're checking it against the listing now.`,
         data,
         ['push']
       );

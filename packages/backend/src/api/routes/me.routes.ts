@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, query } from 'express-validator';
 import { authenticate } from '../middlewares/auth.middleware';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
-import { notificationMutationRateLimiter } from '../middlewares/security.middleware';
+import { notificationMutationRateLimiter, paymentVerificationRateLimiter } from '../middlewares/security.middleware';
 import { sendSuccess, sendError } from '../../utils/response';
 import logger from '../../utils/logger';
 import * as meService from '../../services/buyer/me.service';
@@ -177,6 +177,19 @@ router.delete('/saved-searches/:id', ...mutate, [uuid('id')], handleValidationEr
 
 /* ---- Saved cards ---- */
 router.get('/cards', handle((_req, uid) => savedCardService.list(uid)));
+/** "+ Add a card": a ₦50 card-only Paystack checkout, refunded once the card is saved. */
+router.post('/cards/add', ...mutate, handle((_req, uid) => savedCardService.startCardCheck(uid)));
+/** After the Paystack page: save the card and refund the ₦50. */
+router.post('/cards/add/verify', paymentVerificationRateLimiter,
+  [
+    body('reference')
+      .isString()
+      .trim()
+      .matches(/^[A-Za-z0-9_-]{6,100}$/)
+      .withMessage(savedCardService.CARD_CHECK_FAILED),
+  ],
+  handleValidationErrors,
+  handle((req, uid) => savedCardService.finishCardCheck(uid, req.body.reference)));
 router.delete('/cards/:id', ...mutate, [uuid('id')], handleValidationErrors,
   handle(async (req, uid) => {
     await savedCardService.remove(uid, req.params.id);

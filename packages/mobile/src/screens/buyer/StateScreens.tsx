@@ -14,7 +14,7 @@ import { fonts } from '../../constants';
 import { meService, MissedPayment, StrikeSummary } from '../../services/me.service';
 import { useToastStore } from '../../store/toastStore';
 
-const SUPPORT_EMAIL = 'support@gadgetbid.ng';
+const SUPPORT_EMAIL = 'help@gadgetsbidding.com';
 /** Failed · Outbid status pair from the design guide. */
 const RED = '#D9536A';
 const RED_TINT = '#FDF0F2';

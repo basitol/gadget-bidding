@@ -17,6 +17,7 @@ import {
 import { fonts } from '../../constants';
 import { addressService, api, orderService } from '../../services';
 import { meService, SavedCard } from '../../services/me.service';
+import { dropoffByLabel } from '../../services/order.service';
 import { useToastStore } from '../../store/toastStore';
 import { UserAddress } from '../../types';
 import { formatCurrency, mediaUrl } from '../../utils';
@@ -328,6 +329,8 @@ export const CheckoutAddressScreen: React.FC<{ navigation: any; route: any }> = 
     setBusy(true);
     try {
       await orderService.updateShippingAddress(orderId, {
+        // "Home" / "Work": the order's delivery card shows which saved address it goes to.
+        label: a.label,
         full_name: a.full_name,
         phone_number: a.phone_number,
         address_line1: a.address_line1,
@@ -495,10 +498,13 @@ export const PaidScreen: React.FC<{ navigation: any; route: any }> = ({ navigati
   const { order } = useOrder(orderId);
   if (!order) return <Loading title="Paid" onBack={() => navigation.goBack()} />;
 
-  const when = new Date(order.updated_at ?? Date.now());
+  // When it was paid: the server's status history (same as Order tracking), else the last update.
+  const paidEvents = ((order as any).events ?? []).filter((e: any) => e.kind === 'payment' && e.status === 'paid');
+  const when = new Date(paidEvents.length ? paidEvents[paidEvents.length - 1].at : order.updated_at ?? Date.now());
   const today = when.toDateString() === new Date().toDateString();
-  const date = `${today ? 'Today' : when.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}, ${when
-    .toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' })
+  // "Today, 2:14 pm" (design › Paid).
+  const date = `${today ? 'Today' : when.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${when
+    .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     .toLowerCase()}`;
   const pickup = order.delivery_method === 'pickup';
 
@@ -528,7 +534,12 @@ export const PaidScreen: React.FC<{ navigation: any; route: any }> = ({ navigati
         <Timeline
           steps={[
             { title: 'Paid', sub: 'Held in escrow', state: 'done' },
-            { title: 'Seller drops it at the hub', sub: 'Usually within a day', state: 'now' },
+            {
+              title: 'Seller drops it at the hub',
+              // "By tomorrow, 6:00 pm": 6 pm Lagos the next hub working day after payment.
+              sub: dropoffByLabel(order.dropoff_due_at) ?? 'Usually within a day',
+              state: 'now',
+            },
             { title: 'Checked at our hub', sub: 'We confirm it matches the listing', state: 'todo' },
             pickup
               ? { title: 'Ready for pickup', sub: "We'll tell you when to collect it", state: 'todo' }

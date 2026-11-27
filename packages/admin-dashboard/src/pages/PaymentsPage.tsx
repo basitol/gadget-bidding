@@ -108,7 +108,9 @@ export function PaymentsPage() {
                       {p.reference || p.id.slice(0, 8)}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {p.payment_method || '—'}
+                      {(p as { metadata?: { purpose?: string } }).metadata?.purpose === 'card_verification'
+                        ? 'Card check · refunded (Add a card)'
+                        : p.payment_method || '—'}
                     </div>
                   </TableCell>
                   <TableCell>

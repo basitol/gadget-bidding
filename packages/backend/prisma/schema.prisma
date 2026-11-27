@@ -290,6 +290,9 @@ model Order {
   offerExpiresAt    DateTime? @map("offer_expires_at") @db.Timestamp(6)
   /// Buyer confirmed it arrived okay (or we confirmed for them 48 hours after delivery).
   buyerConfirmedAt  DateTime? @map("buyer_confirmed_at") @db.Timestamp(6)
+  /// Hub inspection result: { checks: [{ key, label, passed }], passed, total, note, by, at }.
+  /// It can only leave the hub (shipped / collected) once every check passed.
+  inspection        Json?     @map("inspection")
   createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 

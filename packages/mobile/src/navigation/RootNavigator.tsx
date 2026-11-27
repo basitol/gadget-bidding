@@ -1,11 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as Notifications from 'expo-notifications';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import {
-  NavigationContainer,
-  createNavigationContainerRef,
-  type LinkingOptions,
-} from '@react-navigation/native';
+import { NavigationContainer, type LinkingOptions } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { registerForPush, routeForNotification } from '../services/pushNotifications';
 import { AuthNavigator } from './AuthNavigator';
 import { BuyerNavigator } from './BuyerNavigator';
@@ -26,7 +23,7 @@ const linking: LinkingOptions<Record<string, object | undefined>> = {
   },
 };
 
-export const navigationRef = createNavigationContainerRef<Record<string, object | undefined>>();
+export { navigationRef };
 
 type PendingRoute = { name: string; params?: Record<string, unknown> };
 

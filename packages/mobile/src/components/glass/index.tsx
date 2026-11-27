@@ -250,7 +250,7 @@ export const HeartButton: React.FC<{ on: boolean; onPress: () => void; size?: nu
   <Pressable
     onPress={onPress}
     hitSlop={6}
-    style={({ pressed }) => [styles.heart, { width: size, height: size, borderRadius: size / 2 }, pressed && styles.pressed]}
+    style={({ pressed }) => [styles.heart, { width: size, height: size, borderRadius: Math.round(size / 3) }, pressed && styles.pressed]}
     accessibilityRole="button"
     accessibilityLabel={on ? 'Remove from watchlist' : 'Add to watchlist'}
     accessibilityState={{ selected: on }}

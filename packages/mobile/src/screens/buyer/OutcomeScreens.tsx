@@ -31,6 +31,7 @@ import { AuthShell, AuthButton } from '../../components/auth/GlassAuthKit';
 import { fonts } from '../../constants';
 import { orderService } from '../../services';
 import { meService } from '../../services/me.service';
+import { caseService, pickCaseVideo, clipLength, CASE_VIDEO_MAX_SECONDS, CaseVideo } from '../../services/case.service';
 import { getAlertPrefs, getPushPermission, registerForPush, saveAlertPrefs } from '../../services/pushNotifications';
 import { useToastStore } from '../../store/toastStore';
 import { formatCurrency, mediaUrl } from '../../utils';
@@ -349,6 +350,7 @@ export const ReportProblemScreen: React.FC<{ navigation: any; route: any }> = ({
   const [problem, setProblem] = useState<string | null>(null);
   const [details, setDetails] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
+  const [video, setVideo] = useState<(CaseVideo & { seconds: number }) | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -375,14 +377,32 @@ export const ReportProblemScreen: React.FC<{ navigation: any; route: any }> = ({
     if (!res.canceled) setPhotos(p => [...p, ...res.assets.map(a => a.uri)].slice(0, MAX_PHOTOS));
   };
 
+  const addVideo = async () => {
+    try {
+      const picked = await pickCaseVideo();
+      if (picked) setVideo(picked);
+    } catch (e) {
+      toast(errText(e, "We couldn't open that video. Try another one."));
+    }
+  };
+
   const send = async () => {
     if (!problem || !enough) return;
     setBusy(true);
     try {
       const urls = await meService.uploadPhotos(photos);
       const res = await orderService.createDispute(orderId, problem as any, details.trim(), urls);
-      toast("Sent. We've put the seller's payment on hold and will reply within a day.", 'success');
       const disputeId = (res as any)?.data?.id;
+      let videoSent = !video;
+      if (video && disputeId) {
+        // The report is in; the video goes onto the case next.
+        videoSent = await caseService.addVideo(disputeId, video).then(
+          () => true,
+          () => false
+        );
+      }
+      if (videoSent) toast("Sent. We've put the seller's payment on hold and will reply within a day.", 'success');
+      else toast("Your report is in, but the video didn't upload. Add it again from your case.");
       if (disputeId) navigation.replace('Case', { disputeId });
       else navigation.goBack();
     } catch (e) {
@@ -435,7 +455,7 @@ export const ReportProblemScreen: React.FC<{ navigation: any; route: any }> = ({
           <Text style={styles.stepTitle} accessibilityRole="header">
             Tell us what you found
           </Text>
-          <Text style={styles.stepSub}>{chosen?.title}. A few sentences and a photo help us sort it faster.</Text>
+          <Text style={styles.stepSub}>{chosen?.title}. A few sentences and a photo or short video help us sort it faster.</Text>
           <Text style={styles.fieldLabel}>What happened?</Text>
           <TextInput
             value={details}
@@ -471,6 +491,36 @@ export const ReportProblemScreen: React.FC<{ navigation: any; route: any }> = ({
               </Pressable>
             ) : null}
           </View>
+          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Video (optional)</Text>
+          <View style={styles.photos}>
+            {video ? (
+              <View style={[styles.photo, styles.videoTile]}>
+                <View
+                  style={styles.videoInfo}
+                  accessible
+                  accessibilityLabel={video.seconds ? `Video, ${clipLength(video.seconds)} long` : 'Video added'}
+                >
+                  <Ionicons name="videocam" size={22} color={G.slate} />
+                  <Text style={styles.videoLength}>{video.seconds ? clipLength(video.seconds) : 'Video'}</Text>
+                </View>
+                <Pressable
+                  onPress={() => setVideo(null)}
+                  style={styles.photoRemove}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove video"
+                >
+                  <Ionicons name="close" size={14} color="#FFFFFF" />
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable onPress={addVideo} style={styles.addPhoto} accessibilityRole="button" accessibilityLabel="Add a video">
+                <Ionicons name="videocam-outline" size={22} color={G.blue600} />
+                <Text style={styles.addPhotoText}>Add</Text>
+              </Pressable>
+            )}
+          </View>
+          <Text style={styles.hint}>One video, up to {CASE_VIDEO_MAX_SECONDS} seconds. Show the fault happening.</Text>
         </>
       ) : (
         <>
@@ -481,7 +531,8 @@ export const ReportProblemScreen: React.FC<{ navigation: any; route: any }> = ({
           <GlassCard style={styles.review}>
             <ReviewRow k="Problem" v={chosen?.title ?? ''} />
             <ReviewRow k="What you told us" v={details.trim()} />
-            <ReviewRow k="Photos" v={photos.length ? `${photos.length} added` : 'None'} last />
+            <ReviewRow k="Photos" v={photos.length ? `${photos.length} added` : 'None'} />
+            <ReviewRow k="Video" v={video ? (video.seconds ? `1 added · ${clipLength(video.seconds)}` : '1 added') : 'None'} last />
           </GlassCard>
           <Text style={styles.fieldLabel}>What happens next</Text>
           <CheckList
@@ -572,6 +623,7 @@ const styles = StyleSheet.create({
   radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF' },
 
   fieldLabel: { color: G.slate, fontSize: 14, fontFamily: fonts.medium, marginTop: 8, marginBottom: 8 },
+  fieldLabelSpaced: { marginTop: 16 },
   textArea: {
     minHeight: 120,
     borderRadius: 14,
@@ -611,6 +663,9 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   addPhotoText: { color: G.blue600, fontSize: 12, fontFamily: fonts.medium },
+  videoTile: { backgroundColor: '#F5F6F9', alignItems: 'center', justifyContent: 'center' },
+  videoInfo: { alignItems: 'center', gap: 2 },
+  videoLength: { color: G.ink, fontSize: 12, fontFamily: fonts.medium, fontVariant: ['tabular-nums'] },
 
   review: { overflow: 'hidden', marginBottom: 12 },
   reviewRow: { paddingHorizontal: 16, paddingVertical: 12 },

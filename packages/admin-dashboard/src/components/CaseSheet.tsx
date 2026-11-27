@@ -14,6 +14,12 @@ import { label, money, when } from '@/lib/format';
 import { mediaUrl } from '@/lib/media';
 import { toast } from 'sonner';
 
+/** Case fields this sheet reads beyond the shared admin types: the buyer's video(s). */
+type CaseVideos = { videos?: string[] };
+/** Cloudinary converts on delivery: ask for MP4 so .mov uploads from iPhones play in Chrome too. */
+const playableUrl = (url: string) =>
+  /res\.cloudinary\.com\/.+\/video\/upload\//.test(url) ? url.replace(/\.mov(\?|$)/i, '.mp4$1') : url;
+
 /**
  * One case for our team: the buyer's report, the thread (reply as Gadgets Bidding team),
  * the decision with what we found, and the return + refund when it's a refund.
@@ -66,6 +72,7 @@ export function CaseSheet({
   };
 
   const decided = c && !c.in_review;
+  const videos: string[] = (c as CaseVideos | null)?.videos ?? [];
 
   return (
     <Sheet open={!!disputeId} onOpenChange={open => !open && onClose()}>
@@ -102,6 +109,26 @@ export function CaseSheet({
                   ))}
                 </div>
               ) : null}
+              {videos.map((v, i) => (
+                <div key={v} className="flex flex-col gap-1">
+                  <video
+                    src={playableUrl(mediaUrl(v))}
+                    controls
+                    preload="metadata"
+                    playsInline
+                    aria-label={`Buyer's video${videos.length > 1 ? ` ${i + 1}` : ''}`}
+                    className="max-h-80 w-full rounded-[12px] bg-ink"
+                  />
+                  <a
+                    href={mediaUrl(v)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="self-start rounded text-xs font-medium text-blue-press underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-blue-brand"
+                  >
+                    Open the video in a new tab
+                  </a>
+                </div>
+              ))}
               <p className="text-xs text-muted-foreground">Reported {when(c.created_at)}</p>
             </section>
 

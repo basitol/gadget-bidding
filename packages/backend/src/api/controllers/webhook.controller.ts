@@ -112,6 +112,13 @@ async function handleChargeSuccess(
   const metadata = (data.metadata as Record<string, unknown>) || {};
   const gatewayResponse = (data.raw as Record<string, unknown>) || data;
 
+  // "+ Add a card" ₦50 checks: save the card and refund it. Never an order payment or a wallet top-up.
+  if (gateway === 'paystack' && (await savedCardService.isCardCheckReference(reference, metadata))) {
+    logger.info(`Processing card check via webhook: ${reference}`);
+    await savedCardService.settleCardCheckFromWebhook(reference, data);
+    return;
+  }
+
   const existingTx = await prisma.paymentTransaction.findFirst({
     where: {
       gatewayReference: reference,

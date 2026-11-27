@@ -1,5 +1,8 @@
-import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import React, { useEffect } from 'react';
+import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useIsFocused } from '@react-navigation/native';
+import { OfflineOverlay } from '../components/states';
+import { useNetworkStore } from '../store/networkStore';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GlassTabBar } from './GlassTabBar';
 import {
@@ -71,8 +74,26 @@ const stackScreenOptions = {
 };
 
 /** Bottom tabs only — each destination is a standalone root screen. */
+/**
+ * The tab bar, plus the offline screen drawn just under it while we can't reach the server,
+ * so people can still move between tabs (design › States › You're offline).
+ */
+const BuyerTabBar: React.FC<BottomTabBarProps> = props => {
+  const focused = useIsFocused();
+  useEffect(() => {
+    useNetworkStore.setState({ tabsShowOffline: focused });
+    return () => useNetworkStore.setState({ tabsShowOffline: false });
+  }, [focused]);
+  return (
+    <>
+      <OfflineOverlay inTabs />
+      <GlassTabBar {...props} />
+    </>
+  );
+};
+
 const BuyerTabs: React.FC = () => (
-  <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={props => <GlassTabBar {...props} />}>
+  <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={props => <BuyerTabBar {...props} />}>
     <Tab.Screen name="Home" component={BuyerHomeScreen as any} />
     <Tab.Screen name="Explore" component={ExploreScreen as any} />
     <Tab.Screen name="Watchlist" component={WatchlistScreen as any} />

@@ -11,6 +11,7 @@ import * as auctionService from '../../services/auction/auction.service';
 import * as supportService from '../../services/support/support.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as overviewService from '../../services/admin/overview.service';
+import * as auditService from '../../services/audit/audit.service';
 
 const toNumber = (value: unknown): number => {
   if (value == null) return 0;
@@ -50,6 +51,14 @@ const audit = async (
 /**
  * GET /api/v1/admin/stats
  */
+/** Payment counts for the dashboard, leaving out ₦50 "Add a card" checks (refunded straight away). */
+const countPayments = async (status: string): Promise<number> => {
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT COUNT(*)::bigint AS n FROM payment_transactions
+    WHERE status = ${status} AND COALESCE(metadata->>'purpose', '') <> 'card_verification'`;
+  return Number(rows[0]?.n ?? 0);
+};
+
 export const getAdminStats = async (_req: Request, res: Response) => {
   try {
     const sevenDaysAgo = new Date();
@@ -108,8 +117,8 @@ export const getAdminStats = async (_req: Request, res: Response) => {
         },
       }),
       prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
-      prisma.paymentTransaction.count({ where: { status: 'success' } }),
-      prisma.paymentTransaction.count({ where: { status: 'pending' } }),
+      countPayments('success'),
+      countPayments('pending'),
     ]);
 
     sendSuccess(res, {
@@ -607,8 +616,11 @@ export const getAllOrders = async (req: Request, res: Response) => {
         payout_reference: o.payoutReference,
         payment_status: o.paymentStatus,
         fulfillment_status: o.fulfillmentStatus,
+        delivery_method: o.deliveryMethod,
         shipping_address: o.shippingAddress,
         tracking_number: o.trackingNumber,
+        /** Hub check (admin only: includes who did it). */
+        inspection: o.inspection ?? null,
         created_at: o.createdAt?.toISOString(),
         updated_at: o.updatedAt?.toISOString(),
         gadget_title: o.auction?.gadget?.title,
@@ -690,6 +702,67 @@ export const updateOrder = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Admin update order error:', error);
     sendError(res, error.message || 'Failed to update order', 400);
+  }
+};
+
+/**
+ * GET /api/v1/admin/inspection-checks
+ * The hub's checklist, in order.
+ */
+export const getInspectionChecks = (_req: Request, res: Response) => {
+  sendSuccess(res, orderService.HUB_INSPECTION_CHECKS);
+};
+
+/**
+ * POST /api/v1/admin/orders/:id/inspection
+ * Record the hub check for an order at the hub:
+ * { checks: { imei_match: true, ... } | [{ key, passed }], note? } (note required if any check fails).
+ */
+export const recordInspection = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const staff = await prisma.user.findUnique({
+      where: { id: req.user!.user_id },
+      select: { fullName: true },
+    });
+    const result = await orderService.recordInspection(
+      id,
+      { id: req.user!.user_id, name: staff?.fullName ?? null },
+      req.body ?? {}
+    );
+
+    auditService.recordAuditEventSafe({
+      req,
+      action: 'order_inspection',
+      resourceType: 'order',
+      resourceId: id,
+      changes: {
+        order_number: result.order_number,
+        passed: result.inspection.passed,
+        total: result.inspection.total,
+        failed: result.inspection.checks.filter(c => !c.passed).map(c => c.key),
+        note: result.inspection.note,
+      },
+    });
+
+    if (result.all_passed) {
+      void buyerAlerts.notifyBuyerInspectionPassed(id, result.inspection.passed, result.inspection.total);
+    }
+
+    sendSuccess(
+      res,
+      result,
+      result.all_passed
+        ? 'Passed the hub check. It can leave the hub now.'
+        : "Saved. It stays at the hub until every check passes."
+    );
+  } catch (error: any) {
+    logger.error('Admin record inspection error:', error);
+    sendError(
+      res,
+      error.message || "Couldn't save the inspection",
+      error.message === 'Order not found' ? 404 : 400
+    );
   }
 };
 

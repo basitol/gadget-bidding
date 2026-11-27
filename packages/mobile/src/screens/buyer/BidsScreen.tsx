@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, FlatList, StyleSheet, RefreshControl, ActivityIndicator, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useReloadOnReconnect } from '../../store/networkStore';
 import {
   G,
   GlassScreen,
@@ -60,6 +61,7 @@ export const BidsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       load(tab);
     }, [load, tab])
   );
+  useReloadOnReconnect(useCallback(() => load(tab), [load, tab]));
 
   const openAuction = (id: string) => navigation.navigate('AuctionDetail', { auctionId: id });
 

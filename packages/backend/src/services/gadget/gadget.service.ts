@@ -13,6 +13,16 @@ import fs from 'fs';
 import path from 'path';
 import { sellerCode } from '../buyer/sellerSummary.service';
 
+/** A warranty end date only means something for a seller or manufacturer warranty. */
+const cleanSpecifications = <T extends Record<string, unknown> | undefined>(specs: T): T => {
+  if (!specs || !('warranty_until' in specs)) return specs;
+  const { warranty_until, ...rest } = specs;
+  const keep =
+    warranty_until &&
+    (specs.warranty === 'seller' || specs.warranty === 'manufacturer');
+  return (keep ? { ...rest, warranty_until } : rest) as T;
+};
+
 /**
  * Create a new gadget listing
  */
@@ -37,7 +47,7 @@ export const createGadget = async (
       data.brand || null,
       data.model || null,
       data.condition,
-      JSON.stringify(data.specifications || {}),
+      JSON.stringify(cleanSpecifications(data.specifications) || {}),
       normalizeMediaPaths(data.images),
       initialStatus,
       data.auction_starting_price ?? null,
@@ -240,7 +250,7 @@ export const updateGadget = async (
 
     if (updates.specifications) {
       updateFields.push(`specifications = $${paramIndex}`);
-      values.push(JSON.stringify(updates.specifications));
+      values.push(JSON.stringify(cleanSpecifications(updates.specifications)));
       paramIndex++;
     }
 

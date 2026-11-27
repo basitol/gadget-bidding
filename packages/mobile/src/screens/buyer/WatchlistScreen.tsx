@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, FlatList, StyleSheet, Image, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useReloadOnReconnect } from '../../store/networkStore';
 import { Ionicons } from '@expo/vector-icons';
 import {
   G,
@@ -46,6 +47,7 @@ export const WatchlistScreen: React.FC<{ navigation: any }> = ({ navigation }) =
       load(filter);
     }, [load, filter])
   );
+  useReloadOnReconnect(useCallback(() => load(filter), [load, filter]));
 
   const unwatch = async (id: string) => {
     setRows(r => r.filter(x => x.id !== id));

@@ -172,12 +172,23 @@ export interface Order {
   paid_at?: string;
   shipped_at?: string;
   delivered_at?: string;
+  /** Paid, not at the hub yet: the seller drops it off by this time (6 pm Lagos, next hub working day). */
+  dropoff_due_at?: string | null;
+  /** Hub check score ("7 of 7 checks") once recorded. */
+  inspection?: OrderInspectionSummary | null;
   created_at: string;
   updated_at: string;
   auction?: Auction;
   gadget?: Gadget;
   buyer?: User;
   seller?: User;
+}
+
+/** What the hub checked before it left: how many of the checks passed, and when. */
+export interface OrderInspectionSummary {
+  passed: number;
+  total: number;
+  at: string;
 }
 
 export type DisputeType =
@@ -212,6 +223,8 @@ export interface ShippingAddress {
   country: string;
   /** Optional note for the rider ("Call when you get to the gate"). */
   delivery_note?: string;
+  /** On an order: the saved address's name ("Home", "Work") picked at checkout. */
+  label?: string;
 }
 
 export interface UserAddress extends ShippingAddress {

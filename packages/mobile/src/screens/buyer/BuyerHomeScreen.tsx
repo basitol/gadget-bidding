@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, Image, Pressable, ScrollView, StyleSheet, RefreshControl, FlatList } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useReloadOnReconnect } from '../../store/networkStore';
 import { Ionicons } from '@expo/vector-icons';
 import {
   G,
@@ -62,6 +63,7 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
       loadWatch();
     }, [load, loadWatch])
   );
+  useReloadOnReconnect(load);
 
   const refresh = async () => {
     setRefreshing(true);

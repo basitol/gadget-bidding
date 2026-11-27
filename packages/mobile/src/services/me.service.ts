@@ -86,6 +86,23 @@ export interface SavedCard {
   label: string;
 }
 
+/** "+ Add a card": the ₦50 Paystack card check to open in a web view. */
+export interface CardCheckStart {
+  authorization_url: string;
+  reference: string;
+  amount: number;
+}
+
+/** The card check is done: the card is saved and the ₦50 refunded (or on its way). */
+export interface CardCheckDone {
+  cards: SavedCard[];
+  card: SavedCard | null;
+  already_saved: boolean;
+  refunded: boolean;
+  /** e.g. "Card added. We refunded the ₦50 check." */
+  message: string;
+}
+
 /** Profile › Privacy & your data (GET/PUT /me/privacy). */
 export interface PrivacySettings {
   /** "Deals and new auctions by email": the same switch as Notifications › Offers and news. */
@@ -207,6 +224,10 @@ export const meService = {
   cards: () => call<SavedCard[]>(api.get('/me/cards')),
   deleteCard: (id: string) => call<SavedCard[]>(api.delete(`/me/cards/${id}`)),
   defaultCard: (id: string) => call<SavedCard[]>(api.put(`/me/cards/${id}/default`)),
+  /** "+ Add a card": open a ₦50 card-only Paystack checkout (refunded once the card is saved). */
+  startAddCard: () => call<CardCheckStart>(api.post('/me/cards/add')),
+  /** After the Paystack page: save the card and refund the ₦50. Errors are plain words. */
+  finishAddCard: (reference: string) => call<CardCheckDone>(api.post('/me/cards/add/verify', { reference })),
   payWithCard: (orderId: string, cardId: string) =>
     call(api.post(`/me/orders/${orderId}/pay-with-card`, { card_id: cardId })),
 

@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Linking, ScrollView, TextInput, Dimensions } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { G, GlassScreen, GlassHeader, GlassCard, PrimaryButton, TextButton, CheckList, FooterBar, GadgetImage, SectionLabel } from '../glass';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fonts } from '../../constants';
 import { useNetworkStore } from '../../store/networkStore';
+import { useAuthStore } from '../../store/authStore';
+import { navigationRef } from '../../navigation/navigationRef';
 import { formatCurrency } from '../../utils';
 import api from '../../services/api';
 
-const SUPPORT_EMAIL = 'support@gadgetbid.ng';
+const SUPPORT_EMAIL = 'help@gadgetsbidding.com';
 
 /** Icon on a soft tile, title and one line under it. */
 const StateHero: React.FC<{ icon: React.ReactNode; tint: string; title: string; sub: React.ReactNode }> = ({
@@ -27,15 +30,26 @@ const StateHero: React.FC<{ icon: React.ReactNode; tint: string; title: string; 
 
 /* ================= Offline ================= */
 
-/** Covers the app while we can't reach the server; checks again on its own every few seconds. */
-export const OfflineOverlay: React.FC = () => {
+/** Height the buyer tab bar takes at the bottom (GlassTabBar: 64 bar + safe-area padding). */
+const tabBarSpace = (bottomInset: number) => 64 + Math.max(bottomInset, 12);
+
+/**
+ * Covers the app while we can't reach the server; checks again on its own every few seconds.
+ * On the buyer tabs it's drawn under the tab bar (`inTabs`) so people can still switch tabs;
+ * the full-screen copy steps aside then.
+ */
+export const OfflineOverlay: React.FC<{ inTabs?: boolean }> = ({ inTabs = false }) => {
   const offline = useNetworkStore(s => s.offline);
   const checking = useNetworkStore(s => s.checking);
   const check = useNetworkStore(s => s.check);
+  const tabsShowOffline = useNetworkStore(s => s.tabsShowOffline);
+  const insets = useSafeAreaInsets();
   if (!offline) return null;
+  if (!inTabs && tabsShowOffline) return null;
+  const retry = <PrimaryButton label={checking ? 'Checking…' : 'Try again'} onPress={check} disabled={checking} />;
   return (
-    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
-      <GlassScreen edges={['top', 'bottom']}>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal={!inTabs}>
+      <GlassScreen edges={inTabs ? ['top'] : ['top', 'bottom']}>
         <View style={styles.center}>
           <StateHero
             icon={<MaterialCommunityIcons name="wifi-off" size={40} color={G.slate} />}
@@ -57,9 +71,11 @@ export const OfflineOverlay: React.FC = () => {
             />
           </GlassCard>
         </View>
-        <FooterBar>
-          <PrimaryButton label={checking ? 'Checking…' : 'Try again'} onPress={check} disabled={checking} />
-        </FooterBar>
+        {inTabs ? (
+          <View style={[styles.pad, { paddingBottom: tabBarSpace(insets.bottom) + 16 }]}>{retry}</View>
+        ) : (
+          <FooterBar>{retry}</FooterBar>
+        )}
       </GlassScreen>
     </View>
   );
@@ -70,6 +86,29 @@ export const OfflineOverlay: React.FC = () => {
 /** "GB-7F3A": short code from the crash report so support can find it. */
 export const errorCodeFrom = (eventId?: string | null) =>
   `GB-${(eventId || Math.random().toString(16).slice(2)).replace(/-/g, '').slice(0, 4).toUpperCase()}`;
+
+/**
+ * "Contact support" on the error screen: the in-app support chat when signed in (with the error
+ * code already typed), else an email. The error screen may have replaced the whole app, so we
+ * clear it first and wait for navigation to come back before opening the chat.
+ */
+const contactSupport = (code: string, onRetry: () => void) => {
+  const email = () =>
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`App error ${code}`)}`).catch(() => {});
+  if (!useAuthStore.getState().isAuthenticated) return email();
+  onRetry();
+  let tries = 0;
+  const open = () => {
+    if (navigationRef.isReady()) {
+      navigationRef.navigate('SupportChat', { draft: `App error ${code}: ` });
+    } else if (++tries < 20) {
+      setTimeout(open, 100);
+    } else {
+      email();
+    }
+  };
+  setTimeout(open, 50);
+};
 
 export const ErrorState: React.FC<{ code: string; onRetry: () => void; onBack?: () => void }> = ({ code, onRetry, onBack }) => (
   <GlassScreen edges={['top', 'bottom']}>
@@ -89,12 +128,7 @@ export const ErrorState: React.FC<{ code: string; onRetry: () => void; onBack?: 
     </View>
     <FooterBar>
       <PrimaryButton label="Try again" onPress={onRetry} />
-      <TextButton
-        label="Contact support"
-        onPress={() =>
-          Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`App error ${code}`)}`).catch(() => {})
-        }
-      />
+      <TextButton label="Contact support" onPress={() => contactSupport(code, onRetry)} />
     </FooterBar>
   </GlassScreen>
 );

@@ -447,6 +447,18 @@ export type Overview = {
 };
 
 export type RuleRow = { key: string; label: string; value: string; note?: string };
+
+/** One line of the hub's 7-point check. */
+export type InspectionCheck = { key: string; label: string };
+/** What the hub recorded for an order (admin only: includes who checked it). */
+export type OrderInspection = {
+  checks: (InspectionCheck & { passed: boolean })[];
+  passed: number;
+  total: number;
+  note: string | null;
+  by: { id: string; name: string | null };
+  at: string;
+};
 export type ChecklistItem = { key: string; label: string; done: boolean; hint: string };
 
 export type ReleaseSettings = {
@@ -556,6 +568,16 @@ export const adminApi = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+
+  /** The hub's checklist, in order. */
+  inspectionChecks: () => request<{ data: InspectionCheck[] }>('/admin/inspection-checks'),
+
+  /** Record the hub check for an order at the hub. A note is required when any check fails. */
+  recordInspection: (id: string, body: { checks: Record<string, boolean>; note?: string }) =>
+    request<{ data: { inspection: OrderInspection; all_passed: boolean }; message?: string }>(
+      `/admin/orders/${id}/inspection`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
 
   createSecondPlaceOffer: (id: string) =>
     request(`/admin/orders/${id}/second-place-offer`, {

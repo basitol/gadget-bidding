@@ -274,7 +274,9 @@ export const resolveAccount = async (req: Request, res: Response) => {
  * back into the app, so the balance is updated even if the app never retries.
  */
 export const handlePaymentCallback = async (req: Request, res: Response) => {
-  const reference = (req.query.reference || req.query.trxref || '') as string;
+  // Paystack's redirect can repeat `reference` (?reference=x&reference=x), which Express reads as an array.
+  const rawRef = req.query.reference || req.query.trxref || '';
+  const reference = String(Array.isArray(rawRef) ? rawRef[0] : rawRef).trim();
   const deepLinkUrl = `${config.mobileAppUrl}wallet/verify?reference=${encodeURIComponent(reference)}`;
 
   let paymentStatus: 'success' | 'pending' = 'success';
@@ -283,14 +285,21 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
 
   if (reference) {
     try {
-      const txResult = await query<{ user_id: string; payment_gateway: string }>(
-        'SELECT user_id, payment_gateway FROM payment_transactions WHERE gateway_reference = $1',
+      const txResult = await query<{ user_id: string; payment_gateway: string; metadata: any }>(
+        'SELECT user_id, payment_gateway, metadata FROM payment_transactions WHERE gateway_reference = $1',
         [reference]
       );
       const userId = txResult[0]?.user_id;
       const gateway = resolveGatewayName(txResult[0]?.payment_gateway);
+      // Only wallet top-ups are finished here. Order payments and "Add a card" checks are
+      // confirmed by the app (and the webhook), so this page just sends people back.
+      const purpose = txResult[0]?.metadata?.purpose;
+      const isTopUp = !purpose || purpose === 'wallet_funding';
+      if (userId && !isTopUp) {
+        paymentMessage = 'Go back to Gadgets Bidding to finish. The app confirms your payment.';
+      }
 
-      if (userId) {
+      if (userId && isTopUp) {
         const verification = await getGatewayService(gateway).verifyPayment(
           reference
         );

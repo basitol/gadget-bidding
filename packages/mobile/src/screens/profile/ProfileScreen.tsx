@@ -172,7 +172,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         title: 'Help & Support',
         subtitle: 'Get assistance',
         onPress: () =>
-          Alert.alert('Help', 'Email support@gadgetbid.ng for help.'),
+          Alert.alert('Help', 'Email help@gadgetsbidding.com for help.'),
       },
     ];
   }, [isSeller, navigation, wallet?.balance]);

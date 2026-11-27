@@ -403,11 +403,14 @@ export const paymentState = async (
  * Refund a successful Paystack transaction in full, back to the card or bank it came from.
  * Paystack processes it in the background (usually 3–5 working days to reach the buyer).
  */
-export const refundTransaction = async (reference: string): Promise<{ id: string; status: string }> => {
+export const refundTransaction = async (
+  reference: string,
+  merchantNote = 'Gadgets Bidding case refund'
+): Promise<{ id: string; status: string }> => {
   try {
     const { data } = await axios.post(
       `${PAYSTACK_BASE_URL}/refund`,
-      { transaction: reference, merchant_note: 'Gadgets Bidding case refund' },
+      { transaction: reference, merchant_note: merchantNote },
       { headers: chargeHeaders() }
     );
     if (!data?.status) throw new Error(data?.message || 'Refund was not accepted');

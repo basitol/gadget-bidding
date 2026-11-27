@@ -94,7 +94,9 @@ export const SupportScreen: React.FC<{ navigation: any; route: any }> = ({ navig
   const [thread, setThread] = useState<SupportThread | null>(null);
   const [order, setOrder] = useState<SupportOrder | null>(null);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
-  const [text, setText] = useState(orderNumber ? `About order ${orderNumber}: ` : '');
+  // Pre-filled from an order ("About order …") or the error screen ("App error GB-…").
+  const draft: string | undefined = route?.params?.draft;
+  const [text, setText] = useState(orderNumber ? `About order ${orderNumber}: ` : draft ?? '');
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [sending, setSending] = useState(false);

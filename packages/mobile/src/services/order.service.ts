@@ -246,3 +246,37 @@ export interface UssdDetails {
 }
 
 export const orderService = new OrderService();
+
+/* ---------------- Seller drop-off deadline ---------------- */
+
+/** Lagos is UTC+1 all year (no daylight saving), so the hub's times are shown in Lagos time. */
+const LAGOS_OFFSET_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const lagosDay = (t: number) => Math.floor((t + LAGOS_OFFSET_MS) / DAY_MS);
+
+/**
+ * When the seller has to drop the item at the hub (the order's `dropoff_due_at`), in Lagos time:
+ * "By tomorrow, 6:00 pm", "By Mon, 6:00 pm", "By Dec 9, 6:00 pm". Null when there's no deadline.
+ */
+export const dropoffByLabel = (iso?: string | null, now = Date.now()): string | null => {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const l = new Date(t + LAGOS_OFFSET_MS);
+  const h = l.getUTCHours();
+  const time = `${h % 12 || 12}:${String(l.getUTCMinutes()).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
+  const days = lagosDay(t) - lagosDay(now);
+  const day =
+    days === 0
+      ? 'today'
+      : days === 1
+        ? 'tomorrow'
+        : days === -1
+          ? 'yesterday'
+          : days > 1 && days < 7
+            ? WEEKDAYS[l.getUTCDay()]
+            : `${MONTHS[l.getUTCMonth()]} ${l.getUTCDate()}`;
+  return `${days < 0 ? 'Due' : 'By'} ${day}, ${time}`;
+};

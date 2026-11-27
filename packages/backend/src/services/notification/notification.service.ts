@@ -886,7 +886,7 @@ export const alreadyNotified = async (
   type: NotificationType,
   key: 'auctionId' | 'orderId',
   value: string,
-  /** For staged reminders ('1h', '15m', '12h', '2h'): only that stage counts. */
+  /** Stage stored in data.reminder ('1h', '15m', '12h', '2h', 'hub_passed'): only that stage counts. */
   reminder?: string
 ): Promise<boolean> => {
   const rows = await query(

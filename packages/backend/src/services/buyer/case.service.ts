@@ -1,6 +1,15 @@
 import { randomBytes } from 'crypto';
+import fs from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
+import config from '../../config';
 import prisma from '../../config/prisma';
 import logger from '../../utils/logger';
+import { isCloudinaryEnabled } from '../media/cloudinary.service';
+import {
+  buildUploadPath,
+  CASE_VIDEO_MAX_SECONDS,
+  videoDurationSeconds,
+} from '../../api/middlewares/upload.middleware';
 import { applyBalanceDelta } from '../../utils/wallet-balance';
 import * as notificationService from '../notification/notification.service';
 import * as paystackService from '../payment/paystack.service';
@@ -31,6 +40,9 @@ const PROBLEM_LABEL: Record<string, string> = {
 const OPEN = ['open', 'investigating'];
 
 type Viewer = 'buyer' | 'seller' | 'team';
+/** disputes.evidence: photos from the report, plus one short video. */
+type Evidence = { photos?: string[]; videos?: string[] };
+const MAX_CASE_VIDEOS = 1;
 
 const loadCase = (disputeId: string) =>
   prisma.dispute.findUnique({
@@ -56,7 +68,8 @@ const caseFor = async (userId: string, disputeId: string) => {
 const format = async (d: LoadedCase, viewer: Viewer, viewerId?: string) => {
   const o = d.order!;
   const g = o.auction?.gadget;
-  const evidence = (d.evidence ?? {}) as { photos?: string[] };
+  const evidence = (d.evidence ?? {}) as Evidence;
+  const specs = (g?.specifications ?? {}) as { warranty?: string; warranty_until?: string };
   const firstSeller = d.messages.find(m => m.authorRole === 'seller');
   const firstTeam = d.messages.find(m => m.authorRole === 'team');
   const nameFor = (role: string) =>
@@ -76,6 +89,7 @@ const format = async (d: LoadedCase, viewer: Viewer, viewerId?: string) => {
       viewer === 'buyer' && d.outcome === 'not_upheld' && !d.secondReviewRequestedAt && d.status === 'resolved',
     problem: { type: d.disputeType, label: PROBLEM_LABEL[d.disputeType] ?? 'Problem', description: d.description },
     photos: evidence.photos ?? [],
+    videos: evidence.videos ?? [],
     created_at: d.createdAt?.toISOString() ?? null,
     timeline: {
       reported_at: d.createdAt?.toISOString() ?? null,
@@ -100,7 +114,14 @@ const format = async (d: LoadedCase, viewer: Viewer, viewerId?: string) => {
             condition: g.condition,
             brand: g.brand,
             // From the listing: 'none' | 'seller' | 'manufacturer' | 'applecare'
-            warranty: ((g.specifications ?? {}) as { warranty?: string }).warranty ?? null,
+            warranty: specs.warranty ?? null,
+            // YYYY-MM-DD, only for a seller or manufacturer warranty
+            warranty_until:
+              (specs.warranty === 'seller' || specs.warranty === 'manufacturer') &&
+              typeof specs.warranty_until === 'string' &&
+              /^\d{4}-\d{2}-\d{2}$/.test(specs.warranty_until)
+                ? specs.warranty_until
+                : null,
           }
         : null,
     },
@@ -226,6 +247,88 @@ export const askSecondReview = async (userId: string, disputeId: string) => {
       route: '/disputes',
     })
     .catch(() => {});
+  return getCase(userId, disputeId);
+};
+
+/* ---------------- Video evidence ---------------- */
+
+const removeQuietly = (filePath: string) => {
+  fs.promises.unlink(filePath).catch(() => logger.warn(`Could not delete upload: ${filePath}`));
+};
+
+/** Checked before the upload starts too: only the buyer, while the case is open, one video per case. */
+export const checkCanAddVideo = async (userId: string, disputeId: string) => {
+  const { d, viewer } = await caseFor(userId, disputeId);
+  if (viewer !== 'buyer') throw new Error('Only the buyer can add a video.');
+  if (!OPEN.includes(d.status || '')) throw new Error("This case is closed, so you can't add a video now.");
+  if ((((d.evidence ?? {}) as Evidence).videos ?? []).length >= MAX_CASE_VIDEOS) {
+    throw new Error("You've already added a video to this report.");
+  }
+  return d;
+};
+
+const uploadVideoToCloudinary = async (localPath: string) => {
+  cloudinary.config({
+    cloud_name: config.cloudinary.cloudName,
+    api_key: config.cloudinary.apiKey,
+    api_secret: config.cloudinary.apiSecret,
+    secure: true,
+  });
+  try {
+    const result = await cloudinary.uploader.upload(localPath, {
+      folder: 'gadget-bidding/cases',
+      resource_type: 'video',
+    });
+    logger.info(`Cloudinary video upload: ${result.public_id}`);
+    return result.secure_url;
+  } finally {
+    removeQuietly(localPath);
+  }
+};
+
+/**
+ * The buyer's video for their report (mp4/mov, up to 60 seconds). Stored like listing photos:
+ * Cloudinary when it's set up, otherwise /uploads. Saved to evidence.videos.
+ */
+export const addVideo = async (userId: string, disputeId: string, file: Express.Multer.File) => {
+  let d: Awaited<ReturnType<typeof checkCanAddVideo>>;
+  try {
+    d = await checkCanAddVideo(userId, disputeId);
+    const seconds = videoDurationSeconds(file.path);
+    if (seconds == null) throw new Error("We couldn't read that video. Try an MP4 or MOV file.");
+    if (seconds > CASE_VIDEO_MAX_SECONDS + 1) {
+      throw new Error(`That video is ${Math.round(seconds)} seconds. Trim it to ${CASE_VIDEO_MAX_SECONDS} seconds or less.`);
+    }
+  } catch (error) {
+    removeQuietly(file.path);
+    throw error;
+  }
+
+  const url = isCloudinaryEnabled() ? await uploadVideoToCloudinary(file.path) : buildUploadPath(file.filename);
+
+  // Read again: another upload may have finished while this one was storing.
+  const fresh = await prisma.dispute.findUnique({ where: { id: d.id }, select: { evidence: true } });
+  const evidence = (fresh?.evidence ?? {}) as Evidence;
+  const videos = evidence.videos ?? [];
+  if (videos.length >= MAX_CASE_VIDEOS) {
+    if (url.startsWith('/uploads/')) removeQuietly(file.path);
+    throw new Error("You've already added a video to this report.");
+  }
+  await prisma.dispute.update({
+    where: { id: d.id },
+    data: { evidence: { ...evidence, videos: [...videos, url] }, updatedAt: new Date() },
+  });
+
+  // A video sent with the report arrives seconds after it; only tell the team about later ones.
+  if (d.createdAt && Date.now() - d.createdAt.getTime() > 5 * 60_000) {
+    notificationService
+      .notifyAdmins('dispute_updated', `Case ${caseLabel(d.caseNumber)}: the buyer added a video`, 'Watch it in the case.', {
+        disputeId: d.id,
+        route: '/disputes',
+      })
+      .catch(() => {});
+  }
+  logger.info(`Video added to case ${caseLabel(d.caseNumber)}`);
   return getCase(userId, disputeId);
 };
 

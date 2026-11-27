@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useReloadOnReconnect } from '../../store/networkStore';
 import Constants from 'expo-constants';
 import { G, GlassScreen, GlassHeader, GlassCard, SectionLabel, MenuRow } from '../../components/glass';
 import { fonts } from '../../constants';
@@ -29,6 +30,7 @@ export const BuyerProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
       load();
     }, [load])
   );
+  useReloadOnReconnect(load);
 
   const handle = [s?.username ? `@${s.username}` : contactLabel(user as any), s?.location].filter(Boolean).join(' · ');
 

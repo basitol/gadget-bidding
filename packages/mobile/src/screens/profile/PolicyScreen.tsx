@@ -108,7 +108,7 @@ const PRIVACY_SECTIONS = [
   },
   {
     title: 'Contact us',
-    body: 'Questions, requests, or complaints about your data can be sent to support@gadgetbid.ng or through in-app support. Our Data Protection Officer can be reached at the same address.',
+    body: 'Questions, requests, or complaints about your data can be sent to privacy@gadgetsbidding.com or through in-app support. Our Data Protection Officer can be reached at the same address.',
   },
 ];
 

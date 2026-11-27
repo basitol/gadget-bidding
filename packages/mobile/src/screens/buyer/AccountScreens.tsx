@@ -1,3 +1,4 @@
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -12,7 +13,9 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -244,10 +247,16 @@ const BrandTile: React.FC<{ brand: string }> = ({ brand }) => {
   );
 };
 
+const ADD_CARD_FAILED = "We couldn't add that card. Try again or use another card.";
+
 export const PaymentMethodsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { wallet, fetchWallet } = useWalletStore();
   const [cards, setCards] = useState<SavedCard[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // "+ Add a card": a ₦50 Paystack card check in a web view, refunded once the card is saved.
+  const [check, setCheck] = useState<{ url: string; reference: string } | null>(null);
+  const [adding, setAdding] = useState<'opening' | 'checking' | null>(null);
+  const checkEnded = useRef(false);
 
   const load = useCallback(async () => {
     fetchWallet().catch(() => {});
@@ -294,6 +303,54 @@ export const PaymentMethodsScreen: React.FC<{ navigation: any }> = ({ navigation
         },
       },
     ]);
+
+  const addCard = async () => {
+    if (adding) return;
+    setAdding('opening');
+    try {
+      const started = await meService.startAddCard();
+      checkEnded.current = false;
+      setCheck({ url: started.authorization_url, reference: started.reference });
+    } catch (e) {
+      toast(errText(e, ADD_CARD_FAILED), 'error');
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  /**
+   * Paystack is done (paid, or the buyer closed it): leave the web view and ask the server what
+   * happened. It saves the card and refunds the ₦50, or says in plain words why not
+   * (closed before paying → "You didn't finish adding the card. No money was taken.").
+   */
+  const endCheck = async (closedEarly: boolean) => {
+    if (!check || checkEnded.current) return;
+    checkEnded.current = true;
+    const { reference } = check;
+    setCheck(null);
+    setAdding('checking');
+    try {
+      const done = await meService.finishAddCard(reference);
+      setCards(done.cards);
+      toast(done.message || 'Card added. We refunded the ₦50 check.');
+    } catch (e) {
+      // Closing Paystack isn't a failure: say what happened without the red.
+      useToastStore.getState().show(errText(e, ADD_CARD_FAILED), closedEarly ? 'info' : 'error');
+    } finally {
+      setAdding(null);
+    }
+  };
+
+  // Paystack sends the buyer to our /wallet/verify page after paying, or with
+  // ?card_check=cancelled when they press Close. Stop there; other pages (bank checks) load.
+  const onCheckNavigation = (req: { url: string }) => {
+    const url = req.url || '';
+    if (url.includes('/wallet/verify')) {
+      endCheck(url.includes('card_check=cancelled'));
+      return false;
+    }
+    return true;
+  };
 
   return (
     <GlassScreen>
@@ -346,12 +403,27 @@ export const PaymentMethodsScreen: React.FC<{ navigation: any }> = ({ navigation
             <Ionicons name="card-outline" size={28} color={G.blue} />
             <Text style={styles.emptyTitle}>No saved cards yet</Text>
             <Text style={styles.emptyText}>
-              Pay for a win with a card once and we'll keep it here, so next time is one tap. Paystack holds the card; we
-              only keep the last 4 digits.
+              Add a card, or pay for a win with one, and we'll keep it here so next time is one tap. Paystack holds the
+              card; we only keep the last 4 digits.
             </Text>
           </GlassCard>
-        ) : cards?.length ? (
-          <Text style={styles.help}>New cards are saved when you pay for a win with them.</Text>
+        ) : null}
+
+        {cards !== null ? (
+          <Pressable
+            onPress={addCard}
+            disabled={!!adding}
+            style={({ pressed }) => [styles.addNew, pressed && styles.addNewPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Add a card"
+            accessibilityHint="Opens Paystack. We charge ₦50 to check the card and refund it straight away."
+            accessibilityState={{ disabled: !!adding, busy: !!adding }}
+          >
+            {adding ? <ActivityIndicator color={G.blue} size="small" /> : null}
+            <Text style={styles.addNewText}>
+              {adding === 'opening' ? 'Opening Paystack…' : adding === 'checking' ? 'Checking your card…' : '+ Add a card'}
+            </Text>
+          </Pressable>
         ) : null}
 
         <GlassCard style={styles.note}>
@@ -371,6 +443,35 @@ export const PaymentMethodsScreen: React.FC<{ navigation: any }> = ({ navigation
           <PrimaryButton label="Manage" compact onPress={() => navigation.navigate('Wallet')} />
         </GlassCard>
       </ScrollView>
+
+      <Modal visible={!!check} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => endCheck(true)}>
+        {/* A Modal is its own native root: give it safe-area insets so the header clears the status bar. */}
+        <SafeAreaProvider>
+        <GlassScreen edges={['top', 'bottom']}>
+          <GlassHeader title="Add a card" onBack={() => endCheck(true)} />
+          <Text style={styles.checkNote}>We charge ₦50 to check the card, then refund it straight away.</Text>
+          <View style={styles.webWrap}>
+            {check ? (
+              <WebView
+                source={{ uri: check.url }}
+                onShouldStartLoadWithRequest={onCheckNavigation}
+                startInLoadingState
+                renderLoading={() => (
+                  <View style={styles.webLoading}>
+                    <ActivityIndicator color={G.blue} />
+                  </View>
+                )}
+                javaScriptEnabled
+                domStorageEnabled
+                thirdPartyCookiesEnabled
+                sharedCookiesEnabled
+                style={styles.web}
+              />
+            ) : null}
+          </View>
+        </GlassScreen>
+        </SafeAreaProvider>
+      </Modal>
     </GlassScreen>
   );
 };
@@ -966,6 +1067,33 @@ const styles = StyleSheet.create({
   note: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginTop: 8, marginBottom: 8 },
   noteIcon: { width: 28, height: 28, resizeMode: 'contain' },
   noteText: { flex: 1, color: G.slate, fontSize: 13, lineHeight: 19, fontFamily: fonts.regular },
+  // Same quiet dashed row as checkout's "+ Add a new address".
+  addNew: {
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(28,31,42,0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  addNewPressed: { opacity: 0.7 },
+  addNewText: { color: G.blue, fontSize: 15, fontFamily: fonts.medium },
+  checkNote: {
+    color: G.slate,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: fonts.regular,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  webWrap: { flex: 1, marginHorizontal: 20, marginBottom: 12, borderRadius: 18, overflow: 'hidden', backgroundColor: '#FFFFFF' },
+  web: { flex: 1, backgroundColor: '#FFFFFF' },
+  webLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   walletCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 16 },
   walletValue: { color: G.ink, fontSize: 22, fontFamily: fonts.medium, marginVertical: 2, fontVariant: ['tabular-nums'] },
 

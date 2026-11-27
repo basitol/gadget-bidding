@@ -316,6 +316,8 @@ export interface ShippingAddress {
   country: string;
   /** Optional note for the rider ("Call when you get to the gate"). */
   delivery_note?: string;
+  /** On an order: the saved address's name ("Home", "Work") the buyer picked at checkout. */
+  label?: string;
 }
 
 export interface UserAddress extends ShippingAddress {
@@ -366,6 +368,10 @@ export interface Order {
   buyer_confirmed_at?: string | null;
   /** Delivered, not yet confirmed: we confirm for the buyer at this time. */
   confirm_by?: string | null;
+  /** Paid, not at the hub yet: the seller drops it off by this time (6 pm Lagos, next hub working day). */
+  dropoff_due_at?: string | null;
+  /** Hub check score ("7 of 7 checks") once recorded. Never says who checked it. */
+  inspection?: { passed: number; total: number; at: string } | null;
   created_at: Date;
   updated_at: Date;
 }

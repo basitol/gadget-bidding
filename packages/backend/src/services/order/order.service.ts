@@ -62,6 +62,157 @@ const deliveredAtOf = (order: any): Date | null => {
   return hits.length ? hits[hits.length - 1].createdAt : order.fulfillmentStatus === 'delivered' ? order.updatedAt : null;
 };
 
+/* ---------------- Hub: seller drop-off deadline ---------------- */
+
+/** Lagos is UTC+1 all year (WAT has no daylight saving). */
+const LAGOS_UTC_OFFSET_HOURS = 1;
+/** After the buyer pays, the seller drops the item at the Computer Village hub by this hour (Lagos)... */
+export const DROPOFF_CUTOFF_HOUR = 18;
+/** ...on the next day the hub is open. It's open Monday to Saturday (0 = Sunday). */
+export const HUB_CLOSED_WEEKDAYS: number[] = [0];
+/** "6 pm" */
+const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? 'am' : 'pm'}`;
+export const DROPOFF_RULE = `By ${hourLabel(DROPOFF_CUTOFF_HOUR)} the next working day after payment`;
+
+/** The drop-off deadline for an order paid at `paidAt`: 6:00 pm Lagos on the next hub working day. */
+export const dropoffDueAt = (paidAt: Date): Date => {
+  const lagos = new Date(paidAt.getTime() + LAGOS_UTC_OFFSET_HOURS * HOUR);
+  const day = new Date(Date.UTC(lagos.getUTCFullYear(), lagos.getUTCMonth(), lagos.getUTCDate() + 1));
+  while (HUB_CLOSED_WEEKDAYS.includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate() + 1);
+  return new Date(day.getTime() + (DROPOFF_CUTOFF_HOUR - LAGOS_UTC_OFFSET_HOURS) * HOUR);
+};
+
+/** Paid, but the seller hasn't sent it to the hub yet. */
+const BEFORE_HUB_STATUSES = ['pending', 'processing'];
+
+/** When the order was paid (latest 'paid' payment event), if it was. */
+const paidAtOf = (order: any): Date | null => {
+  const hits = (order.events ?? []).filter((e: any) => e.kind === 'payment' && e.status === 'paid');
+  return hits.length ? hits[hits.length - 1].createdAt : null;
+};
+
+/** Drop-off deadline while the item hasn't reached the hub yet; null otherwise. */
+export const dropoffDueOf = (order: any): Date | null => {
+  if (order.paymentStatus !== 'paid' || !BEFORE_HUB_STATUSES.includes(order.fulfillmentStatus ?? 'pending')) return null;
+  const paidAt = paidAtOf(order);
+  return paidAt ? dropoffDueAt(paidAt) : null;
+};
+
+/* ---------------- Hub: inspection checklist ---------------- */
+
+/** What the hub checks on every device before it leaves, in this order. */
+export const HUB_INSPECTION_CHECKS = [
+  { key: 'imei_match', label: 'IMEI or serial matches the listing' },
+  { key: 'not_stolen', label: 'Not reported lost or stolen' },
+  { key: 'account_removed', label: 'iCloud or Google account removed' },
+  { key: 'screen', label: 'Screen and touch work' },
+  { key: 'battery', label: 'Battery health as listed' },
+  { key: 'cameras_audio', label: 'Cameras, speakers and mics work' },
+  { key: 'body_grade', label: 'Body and grade match the photos' },
+] as const;
+
+export type InspectionRecord = {
+  checks: { key: string; label: string; passed: boolean }[];
+  /** How many checks passed. */
+  passed: number;
+  total: number;
+  note: string | null;
+  /** Staff member who did the check (admin views only, never shown to buyers or sellers). */
+  by: { id: string; name: string | null };
+  at: string;
+};
+
+/** Statuses where the item is with us at the hub. */
+const AT_HUB_STATUSES = ['sent_to_backoffice', 'received_by_backoffice'];
+
+const readInspection = (value: unknown): InspectionRecord | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const v = value as InspectionRecord;
+  return Array.isArray(v.checks) && typeof v.total === 'number' ? v : null;
+};
+
+/** Every one of the hub's checks was recorded and passed. */
+export const inspectionPassed = (value: unknown): boolean => {
+  const i = readInspection(value);
+  if (!i) return false;
+  const passedKeys = new Set(i.checks.filter(c => c.passed === true).map(c => c.key));
+  return HUB_INSPECTION_CHECKS.every(c => passedKeys.has(c.key));
+};
+
+/** What buyers and sellers see: the score and when, never who checked it. */
+const inspectionSummary = (value: unknown) => {
+  const i = readInspection(value);
+  return i ? { passed: i.passed, total: i.total, at: i.at } : null;
+};
+
+/** Accepts `{ imei_match: true, ... }` or `[{ key: 'imei_match', passed: true }, ...]`. */
+const normalizeChecks = (input: unknown): Map<string, boolean> => {
+  const out = new Map<string, boolean>();
+  const known = new Set<string>(HUB_INSPECTION_CHECKS.map(c => c.key));
+  const add = (key: unknown, passed: unknown) => {
+    if (typeof key !== 'string' || !known.has(key)) throw new Error(`"${String(key)}" isn't one of the hub checks.`);
+    if (typeof passed !== 'boolean') throw new Error('Mark each check as passed or not.');
+    out.set(key, passed);
+  };
+  if (Array.isArray(input)) input.forEach(c => add(c?.key, c?.passed));
+  else if (input && typeof input === 'object') Object.entries(input).forEach(([k, v]) => add(k, v));
+  else throw new Error('Send the result of each hub check.');
+  const missing = HUB_INSPECTION_CHECKS.filter(c => !out.has(c.key));
+  if (missing.length) throw new Error(`Every check needs an answer. Missing: ${missing.map(c => c.label).join(', ')}.`);
+  return out;
+};
+
+/**
+ * Hub staff record what they checked on an order at the hub. Any failed check needs a note.
+ * Recording again replaces the earlier result (every save is in the audit log).
+ */
+export const recordInspection = async (
+  orderId: string,
+  staff: { id: string; name: string | null },
+  input: { checks?: unknown; note?: unknown }
+): Promise<{ order_id: string; order_number: string; inspection: InspectionRecord; all_passed: boolean }> => {
+  const results = normalizeChecks(input.checks);
+  const note = typeof input.note === 'string' ? input.note.trim() : '';
+  if (note.length > 500) throw new Error('Keep the note under 500 characters.');
+  const checks = HUB_INSPECTION_CHECKS.map(c => ({ key: c.key, label: c.label, passed: results.get(c.key)! }));
+  const passed = checks.filter(c => c.passed).length;
+  if (passed < checks.length && !note) throw new Error("Add a note saying what didn't pass.");
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, orderNumber: true, paymentStatus: true, fulfillmentStatus: true },
+  });
+  if (!order) throw new Error('Order not found');
+  if (order.paymentStatus !== 'paid') throw new Error('Only paid orders are checked at the hub.');
+  if (order.fulfillmentStatus !== 'received_by_backoffice') {
+    throw new Error(
+      order.fulfillmentStatus === 'sent_to_backoffice'
+        ? 'Mark it received at the hub first, then record the check.'
+        : ['shipped', 'delivered'].includes(order.fulfillmentStatus ?? '')
+          ? 'This order has already left the hub.'
+          : "This order isn't at the hub."
+    );
+  }
+
+  const inspection: InspectionRecord = {
+    checks,
+    passed,
+    total: checks.length,
+    note: note || null,
+    by: staff,
+    at: new Date().toISOString(),
+  };
+  // Only while it's still at the hub, in case someone moved it on meanwhile.
+  const saved = await prisma.order.updateMany({
+    where: { id: orderId, fulfillmentStatus: 'received_by_backoffice' },
+    data: { inspection: inspection as unknown as Prisma.InputJsonValue, updatedAt: new Date() },
+  });
+  if (saved.count === 0) throw new Error('This order just moved on from the hub. Refresh and try again.');
+
+  logger.info(`Hub inspection for ${order.orderNumber}: ${passed} of ${checks.length} passed`);
+  return { order_id: order.id, order_number: order.orderNumber, inspection, all_passed: passed === checks.length };
+};
+
 const formatDispute = (dispute: any) => ({
   id: dispute.id,
   case_number: dispute.caseNumber ? `D-${dispute.caseNumber}` : undefined,
@@ -839,6 +990,17 @@ export const adminUpdateOrder = async (
       (prevFulfillment === 'pending' || !prevFulfillment)
     ) {
       nextFulfillment = 'processing';
+    }
+
+    // Nothing leaves the hub (shipped, or collected for pickup) until every hub check passed.
+    if (
+      ['shipped', 'delivered'].includes(nextFulfillment) &&
+      AT_HUB_STATUSES.includes(prevFulfillment) &&
+      !inspectionPassed(order.inspection)
+    ) {
+      throw new Error(
+        `This order hasn't passed the hub check yet. Record the inspection with all ${HUB_INSPECTION_CHECKS.length} checks passed, then it can leave the hub.`
+      );
     }
 
     if (
@@ -1760,6 +1922,10 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
       order.fulfillmentStatus === 'delivered' && !order.buyerConfirmedAt && deliveredAtOf(order)
         ? new Date(deliveredAtOf(order)!.getTime() + CONFIRM_WINDOW_HOURS * HOUR).toISOString()
         : null,
+    /** Paid, not at the hub yet: the seller drops it off by this time. */
+    dropoff_due_at: dropoffDueOf(order)?.toISOString() ?? null,
+    /** Hub check score ("7 of 7 checks"), never who did it. */
+    inspection: inspectionSummary(order.inspection),
     events: order.events?.map((e: any) => ({
       kind: e.kind,
       status: e.status,

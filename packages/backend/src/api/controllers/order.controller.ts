@@ -179,6 +179,8 @@ export const updateShippingAddress = async (req: Request, res: Response) => {
     // Only the address fields go on the order (it's stored as JSON).
     const b = req.body ?? {};
     const address = {
+      // The saved address's name ("Home", "Work"), when the buyer picked one.
+      label: typeof b.label === 'string' && b.label.trim() ? b.label.trim().slice(0, 80) : undefined,
       full_name: b.full_name,
       phone_number: b.phone_number,
       address_line1: b.address_line1,

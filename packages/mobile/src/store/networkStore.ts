@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { API_BASE_URL } from '../constants/config';
 
@@ -8,6 +9,8 @@ import { API_BASE_URL } from '../constants/config';
 interface NetworkState {
   offline: boolean;
   checking: boolean;
+  /** The buyer tab bar is on screen and shows the offline screen above itself (tabs stay usable). */
+  tabsShowOffline: boolean;
   markOffline: () => void;
   markOnline: () => void;
   check: () => Promise<boolean>;
@@ -31,6 +34,7 @@ const ping = async () => {
 export const useNetworkStore = create<NetworkState>((set, get) => ({
   offline: false,
   checking: false,
+  tabsShowOffline: false,
   markOffline: () => {
     if (get().offline) return;
     set({ offline: true });
@@ -49,3 +53,16 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
     return ok;
   },
 }));
+
+/**
+ * Run `reload` when the app comes back online, for screens that tried to load while offline
+ * (they stay on screen under the offline view and would otherwise show empty values).
+ */
+export const useReloadOnReconnect = (reload: () => void) => {
+  const offline = useNetworkStore(s => s.offline);
+  const wasOffline = useRef(offline);
+  useEffect(() => {
+    if (wasOffline.current && !offline) reload();
+    wasOffline.current = offline;
+  }, [offline, reload]);
+};

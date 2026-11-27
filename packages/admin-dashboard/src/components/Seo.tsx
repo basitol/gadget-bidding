@@ -103,7 +103,7 @@ export function LocalBusinessJsonLd() {
       logo: absoluteUrl('/icon-512.png'),
       image: absoluteUrl('/og-image.png'),
       description: SITE_TAGLINE,
-      email: 'support@gadgetbid.ng',
+      email: 'help@gadgetsbidding.com',
       areaServed: {
         '@type': 'Country',
         name: 'Nigeria',
@@ -118,7 +118,7 @@ export function LocalBusinessJsonLd() {
       contactPoint: {
         '@type': 'ContactPoint',
         contactType: 'customer support',
-        email: 'support@gadgetbid.ng',
+        email: 'help@gadgetsbidding.com',
         availableLanguage: ['en'],
       },
     });

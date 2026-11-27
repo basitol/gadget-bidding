@@ -48,6 +48,9 @@ router.post('/auctions/:id/cancel', adminController.cancelAuction);
 
 router.get('/orders', adminController.getAllOrders);
 router.patch('/orders/:id', adminController.updateOrder);
+/** Hub inspection: the 7-point checklist, and recording an order's result. */
+router.get('/inspection-checks', adminController.getInspectionChecks);
+router.post('/orders/:id/inspection', adminController.recordInspection);
 router.post(
   '/orders/:id/second-place-offer',
   adminController.createSecondPlaceOffer

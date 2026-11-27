@@ -92,6 +92,40 @@ const CONDITIONS = [
   },
 ];
 
+/** Only these warranties have an end date worth asking for. */
+const hasWarrantyEnd = (warranty: string) =>
+  warranty === 'manufacturer' || warranty === 'seller';
+
+type WarrantyDate = { month: string; day: string; year: string };
+const EMPTY_WARRANTY_DATE: WarrantyDate = { month: '', day: '', year: '' };
+
+/** "Warranty ends" → YYYY-MM-DD. Blank is fine (it's optional); otherwise a real date that hasn't passed. */
+const parseWarrantyDate = ({
+  month,
+  day,
+  year,
+}: WarrantyDate): { value?: string; error?: string } => {
+  if (!month && !day && !year) return {};
+  if (!month || !day || year.length !== 4) {
+    return { error: 'Add the month, day and 4-digit year, or leave all three blank' };
+  }
+  const m = Number(month);
+  const d = Number(day);
+  const y = Number(year);
+  const date = new Date(y, m - 1, d, 23, 59, 59);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+    return { error: "That date doesn't exist. Check the month and day." };
+  }
+  if (date.getTime() < Date.now()) {
+    return { error: 'That date has passed. Add when the warranty ends, or leave it blank.' };
+  }
+  if (y > new Date().getFullYear() + 10) {
+    return { error: 'Add a date within the next 10 years' };
+  }
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { value: `${y}-${pad(m)}-${pad(d)}` };
+};
+
 const getSubmittedCondition = (selectedCondition: string): string =>
   CONDITIONS.find(option => option.id === selectedCondition)?.submitAs ??
   selectedCondition;
@@ -191,6 +225,8 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
   const [storage, setStorage] = useState('');
   const [ram, setRam] = useState('');
   const [warranty, setWarranty] = useState('');
+  const [warrantyDate, setWarrantyDate] =
+    useState<WarrantyDate>(EMPTY_WARRANTY_DATE);
   const [included, setIncluded] = useState<string[]>([]);
   const [batteryHealth, setBatteryHealth] = useState('');
   const [cycleCount, setCycleCount] = useState('');
@@ -315,6 +351,15 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
         setStorage(typeof specs.storage === 'string' ? specs.storage : '');
         setRam(typeof specs.ram === 'string' ? specs.ram : '');
         setWarranty(typeof specs.warranty === 'string' ? specs.warranty : '');
+        const until =
+          typeof specs.warranty_until === 'string'
+            ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(specs.warranty_until)
+            : null;
+        setWarrantyDate(
+          until
+            ? { year: until[1], month: until[2], day: until[3] }
+            : EMPTY_WARRANTY_DATE
+        );
         setIncluded(
           Array.isArray(specs.included) ? specs.included.map(String) : []
         );
@@ -378,6 +423,27 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
     );
   };
 
+  /** Validate when they leave the field; once an error shows, clear it as soon as it's fixed. */
+  const checkWarrantyDate = (next: WarrantyDate = warrantyDate) =>
+    setErrors(prev => ({ ...prev, warrantyUntil: parseWarrantyDate(next).error ?? '' }));
+
+  // Leaving month or day on the way to the next box isn't "done" yet; leaving the year is.
+  const leaveWarrantyField = (part: keyof WarrantyDate) => {
+    const { month, day, year } = warrantyDate;
+    if (part === 'year' || (month && day && year)) checkWarrantyDate();
+  };
+
+  const setWarrantyPart = (part: keyof WarrantyDate, raw: string) => {
+    const next = {
+      ...warrantyDate,
+      [part]: raw.replace(/\D/g, '').slice(0, part === 'year' ? 4 : 2),
+    };
+    setWarrantyDate(next);
+    if (errors.warrantyUntil && !parseWarrantyDate(next).error) {
+      checkWarrantyDate(next);
+    }
+  };
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -399,6 +465,10 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
       if (!Number.isFinite(n) || n < 0 || n > 100) {
         newErrors.batteryHealth = 'Battery health must be 0–100';
       }
+    }
+    if (hasWarrantyEnd(warranty)) {
+      const { error } = parseWarrantyDate(warrantyDate);
+      if (error) newErrors.warrantyUntil = error;
     }
     if (cycleCount.trim()) {
       const n = Number(cycleCount);
@@ -456,6 +526,10 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
     if (storage) specs.storage = storage;
     if (showAppleLaptop && ram) specs.ram = ram;
     if (warranty) specs.warranty = warranty;
+    if (hasWarrantyEnd(warranty)) {
+      const { value } = parseWarrantyDate(warrantyDate);
+      if (value) specs.warranty_until = value;
+    }
     if (included.length) specs.included = included;
 
     if (showBatteryBlock) {
@@ -772,6 +846,58 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
             value={warranty}
             onChange={setWarranty}
           />
+
+          {hasWarrantyEnd(warranty) && (
+            <>
+              <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>
+                Warranty ends (optional)
+              </Text>
+              <View style={styles.dateRow}>
+                <Input
+                  label="Month"
+                  placeholder="MM"
+                  value={warrantyDate.month}
+                  onChangeText={v => setWarrantyPart('month', v)}
+                  onEndEditing={() => leaveWarrantyField('month')}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  containerStyle={styles.dateField}
+                  accessibilityLabel="Warranty ends, month"
+                />
+                <Input
+                  label="Day"
+                  placeholder="DD"
+                  value={warrantyDate.day}
+                  onChangeText={v => setWarrantyPart('day', v)}
+                  onEndEditing={() => leaveWarrantyField('day')}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  containerStyle={styles.dateField}
+                  accessibilityLabel="Warranty ends, day"
+                />
+                <Input
+                  label="Year"
+                  placeholder="YYYY"
+                  value={warrantyDate.year}
+                  onChangeText={v => setWarrantyPart('year', v)}
+                  onEndEditing={() => leaveWarrantyField('year')}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  containerStyle={styles.dateYear}
+                  accessibilityLabel="Warranty ends, year"
+                />
+              </View>
+              {errors.warrantyUntil ? (
+                <Text style={[styles.errorText, styles.dateError]}>
+                  {errors.warrantyUntil}
+                </Text>
+              ) : (
+                <Text style={styles.helperText}>
+                  From the receipt or warranty card. Leave it blank if you're not sure.
+                </Text>
+              )}
+            </>
+          )}
 
           <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>
             What&apos;s included
@@ -1237,6 +1363,20 @@ const styles = StyleSheet.create({
   },
   fieldLabelSpaced: {
     marginTop: spacing.md,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  dateField: {
+    flex: 1,
+  },
+  dateYear: {
+    flex: 1.4,
+  },
+  dateError: {
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
   },
   helperText: {
     color: colors.textMuted,

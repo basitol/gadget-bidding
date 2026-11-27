@@ -48,6 +48,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) =
   const seller = interfaceType === 'seller';
 
   const [identifier, setIdentifier] = useState(route.params.email ?? '');
+  // Latest text for the blur check (a quick tap away can blur before the last keystroke renders).
+  const identifierRef = useRef(route.params.email ?? '');
   const [password, setPassword] = useState('');
   const [idError, setIdError] = useState<string | null>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -150,10 +152,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) =
         <TextField
           value={identifier}
           onChangeText={t => {
+            identifierRef.current = t;
             setIdentifier(t);
             if (idError) setIdError(null);
           }}
-          onBlur={() => setIdError(identifierError(identifier))}
+          onBlur={() => setIdError(identifierError(identifierRef.current))}
           placeholder="you@example.com"
           keyboardType="email-address"
           autoCapitalize="none"

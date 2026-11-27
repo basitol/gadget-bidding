@@ -416,8 +416,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             {...rowProps}
             icon="help-circle-outline"
             title="Help & support"
-            subtitle="support@gadgetbid.ng"
-            onPress={() => Linking.openURL('mailto:support@gadgetbid.ng')}
+            subtitle="help@gadgetsbidding.com"
+            onPress={() => Linking.openURL('mailto:help@gadgetsbidding.com')}
           />
           <View style={styles.divider} />
           <SettingRow

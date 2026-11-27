@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import {
   G,
   GlassScreen,
@@ -28,9 +29,9 @@ import {
   CONDITION_LABEL,
 } from '../../components/glass';
 import { fonts } from '../../constants';
-import { caseService, Case } from '../../services/case.service';
+import { caseService, Case, pickCaseVideo } from '../../services/case.service';
 import { useToastStore } from '../../store/toastStore';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, mediaUrl } from '../../utils';
 
 const toast = (m: string, t: 'success' | 'error' = 'error') => useToastStore.getState().show(m, t);
 const errText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
@@ -75,16 +76,49 @@ const thingOf = (c: Case) => {
 const isApple = (c: Case) =>
   /apple/i.test(c.order.gadget?.brand ?? '') || /iphone|ipad|macbook|airpods|apple watch|imac/i.test(c.order.gadget?.title ?? '');
 
+/** "Sep 18, 2027" for a warranty end date (YYYY-MM-DD) that hasn't passed yet, else null. */
+const warrantyEnds = (ymd?: string | null) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd ?? '');
+  if (!m) return null;
+  const end = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59);
+  if (Number.isNaN(end.getTime()) || end.getTime() < Date.now()) return null;
+  return end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 /** A line about the listing's warranty for the not-upheld screen, or null when there isn't one. */
 const warrantyLine = (c: Case) => {
   const w = c.order.gadget?.warranty;
   const thing = thingOf(c);
-  const brand = c.order.gadget?.brand?.trim();
+  const brand = c.order.gadget?.brand?.trim() || (isApple(c) ? 'Apple' : '');
+  const until = warrantyEnds(c.order.gadget?.warranty_until);
   if (w === 'applecare') return `The ${thing} came with AppleCare, so Apple can still check or repair it.`;
+  if (w === 'manufacturer' && until)
+    return brand
+      ? `The ${thing} is still covered by ${brand}'s warranty until ${until}, so ${brand} can check or repair it.`
+      : `The ${thing} is still covered by the manufacturer's warranty until ${until}, so the maker can check or repair it.`;
   if (w === 'manufacturer')
-    return `The ${thing} came with the manufacturer's warranty, so ${brand || 'the maker'} can still check or repair it.`;
+    return `The ${thing} came with the manufacturer's warranty, so ${c.order.gadget?.brand?.trim() || 'the maker'} can still check or repair it.`;
+  if (w === 'seller' && until)
+    return `The listing included a seller warranty until ${until}. Message the seller through this case if it acts up again.`;
   if (w === 'seller') return `The listing included a seller warranty. Message the seller through this case if it acts up again.`;
   return null;
+};
+
+/** The first sentence of what our team found ("Our hub confirmed the screen flickers."), or null. */
+const findingLine = (findings?: string | null) => {
+  const text = (findings ?? '').trim().replace(/\s+/g, ' ');
+  if (!text) return null;
+  // A full stop, ! or ? followed by a space or the end; skips "e.g." style stops in the first few words.
+  const re = /[.!?](?=\s|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index >= 15) {
+      const first = text.slice(0, m.index + 1);
+      return first.length <= 160 ? first : null;
+    }
+  }
+  if (text.length > 160) return null;
+  return /[.!?]$/.test(text) ? text : `${text}.`;
 };
 
 const useCase = (id: string) => {
@@ -173,7 +207,32 @@ export const CaseScreen: React.FC<{ navigation: any; route: any }> = ({ navigati
 const InReview: React.FC<{ c: Case; setC: (c: Case) => void; navigation: any }> = ({ c, setC, navigation }) => {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [addingVideo, setAddingVideo] = useState(false);
   const second = !!c.second_review_requested_at;
+  const videos = c.videos ?? [];
+  const evidence = [
+    c.photos.length ? `${c.photos.length} photo${c.photos.length > 1 ? 's' : ''}` : null,
+    videos.length ? `${videos.length} video${videos.length > 1 ? 's' : ''}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const playVideo = () =>
+    WebBrowser.openBrowserAsync(mediaUrl(videos[0])).catch(() => toast("We couldn't open the video. Try again."));
+
+  const addVideo = async () => {
+    try {
+      const picked = await pickCaseVideo();
+      if (!picked) return;
+      setAddingVideo(true);
+      setC(await caseService.addVideo(c.id, picked));
+      toast('Video added to your report.', 'success');
+    } catch (e) {
+      toast(errText(e, "The video didn't upload. Try again."));
+    } finally {
+      setAddingVideo(false);
+    }
+  };
 
   const send = async () => {
     const body = text.trim();
@@ -246,11 +305,34 @@ const InReview: React.FC<{ c: Case; setC: (c: Case) => void; navigation: any }> 
               <Text style={styles.chipRedText}>{c.problem.label}</Text>
             </View>
             <Text style={styles.quote}>“{c.problem.description}”</Text>
-            {c.photos.length ? (
-              <Text style={styles.reportMeta}>
-                {c.photos.length} photo{c.photos.length > 1 ? 's' : ''}
-              </Text>
-            ) : null}
+            {evidence ? <Text style={styles.reportMeta}>{evidence}</Text> : null}
+            {videos.length ? (
+              <Pressable
+                onPress={playVideo}
+                style={({ pressed }) => [styles.reportLink, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Play your video"
+              >
+                <Ionicons name="play-circle-outline" size={18} color={G.blue600} />
+                <Text style={styles.reportLinkText}>Play your video</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={addVideo}
+                disabled={addingVideo}
+                style={({ pressed }) => [styles.reportLink, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Add a video"
+                accessibilityState={{ busy: addingVideo, disabled: addingVideo }}
+              >
+                {addingVideo ? (
+                  <ActivityIndicator color={G.blue600} size="small" />
+                ) : (
+                  <Ionicons name="videocam-outline" size={18} color={G.blue600} />
+                )}
+                <Text style={styles.reportLinkText}>{addingVideo ? 'Uploading your video…' : 'Add a video'}</Text>
+              </Pressable>
+            )}
           </GlassCard>
 
           <View style={styles.section}>
@@ -317,13 +399,19 @@ const RefundDecided: React.FC<{ c: Case; navigation: any }> = ({ c, navigation }
   const toCard = !!c.order.paid_with && c.order.paid_with !== 'Wallet';
   const refunded = r?.status === 'refunded';
   const title = refunded ? 'Your refund is on its way' : "You'll get a full refund";
+  const finding = findingLine(c.findings);
   const sub = refunded
     ? r?.refund_destination === 'card'
       ? 'We got it back. Banks usually take 3–5 working days to show the money.'
       : 'We got it back and the money is in your wallet.'
-    : r
-      ? `Send the ${thingOf(c)} back to the hub. We'll refund you as soon as it arrives.`
-      : `Send the ${thingOf(c)} back to the hub and we'll refund you as soon as it arrives.`;
+    : [
+        finding,
+        r
+          ? `Send the ${thingOf(c)} back to the hub. We'll refund you as soon as it arrives.`
+          : `Send the ${thingOf(c)} back to the hub and we'll refund you as soon as it arrives.`,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
   return (
     <GlassScreen>
@@ -456,6 +544,8 @@ export const CaseReturnScreen: React.FC<{ navigation: any; route: any }> = ({ na
   const r = c.return;
   const address = c.order.shipping_address;
   const addressLine = address ? [address.address_line1, address.city].filter(Boolean).join(', ') : null;
+  // The saved address's name ("Home"), when the order kept it.
+  const addressLabel = typeof address?.label === 'string' ? address.label.trim() : '';
   const ready = checks.parts && checks.account;
 
   const start = async () => {
@@ -537,7 +627,11 @@ export const CaseReturnScreen: React.FC<{ navigation: any; route: any }> = ({ na
               <Option
                 on={method === 'pickup'}
                 title="Rider pickup from my address"
-                sub={addressLine ? `${addressLine} · we'll text you a time` : 'Add a delivery address first'}
+                sub={
+                  addressLine
+                    ? `${addressLabel ? `${addressLabel} · ` : ''}${addressLine} · we'll text you a time`
+                    : 'Add a delivery address first'
+                }
                 onPress={() => addressLine && setMethod('pickup')}
                 disabled={!addressLine}
               />
@@ -651,6 +745,8 @@ const styles = StyleSheet.create({
   chipRedText: { color: '#D9536A', fontSize: 12, fontFamily: fonts.medium },
   quote: { color: G.ink, fontSize: 14, lineHeight: 21, fontFamily: fonts.regular },
   reportMeta: { color: G.muted, fontSize: 12, fontFamily: fonts.regular },
+  reportLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', minHeight: 44 },
+  reportLinkText: { color: G.blue600, fontSize: 14, fontFamily: fonts.medium },
 
   empty: { color: G.muted, fontSize: 13, lineHeight: 19, fontFamily: fonts.regular },
   messages: { gap: 12 },

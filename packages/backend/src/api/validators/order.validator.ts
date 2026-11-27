@@ -99,6 +99,12 @@ export const validateShippingAddress = [
     .trim()
     .isLength({ max: 200 })
     .withMessage('Keep the note for the rider under 200 characters'),
+  body('label')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 80 })
+    .withMessage('Address label must be less than 80 characters'),
 ];
 
 /**
