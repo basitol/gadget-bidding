@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 200 200" role="img" aria-label="Game controller">
+      <defs>
+        <linearGradient id="da-gp-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F7F8FB"/><stop offset="1" stop-color="#B9C0CC"/></linearGradient>
+      </defs>
+      <path d="M48 66 C34 66 20 88 16 120 C12 150 24 168 40 164 C52 161 60 146 70 138 H130 C140 146 148 161 160 164 C176 168 188 150 184 120 C180 88 166 66 152 66 Z" fill="url(#da-gp-body)"/>
+      <path d="M70 70 H130 L126 112 Q100 120 74 112 Z" fill="#1C2230"/>
+      <path d="M74 72 H126" stroke="#3366FF" stroke-width="3" stroke-linecap="round"/>
+      <rect x="40" y="94" width="8" height="24" rx="2" fill="#2A3142"/>
+      <rect x="32" y="102" width="24" height="8" rx="2" fill="#2A3142"/>
+      <circle cx="160" cy="96" r="5" fill="#2A3142"/>
+      <circle cx="160" cy="116" r="5" fill="#2A3142"/>
+      <circle cx="150" cy="106" r="5" fill="#2A3142"/>
+      <circle cx="170" cy="106" r="5" fill="#2A3142"/>
+      <circle cx="76" cy="134" r="13" fill="#1C2230"/>
+      <circle cx="76" cy="134" r="8" fill="#3A4358"/>
+      <circle cx="124" cy="134" r="13" fill="#1C2230"/>
+      <circle cx="124" cy="134" r="8" fill="#3A4358"/>
+    </svg>

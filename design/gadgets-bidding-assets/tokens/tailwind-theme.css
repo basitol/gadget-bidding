@@ -1,0 +1,40 @@
+/* Tailwind CSS 4 — paste into your main CSS after @import "tailwindcss"; */
+@theme {
+  --font-satoshi: Satoshi, system-ui, sans-serif;
+  --color-gb-blue-500: #4F7BFF;
+  --color-gb-blue-600: #3E6AF0;
+  --color-gb-blue-50: #F1F5FF;
+  --color-gb-violet: #9B87F5;
+  --color-gb-ink: #1C1F2A;
+  --color-gb-slate: #5C6273;
+  --color-gb-muted: #7C8293;
+  --color-gb-faint: #A9AEBB;
+  --color-gb-line: #EDEFF4;
+  --color-gb-fill: #F5F6F9;
+  --color-gb-canvas: #F6F7FA;
+  --color-gb-white: #FFFFFF;
+  --color-gb-success-bg: #EEF9F2;
+  --color-gb-success: #2E9E5E;
+  --color-gb-warning-bg: #FFF6EE;
+  --color-gb-warning: #DB7A2E;
+  --color-gb-danger-bg: #FDF0F2;
+  --color-gb-danger: #D9536A;
+  --color-gb-danger-solid: #F07A80;
+  --color-gb-info-bg: #F1F5FF;
+  --color-gb-info: #3E6AF0;
+  --color-gb-seller-bg: #F5F2FF;
+  --color-gb-seller: #7C68E8;
+  --color-gb-teal-bg: #E6F7F7;
+  --color-gb-teal: #4CC3C2;
+  --color-gb-logo-blue: #3366FF;
+  --radius-gb-chip: 8px;
+  --radius-gb-button-admin: 10px;
+  --radius-gb-input-admin: 12px;
+  --radius-gb-button-app: 14px;
+  --radius-gb-card-app: 18px;
+  --radius-gb-card-admin: 24px;
+  --radius-gb-panel: 28px;
+  --shadow-gb-card: 0 1px 2px rgba(20,28,60,0.04), 0 6px 16px rgba(20,28,60,0.05);
+  --ease-gb-out: cubic-bezier(.2,.8,.2,1);
+  --ease-gb-in: cubic-bezier(.4,0,1,1);
+}

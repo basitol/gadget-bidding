@@ -87,3 +87,11 @@ you just did. One sentence if it fits.
 
 Code blocks, file paths, commands, and error messages are always written in full.
 <!-- /cce-block -->
+
+## Design Guide (mandatory)
+
+All UI work — mobile, admin dashboard, web, emails — MUST follow
+`docs/DESIGN_GUIDE.md` exactly (colours, Satoshi type scale, 4px spacing,
+corner radii, glass rules, components, voice, motion, accessibility). Read it
+before touching any UI. Do not invent tokens or components not in the guide.
+`design/amber-ledger.md` is superseded.

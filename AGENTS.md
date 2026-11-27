@@ -13,3 +13,7 @@
 - No emoji in UI copy or in log messages; write plain, factual sentences.
 - Empty states should tell the user what will appear there, not cheerlead ("Bids you place will show up here", not "Start bidding now!").
 
+
+## Design Guide (mandatory)
+
+All UI work must follow `docs/DESIGN_GUIDE.md` exactly. Read it before touching any UI. `design/amber-ledger.md` is superseded.

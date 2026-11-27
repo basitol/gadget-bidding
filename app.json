@@ -1,3 +1,13 @@
 {
-  "expo": {}
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "5a61535c-ff4d-4791-afdc-a939bb7caa52"
+      }
+    },
+    "android": {
+      "package": "com.basitolaitan27.gadgetbidding"
+    }
+  }
 }
+ 
