@@ -65,5 +65,11 @@ export const validateAddress = [
     .default('Nigeria')
     .isLength({ max: 100 })
     .withMessage('Country must be less than 100 characters'),
+  body('delivery_note')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Keep the note for the rider under 200 characters'),
   body('is_default').optional().isBoolean().toBoolean(),
 ];

@@ -7,6 +7,7 @@ import logger from '../utils/logger';
 import * as savedSearchService from '../services/buyer/savedSearch.service';
 import * as storeService from '../services/buyer/store.service';
 import * as buyerAlerts from '../services/notification/buyerAlerts';
+import { isMaintenanceActive } from '../services/app/appConfig.service';
 
 let auctionJobInterval: NodeJS.Timeout | null = null;
 
@@ -15,10 +16,14 @@ let auctionJobInterval: NodeJS.Timeout | null = null;
  */
 const processExpiredAuctions = async (): Promise<void> => {
   try {
+    // Maintenance: nothing ends. Ending maintenance adds the paused time back to these auctions.
+    if (await isMaintenanceActive()) return;
     const expiredAuctions = await biddingService.getExpiredAuctions();
 
     for (const auction of expiredAuctions) {
       try {
+        // Maintenance started mid-run: leave the rest for when it ends.
+        if (await isMaintenanceActive()) return;
         const result = await biddingService.endAuction(auction.id);
 
         // Broadcast auction ended via socket
@@ -93,15 +98,30 @@ const processExpiredAuctions = async (): Promise<void> => {
               orderError
             );
           }
-        } else if (sellerId) {
+        } else {
           // Notify seller auction ended without winner
-          await notificationService.notifySellerAuctionEnded(
-            sellerId,
-            auction.id,
-            gadgetTitle,
-            0,
-            null
+          if (sellerId) {
+            await notificationService.notifySellerAuctionEnded(
+              sellerId,
+              auction.id,
+              gadgetTitle,
+              0,
+              null
+            );
+          }
+          // Bidders and watchers: nobody won, nothing was charged.
+          const people = await query(
+            `SELECT bidder_id AS user_id FROM bids WHERE auction_id = $1 AND bidder_id IS NOT NULL
+             UNION SELECT user_id FROM watchlist WHERE auction_id = $1`,
+            [auction.id]
           );
+          const reason = result.winnerId && !result.reserveMet ? 'reserve' : 'no_bids';
+          for (const p of people) {
+            if (p.user_id === sellerId) continue;
+            await notificationService
+              .notifyAuctionNoSale(p.user_id, auction.id, gadgetTitle, reason)
+              .catch(err => logger.error('No-sale notification failed:', err));
+          }
         }
 
         logger.info(`Processed expired auction: ${auction.id}`);
@@ -119,6 +139,8 @@ const processExpiredAuctions = async (): Promise<void> => {
  */
 const activateScheduledAuctions = async (): Promise<void> => {
   try {
+    // Maintenance: scheduled auctions wait; they start (with their lost time added) once it ends.
+    if (await isMaintenanceActive()) return;
     const count = await biddingService.activateScheduledAuctions();
     if (count > 0) {
       logger.info(`Activated ${count} scheduled auctions`);
@@ -147,6 +169,8 @@ const expirePendingOrders = async (): Promise<void> => {
  */
 const notifyAuctionsEndingSoon = async (): Promise<void> => {
   try {
+    // Maintenance: end times are about to move, so "ending soon" would be wrong.
+    if (await isMaintenanceActive()) return;
     // Get auctions ending in 5 minutes
     const auctionsEndingSoon = await biddingService.getAuctionsEndingSoon(5);
 
@@ -205,27 +229,26 @@ const PAYMENT_REMINDER_HOURS_LEFT = Number(process.env.PAYMENT_REMINDER_HOURS_LE
 const remindUnpaidOrders = async (): Promise<void> => {
   try {
     const windowHours = orderService.ORDER_PAYMENT_EXPIRY_HOURS;
+    // Due time: payment_due_at when set (accepted second-chance offers), else created_at + window.
     const rows = await query(
-      `SELECT o.id, o.order_number, o.buyer_id, o.total_amount, o.created_at, g.title
+      `SELECT o.id, o.order_number, o.buyer_id, o.total_amount, g.title,
+              COALESCE(o.payment_due_at, o.created_at + make_interval(secs => $2)) AS due_at
        FROM orders o
        LEFT JOIN auctions a ON a.id = o.auction_id
        LEFT JOIN gadgets g ON g.id = a.gadget_id
        WHERE o.payment_status = 'pending'
          AND o.fulfillment_status = 'pending'
-         AND o.created_at <= NOW() - make_interval(secs => $1)
-         AND o.created_at > NOW() - make_interval(secs => $2)
+         AND o.offer_expires_at IS NULL
+         AND COALESCE(o.payment_due_at, o.created_at + make_interval(secs => $2)) > NOW()
+         AND COALESCE(o.payment_due_at, o.created_at + make_interval(secs => $2)) <= NOW() + make_interval(secs => $1)
        LIMIT 100`,
-      [
-        Math.max(0, windowHours - PAYMENT_REMINDER_HOURS_LEFT) * 3600,
-        windowHours * 3600,
-      ]
+      [PAYMENT_REMINDER_HOURS_LEFT * 3600, windowHours * 3600]
     );
     for (const o of rows) {
       if (await notificationService.alreadyNotified(o.buyer_id, 'payment_reminder', 'orderId', o.id)) {
         continue;
       }
-      const hoursLeft =
-        windowHours - (Date.now() - new Date(o.created_at).getTime()) / 3_600_000;
+      const hoursLeft = (new Date(o.due_at).getTime() - Date.now()) / 3_600_000;
       await notificationService.notifyPaymentReminder(
         o.buyer_id,
         o.id,
@@ -275,6 +298,8 @@ export const startAuctionJob = (): void => {
     await expirePendingOrders();
     await notifyAuctionsEndingSoon();
     await remindUnpaidOrders();
+    await orderService.expireSecondChanceOffers().catch(err => logger.error('Second-chance expiry failed:', err));
+    await orderService.autoConfirmDeliveries().catch(err => logger.error('Auto-confirm deliveries failed:', err));
     await notifySavedSearchMatches();
     await storeService.notifyFollowersOfNewListings().catch(err => logger.error('Store follower alerts failed:', err));
     await buyerAlerts.remindConfirmDelivery().catch(err => logger.error('Confirm-delivery reminders failed:', err));

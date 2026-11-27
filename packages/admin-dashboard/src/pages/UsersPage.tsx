@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   Eye,
@@ -99,6 +100,10 @@ export function UsersPage({
   description = 'Roles, verification, wallet balances, and account controls.',
 }: UsersPageProps = {}) {
   const { confirm, prompt } = useConfirmDialog();
+  const [params] = useSearchParams();
+  // Seller KYB queue: /sellers?kyb=pending (and &seller=<id> opens that seller).
+  const kybFilter = fixedRole === 'seller' && params.get('kyb') === 'pending' ? 'pending' : undefined;
+  const sellerParam = fixedRole === 'seller' ? params.get('seller') : null;
   const [role, setRole] = useState(fixedRole || 'all');
   const [active, setActive] = useState('all');
   const [search, setSearch] = useState('');
@@ -121,10 +126,11 @@ export function UsersPage({
       role,
       active: active === 'all' ? undefined : active,
       search: appliedSearch,
+      kyb: kybFilter,
       page,
       limit,
     }),
-    [role, active, appliedSearch, page, limit]
+    [role, active, appliedSearch, kybFilter, page, limit]
   );
 
   const load = useCallback(async () => {
@@ -210,6 +216,11 @@ export function UsersPage({
   const openSellerProfile = (id: string) => {
     void loadSellerProfile(id);
   };
+
+  useEffect(() => {
+    if (sellerParam) void loadSellerProfile(sellerParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerParam]);
 
   const runProfileAction = async (
     actionId: string,
@@ -323,7 +334,14 @@ export function UsersPage({
 
   return (
     <>
-      <PageHeader title={title} description={description} />
+      <PageHeader
+        title={kybFilter ? 'Seller KYB' : title}
+        description={
+          kybFilter
+            ? 'Businesses waiting for verification, oldest first. Open one to check their documents and approve or reject.'
+            : description
+        }
+      />
 
       <ErrorAlert>{error}</ErrorAlert>
 

@@ -20,6 +20,8 @@ const linking: LinkingOptions<Record<string, object | undefined>> = {
     screens: {
       // Payment callback page redirects to gadgetbid://wallet/verify?reference=...
       Wallet: 'wallet/verify',
+      // Shared auction links: gadgetbid://auction/<id>. A gone or bad id shows "We can't find that auction".
+      AuctionDetail: 'auction/:auctionId',
     },
   },
 };

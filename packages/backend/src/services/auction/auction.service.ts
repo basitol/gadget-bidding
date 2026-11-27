@@ -8,6 +8,7 @@ import {
 import logger from '../../utils/logger';
 import config from '../../config';
 import * as notificationService from '../notification/notification.service';
+import { sellerCode } from '../buyer/sellerSummary.service';
 
 // Helper to convert Prisma Decimal to number
 const toNumber = (value: any): number => {
@@ -69,13 +70,14 @@ export const createAuction = async (
 
     createdGadgetTitle = gadget.title;
 
-    // Check if gadget already has an auction
-    const existingAuction = await tx.auction.findUnique({
-      where: { gadgetId: data.gadget_id },
+    // A gadget can be auctioned again after a run that didn't sell, but only one run at a time.
+    const openAuction = await tx.auction.findFirst({
+      where: { gadgetId: data.gadget_id, status: { in: ['scheduled', 'active'] } },
+      select: { id: true },
     });
 
-    if (existingAuction) {
-      throw new Error('Gadget already has an auction');
+    if (openAuction) {
+      throw new Error('This gadget is already up for auction');
     }
 
     // Validate dates
@@ -155,6 +157,9 @@ export const createAuction = async (
     .catch(error => {
       logger.error('Failed to notify backoffice about new auction:', error);
     });
+  notifyRelisted(createdAuction.id, data.gadget_id, createdGadgetTitle).catch(error => {
+    logger.error('Failed to send relist alerts:', error);
+  });
 
   return createdAuction;
 };
@@ -201,10 +206,10 @@ export const getAuctionById = async (
       category_name: auction.gadget.category?.name,
       category_slug: auction.gadget.category?.slug,
     },
+    // Buyers only ever see a seller's code ("Verified seller CV-1042"), never a name or photo.
     seller: {
       id: auction.seller?.id,
-      full_name: auction.seller?.fullName,
-      avatar_url: auction.seller?.avatarUrl,
+      full_name: auction.seller?.id ? sellerCode(auction.seller.id) : undefined,
     },
   } as unknown as AuctionWithGadget;
 };
@@ -218,6 +223,10 @@ export const getAuctions = async (filters: {
   status?: AuctionStatus;
   seller_id?: string;
   search?: string;
+  /** Gadget brand, exact (case-insensitive): "Apple", "Samsung". */
+  brand?: string;
+  /** Gadget conditions to include: new, like_new, excellent (Grade A), good (B), fair (C). */
+  condition?: string[];
   min_price?: number;
   max_price?: number;
   sort_by?: string;
@@ -262,6 +271,13 @@ export const getAuctions = async (filters: {
         { slug: { contains: filters.category, mode: 'insensitive' } },
       ],
     };
+  }
+
+  if (filters.brand) {
+    gadgetWhere.brand = { equals: filters.brand, mode: 'insensitive' };
+  }
+  if (filters.condition?.length) {
+    gadgetWhere.condition = { in: filters.condition };
   }
 
   if (filters.search) {
@@ -335,7 +351,7 @@ export const getAuctions = async (filters: {
           }
         : null,
       seller: {
-        full_name: auction.seller?.fullName,
+        full_name: auction.sellerId ? sellerCode(auction.sellerId) : undefined,
       },
     };
   });
@@ -479,4 +495,115 @@ export const getActiveAuctionsCount = async (): Promise<number> => {
   return prisma.auction.count({
     where: { status: 'active' },
   });
+};
+
+/** "The seller may relist it, we'll tell you": bidders and watchers of earlier unsold runs of this gadget. */
+const notifyRelisted = async (auctionId: string, gadgetId: string, title: string) => {
+  const previous = await prisma.auction.findMany({
+    where: { gadgetId, id: { not: auctionId }, winnerId: null, status: { in: ['ended', 'cancelled'] } },
+    select: { id: true, sellerId: true },
+  });
+  if (!previous.length) return;
+  const ids = previous.map(p => p.id);
+  const [watchers, bidders] = await Promise.all([
+    prisma.watch.findMany({ where: { auctionId: { in: ids } }, select: { userId: true } }),
+    prisma.bid.findMany({ where: { auctionId: { in: ids } }, select: { bidderId: true }, distinct: ['bidderId'] }),
+  ]);
+  const people = new Set<string>([
+    ...watchers.map(w => w.userId),
+    ...bidders.map(b => b.bidderId).filter((id): id is string => !!id),
+  ]);
+  previous.forEach(p => p.sellerId && people.delete(p.sellerId));
+  for (const userId of people) await notificationService.notifyAuctionRelisted(userId, auctionId, title);
+};
+
+const MAX_RELIST_HOURS = 7 * 24;
+
+/**
+ * Put an unsold gadget up again: same settings as the last run (its length, starting price,
+ * reserve, bid step, buy-now), starting now. The seller may lower the starting price or the
+ * reserve. Not allowed after a sale, while another run is open, or when the team stopped it.
+ */
+export const relistAuction = async (
+  sellerId: string,
+  auctionId: string,
+  changes: { starting_price?: number; reserve_price?: number | null } = {}
+): Promise<Auction> => {
+  const last = await prisma.auction.findFirst({
+    where: { id: auctionId, sellerId },
+    include: { gadget: { select: { id: true, status: true } } },
+  });
+  if (!last || !last.gadget) throw new Error('Auction not found');
+  if (last.status !== 'ended' && last.status !== 'cancelled') {
+    throw new Error('This auction hasn\'t ended yet');
+  }
+  if (last.winnerId) throw new Error('This gadget sold, so it can\'t be relisted');
+  if (last.gadget.status !== 'approved') {
+    throw new Error(
+      last.gadget.status === 'listed' ? 'This gadget is already up for auction' : 'This gadget can\'t be relisted right now'
+    );
+  }
+  const stoppedByTeam = await prisma.auditLog.findFirst({
+    where: { action: 'auction_cancel', resourceId: auctionId },
+    select: { id: true },
+  });
+  if (stoppedByTeam) throw new Error('Our team stopped this auction. Contact support to list it again.');
+
+  const startingPrice = changes.starting_price ?? toNumber(last.startingPrice);
+  const reserve =
+    changes.reserve_price === null ? null : changes.reserve_price ?? (last.reservePrice == null ? null : toNumber(last.reservePrice));
+  const hours = Math.min(
+    MAX_RELIST_HOURS,
+    Math.max(1, Math.round((last.endTime.getTime() - last.startTime.getTime()) / 3_600_000))
+  );
+  const now = Date.now();
+
+  return createAuction(sellerId, {
+    gadget_id: last.gadget.id,
+    starting_price: startingPrice,
+    reserve_price: reserve ?? undefined,
+    bid_increment: toNumber(last.bidIncrement) || undefined,
+    buy_now_price: last.buyNowPrice == null ? undefined : toNumber(last.buyNowPrice),
+    start_time: new Date(now).toISOString(),
+    // A minute of slack so a 1-hour run still clears the 1-hour minimum once it's created.
+    end_time: new Date(now + hours * 3_600_000 + 60_000).toISOString(),
+    auto_extend_enabled: last.autoExtendEnabled ?? true,
+    auto_extend_minutes: last.autoExtendMinutes ?? undefined,
+  } as any);
+};
+
+/**
+ * What's live right now, for browsing: auctions per category, and per brand inside one
+ * category (for the brand chips on a category page).
+ */
+export const getLiveFacets = async (categorySlug?: string) => {
+  const live = await prisma.auction.findMany({
+    where: { status: 'active', endTime: { gt: new Date() } },
+    select: { gadget: { select: { brand: true, category: { select: { slug: true, name: true } } } } },
+  });
+  const categories = new Map<string, { slug: string; name: string; count: number }>();
+  const brands = new Map<string, { brand: string; count: number }>();
+  let total = 0;
+  for (const a of live) {
+    const c = a.gadget?.category;
+    if (c?.slug) {
+      const row = categories.get(c.slug) ?? { slug: c.slug, name: c.name, count: 0 };
+      row.count += 1;
+      categories.set(c.slug, row);
+    }
+    if (categorySlug && c?.slug === categorySlug) {
+      total += 1;
+      const b = a.gadget?.brand?.trim();
+      if (b) {
+        const key = b.toLowerCase();
+        const row = brands.get(key) ?? { brand: b, count: 0 };
+        row.count += 1;
+        brands.set(key, row);
+      }
+    }
+  }
+  return {
+    categories: [...categories.values()].sort((x, y) => y.count - x.count),
+    category: categorySlug ? { slug: categorySlug, live: total, brands: [...brands.values()].sort((x, y) => y.count - x.count) } : null,
+  };
 };

@@ -59,6 +59,10 @@ export const getAuctions = async (req: Request, res: Response) => {
       status: req.query.status as any,
       seller_id: req.query.seller_id as string,
       search: req.query.search as string,
+      brand: (req.query.brand as string) || undefined,
+      condition: req.query.condition
+        ? String(req.query.condition).split(',').map(s => s.trim()).filter(Boolean)
+        : undefined,
       min_price: req.query.min_price
         ? parseFloat(req.query.min_price as string)
         : undefined,
@@ -212,5 +216,36 @@ export const getAuctionBids = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Get auction bids error:', error);
     sendError(res, error.message || 'Failed to get auction bids', 500);
+  }
+};
+
+/**
+ * Relist an unsold auction (same settings, starting now; optionally a lower price or reserve)
+ * POST /api/v1/auctions/:id/relist
+ */
+export const relistAuction = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    const auction = await auctionService.relistAuction(req.user.user_id, req.params.id as string, {
+      starting_price: req.body?.starting_price,
+      reserve_price: req.body?.reserve_price,
+    });
+    sendSuccess(res, auction, "It's back up for auction", 201);
+  } catch (error: any) {
+    logger.warn(`Relist auction ${req.params.id}: ${error?.message}`);
+    sendError(res, error.message || "We couldn't relist it. Try again.", 400);
+  }
+};
+
+/**
+ * Live auctions per category, and per brand inside ?category=slug
+ * GET /api/v1/auctions/facets
+ */
+export const getLiveFacets = async (req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await auctionService.getLiveFacets((req.query.category as string) || undefined));
+  } catch (error: any) {
+    logger.error('Live facets error:', error);
+    sendError(res, "Couldn't load categories right now", 500);
   }
 };

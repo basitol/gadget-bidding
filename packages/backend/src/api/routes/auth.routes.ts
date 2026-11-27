@@ -9,7 +9,22 @@ import {
   otpRateLimiter,
 } from '../middlewares/security.middleware';
 
+import { getSignInPanel } from '../../services/admin/overview.service';
+
 const router: Router = Router();
+
+/**
+ * @route   GET /api/v1/auth/sign-in-panel
+ * @desc    Live activity and escrow figure for the admin sign-in page (public-safe, cached 1 min)
+ * @access  Public
+ */
+router.get('/sign-in-panel', async (_req, res) => {
+  try {
+    res.json({ success: true, data: await getSignInPanel() });
+  } catch {
+    res.status(500).json({ success: false, error: "Couldn't load right now" });
+  }
+});
 
 /**
  * @route   POST /api/v1/auth/register

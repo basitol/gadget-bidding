@@ -105,6 +105,44 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
     );
   };
 
+  /** Ended without selling (no winner, reserve not met or no bids) and not already back up. */
+  const canRelist = (item: Auction) => {
+    const a = item as any;
+    const unsold = (item.status === 'ended' && !a.winner_id) || item.status === 'cancelled';
+    const newerRun = auctions.some(
+      o => o.id !== item.id && (o as any).gadget_id === a.gadget_id && new Date(o.created_at as any) > new Date(item.created_at as any)
+    );
+    return unsold && !newerRun && new Date(item.end_time as any).getTime() <= Date.now();
+  };
+
+  const relist = async (item: Auction, changes: { reserve_price?: null } = {}) => {
+    try {
+      await auctionService.relistAuction(item.id, changes);
+      useToastStore.getState().show("It's back up for auction. Anyone who watched or bid on it has been told.", 'success');
+      loadAuctions();
+    } catch (error: any) {
+      useToastStore.getState().show(error.message || "We couldn't relist it. Try again.", 'error');
+    }
+  };
+
+  const handleRelist = (item: Auction) => {
+    const a = item as any;
+    const hours = Math.max(1, Math.round((new Date(item.end_time as any).getTime() - new Date(item.start_time as any).getTime()) / 3_600_000));
+    const length = hours >= 24 && hours % 24 === 0 ? `${hours / 24} day${hours === 24 ? '' : 's'}` : `${hours} hours`;
+    const hasReserve = a.reserve_price != null && Number(a.reserve_price) > 0;
+    Alert.alert(
+      'Relist this gadget?',
+      `It goes live now for ${length}, starting at ${formatCurrency(item.starting_price)}${
+        hasReserve ? ` with a ${formatCurrency(Number(a.reserve_price))} reserve` : ''
+      }. Anyone who watched or bid on it gets told it's back.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        ...(hasReserve ? [{ text: 'Relist without a reserve', onPress: () => relist(item, { reserve_price: null }) }] : []),
+        { text: hasReserve ? 'Relist with the same reserve' : 'Relist', onPress: () => relist(item) },
+      ]
+    );
+  };
+
   const getStatusColor = (status: string): string => {
     const statusColors: Record<string, string> = {
       draft: colors.textMuted,
@@ -227,6 +265,16 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
             onPress={() => handleCancelAuction(item)}
           >
             <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        )}
+        {canRelist(item) && (
+          <TouchableOpacity
+            style={styles.relistButton}
+            onPress={() => handleRelist(item)}
+            accessibilityRole="button"
+            accessibilityLabel="Relist this gadget"
+          >
+            <Text style={styles.relistButtonText}>Relist</Text>
           </TouchableOpacity>
         )}
         <Text style={styles.viewDetails}>View Details →</Text>
@@ -549,6 +597,17 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: fonts.sizes.sm,
     fontWeight: '500',
+  },
+  relistButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+  },
+  relistButtonText: {
+    color: '#FFFFFF',
+    fontSize: fonts.sizes.sm,
+    fontFamily: fonts.semiBold,
   },
   viewDetails: {
     color: colors.primary,

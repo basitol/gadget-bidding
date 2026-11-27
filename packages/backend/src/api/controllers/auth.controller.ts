@@ -70,6 +70,19 @@ export const verifyOTP = async (req: Request, res: Response) => {
   }
 };
 
+/** Every admin sign-in goes in the audit log (the sign-in page promises it). */
+const recordAdminSignIn = (req: Request, result: any) => {
+  const user = result?.user;
+  if (user?.role !== 'admin') return;
+  auditService.recordAuditEventSafe({
+    req,
+    userId: user.id,
+    action: 'admin_sign_in',
+    resourceType: 'auth',
+    resourceId: user.id,
+  });
+};
+
 /**
  * Login user
  * POST /api/v1/auth/login
@@ -83,6 +96,7 @@ export const login = async (req: Request, res: Response) => {
       password,
       account_type,
     });
+    recordAdminSignIn(req, tokens);
 
     sendSuccess(res, tokens, 'Login successful');
   } catch (error: any) {
@@ -249,6 +263,7 @@ export const signupComplete = async (req: Request, res: Response) => {
 export const loginTwoFactor = async (req: Request, res: Response) => {
   try {
     const tokens = await authService.completeTwoFactorLogin(req.body);
+    recordAdminSignIn(req, tokens);
     sendSuccess(res, tokens, 'Login successful');
   } catch (error: any) {
     sendError(res, error.message || 'Login failed', 401);

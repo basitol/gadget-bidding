@@ -106,16 +106,63 @@ class OrderService {
     }
   }
 
+  /* ---- Pay without the web checkout ---- */
+
+  async startBankTransfer(orderId: string): Promise<BankTransferDetails> {
+    try {
+      return (await api.post(`/orders/${orderId}/payment/bank-transfer`)).data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  async startUssd(orderId: string, bank: UssdBank): Promise<UssdDetails> {
+    try {
+      return (await api.post(`/orders/${orderId}/payment/ussd`, { bank })).data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /** paid · pending (normal until the bank confirms) · failed */
+  async paymentStatus(orderId: string, reference: string): Promise<'paid' | 'pending' | 'failed'> {
+    try {
+      return (await api.get(`/orders/${orderId}/payment/status`, { params: { reference } })).data.data.state;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /* ---- Second-chance offers ---- */
+
+  async acceptOffer(orderId: string): Promise<void> {
+    try {
+      await api.post(`/orders/${orderId}/offer/accept`);
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  async declineOffer(orderId: string): Promise<void> {
+    try {
+      await api.post(`/orders/${orderId}/offer/decline`);
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
   // Open a dispute for an order
   async createDispute(
     orderId: string,
     disputeType: DisputeType,
-    description: string
+    description: string,
+    evidence?: string[]
   ): Promise<ApiResponse<Dispute>> {
     try {
       const response = await api.post(`/orders/${orderId}/disputes`, {
         dispute_type: disputeType,
         description,
+        ...(evidence?.length ? { evidence } : {}),
       });
       return response.data;
     } catch (error) {
@@ -177,6 +224,25 @@ class OrderService {
       throw new Error(getErrorMessage(error));
     }
   }
+}
+
+/** USSD banks that work: GTBank 737, Zenith 966, UBA 919. */
+export type UssdBank = '737' | '966' | '919';
+
+export interface BankTransferDetails {
+  reference: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  amount: number;
+  expires_at: string;
+}
+
+export interface UssdDetails {
+  reference: string;
+  ussd_code: string;
+  bank: string;
+  amount: number;
 }
 
 export const orderService = new OrderService();

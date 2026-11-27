@@ -32,13 +32,23 @@ export const notifyBuyerFulfillment = async (orderId: string, status: string) =>
     if (!o?.buyerId) return;
     const data = { orderId: o.id, orderNumber: o.orderNumber, status };
 
-    if (status === 'received_by_backoffice') {
+    // Stages match the buyer's tracking page: at hub → passed check → on the way → delivered.
+    if (status === 'sent_to_backoffice') {
       if (await alreadyNotified(o.buyerId, 'fulfillment_updated', 'orderId', o.id)) return;
       await createNotification(
         o.buyerId,
         'fulfillment_updated',
         'At our hub for inspection',
-        `${o.title} arrived at our Computer Village hub. We're checking it against the listing now.`,
+        `The seller dropped your ${o.title} at our Computer Village hub. We're checking it against the listing now.`,
+        data,
+        ['push']
+      );
+    } else if (status === 'received_by_backoffice') {
+      await createNotification(
+        o.buyerId,
+        'fulfillment_updated',
+        'Passed hub inspection',
+        `Your ${o.title} matched the listing. It leaves the hub soon.`,
         data,
         ['push']
       );
@@ -47,9 +57,18 @@ export const notifyBuyerFulfillment = async (orderId: string, status: string) =>
       await createNotification(
         o.buyerId,
         'order_shipped',
-        'Passed hub inspection',
-        `Your ${o.title} matched the listing and is on its way.${o.trackingNumber ? ` Tracking: ${o.trackingNumber}.` : ''}`,
+        'On its way to you',
+        `Your ${o.title} is out for delivery.${o.trackingNumber ? ` Tracking: ${o.trackingNumber}.` : ''}`,
         data,
+        ['push', 'sms']
+      );
+    } else if (status === 'delivered') {
+      await createNotification(
+        o.buyerId,
+        'order_delivered',
+        'Delivered. Is everything okay?',
+        `Check your ${o.title} works and matches the listing, then confirm in the app. If you don't reply in 48 hours, we'll confirm for you.`,
+        { ...data, action: 'confirm_delivery' },
         ['push', 'sms']
       );
     } else if (status === 'cancelled') {

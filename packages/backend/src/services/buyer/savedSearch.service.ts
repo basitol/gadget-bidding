@@ -7,39 +7,79 @@ const MAX_PER_USER = 20;
 /** Auctions that went live within this window are checked against saved searches. */
 const MATCH_WINDOW_MINUTES = 15;
 
-const toPublic = (s: any) => ({
+/** Gadget conditions that satisfy each alert condition (grades: excellent = A, good = B). */
+export const CONDITION_MATCHES: Record<string, string[]> = {
+  new: ['new'],
+  a_or_better: ['new', 'like_new', 'excellent'],
+  b_or_better: ['new', 'like_new', 'excellent', 'good'],
+};
+const CONDITIONS = Object.keys(CONDITION_MATCHES);
+
+const toPublic = (s: any, newThisWeek = 0) => ({
   id: s.id,
   query: s.query,
   category_slug: s.categorySlug,
   max_price: s.maxPrice != null ? Number(s.maxPrice) : null,
+  condition: s.condition ?? null,
+  enabled: s.isEnabled,
+  new_this_week: newThisWeek,
   label: s.query || s.categorySlug || 'Any gadget',
   created_at: s.createdAt.toISOString(),
 });
 
 export const create = async (
   userId: string,
-  input: { query?: string; category_slug?: string; max_price?: number }
+  input: { query?: string; category_slug?: string; max_price?: number; condition?: string | null }
 ) => {
   const q = input.query?.trim().slice(0, 120) || null;
   const category = input.category_slug?.trim() || null;
   if (!q && !category) throw new Error('Tell us what to look for');
+  const condition = input.condition && input.condition !== 'any' ? input.condition : null;
+  if (condition && !CONDITIONS.includes(condition)) throw new Error('Pick a condition from the list');
   if ((await prisma.savedSearch.count({ where: { userId } })) >= MAX_PER_USER) {
     throw new Error(`You can save up to ${MAX_PER_USER} alerts. Remove one first.`);
   }
-  // Saving the same alert twice is a no-op.
+  const maxPrice = input.max_price ?? null;
+  // Saving the same alert twice just turns the existing one back on.
   const existing = await prisma.savedSearch.findFirst({
-    where: { userId, query: q, categorySlug: category },
+    where: { userId, query: q, categorySlug: category, condition, maxPrice },
   });
-  const saved =
-    existing ??
-    (await prisma.savedSearch.create({
-      data: { userId, query: q, categorySlug: category, maxPrice: input.max_price ?? null },
-    }));
+  const saved = existing
+    ? await prisma.savedSearch.update({ where: { id: existing.id }, data: { isEnabled: true } })
+    : await prisma.savedSearch.create({
+        data: { userId, query: q, categorySlug: category, maxPrice, condition },
+      });
   return toPublic(saved);
 };
 
-export const list = async (userId: string) =>
-  (await prisma.savedSearch.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } })).map(toPublic);
+/** Matches sent for each alert in the last 7 days ("2 new this week"). */
+const weeklyMatches = async (userId: string): Promise<Map<string, number>> => {
+  const rows = await query(
+    `SELECT data->>'savedSearchId' AS id, COUNT(*)::int AS n
+     FROM notifications
+     WHERE user_id = $1 AND notification_type = 'saved_search_match'
+       AND created_at >= NOW() - INTERVAL '7 days'
+     GROUP BY 1`,
+    [userId]
+  );
+  return new Map(rows.map((r: any) => [r.id, Number(r.n)]));
+};
+
+export const list = async (userId: string) => {
+  const [rows, counts] = await Promise.all([
+    prisma.savedSearch.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
+    weeklyMatches(userId),
+  ]);
+  return rows.map(s => toPublic(s, counts.get(s.id) ?? 0));
+};
+
+/** Turn an alert on or off without losing it. */
+export const setEnabled = async (userId: string, id: string, enabled: boolean) => {
+  const found = await prisma.savedSearch.findFirst({ where: { id, userId } });
+  if (!found) throw new Error('That alert no longer exists');
+  const updated = await prisma.savedSearch.update({ where: { id }, data: { isEnabled: enabled } });
+  return toPublic(updated, (await weeklyMatches(userId)).get(id) ?? 0);
+};
 
 export const remove = async (userId: string, id: string) => {
   await prisma.savedSearch.deleteMany({ where: { id, userId } });
@@ -59,6 +99,11 @@ export const notifyNewMatches = async () => {
              OR COALESCE(g.brand, '') || ' ' || COALESCE(g.model, '') ILIKE '%' || s.query || '%')
       AND (s.category_slug IS NULL OR c.slug = s.category_slug)
       AND (s.max_price IS NULL OR a.current_price <= s.max_price)
+      AND s.is_enabled
+      AND (s.condition IS NULL
+           OR (s.condition = 'new' AND g.condition = 'new')
+           OR (s.condition = 'a_or_better' AND g.condition IN ('new', 'like_new', 'excellent'))
+           OR (s.condition = 'b_or_better' AND g.condition IN ('new', 'like_new', 'excellent', 'good')))
      WHERE a.status = 'active'
        AND a.start_time >= NOW() - make_interval(mins => $1)
        AND a.end_time > NOW()

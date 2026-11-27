@@ -8,10 +8,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  TextInput,
   Animated,
   Image,
-  Linking,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +21,8 @@ import {
   GadgetImage,
   PillTabs,
   PrimaryButton,
+  SecondaryButton,
+  FooterBar,
   SectionLabel,
   CONDITION_LABEL,
   useNow,
@@ -30,7 +30,7 @@ import {
 import { BottomSheet, useSequentialFill } from '../../components/motion';
 import { fonts } from '../../constants';
 import { addressService, orderService } from '../../services';
-import { meService } from '../../services/me.service';
+import { meService, MissedPayment } from '../../services/me.service';
 import {
   getAlertPrefs,
   getPushPermission,
@@ -48,12 +48,14 @@ const errText = (e: unknown, fallback: string) => (e instanceof Error && e.messa
 /* ================= Order stage (buyer's view of payment + fulfillment) ================= */
 
 type Stage =
+  | 'offer'
   | 'unpaid'
   | 'expired'
   | 'paid'
   | 'at_hub'
   | 'checked'
   | 'on_the_way'
+  | 'confirm'
   | 'delivered'
   | 'cancelled'
   | 'refunded';
@@ -64,6 +66,7 @@ const stageOf = (o: any, now = Date.now()): Stage => {
   if (o.payment_status === 'refunded') return 'refunded';
   if (o.fulfillment_status === 'cancelled') return 'cancelled';
   if (o.payment_status !== 'paid') {
+    if (o.offer_expires_at) return new Date(o.offer_expires_at).getTime() > now ? 'offer' : 'expired';
     const due = o.payment_due_at ? new Date(o.payment_due_at).getTime() : Infinity;
     return due <= now ? 'expired' : 'unpaid';
   }
@@ -76,14 +79,17 @@ const stageOf = (o: any, now = Date.now()): Stage => {
       // Pickup orders are ready at the hub once checked; there's no courier leg.
       return isPickup(o) ? 'checked' : 'on_the_way';
     case 'delivered':
-      return 'delivered';
+      // Delivered but not yet confirmed: the buyer checks it and confirms (or we do after 48 hours).
+      return o.buyer_confirmed_at ? 'delivered' : 'confirm';
     default:
       return 'paid';
   }
 };
 
-const IN_PROGRESS: Stage[] = ['unpaid', 'paid', 'at_hub', 'checked', 'on_the_way'];
-const openDispute = (o: any) => !!o.open_dispute;
+const IN_PROGRESS: Stage[] = ['offer', 'unpaid', 'paid', 'at_hub', 'checked', 'on_the_way', 'confirm'];
+/** A case is open, or a refund was decided and the item isn't back yet: the order is on hold. */
+const caseActive = (o: any) => !!o.open_dispute || !!o.refund_pending;
+const refundPending = (o: any) => !!o.refund_pending;
 const hasDispute = (o: any) => (o.disputes?.length ?? 0) > 0;
 
 type Tone = 'green' | 'amber' | 'red' | 'blue' | 'violet' | 'teal' | 'neutral';
@@ -106,8 +112,11 @@ const StatusChip: React.FC<{ label: string; tone: Tone }> = ({ label, tone }) =>
 
 /** Chip on the orders list. */
 const listChip = (o: any, stage: Stage): { label: string; tone: Tone } => {
-  if (openDispute(o)) return { label: 'Problem reported · in review', tone: 'teal' };
+  if (refundPending(o)) return { label: 'Refund approved · send it back', tone: 'amber' };
+  if (caseActive(o)) return { label: 'Problem reported · in review', tone: 'teal' };
   switch (stage) {
+    case 'offer':
+      return { label: 'Second chance · your offer', tone: 'violet' };
     case 'unpaid':
       return { label: 'Waiting for payment', tone: 'amber' };
     case 'expired':
@@ -120,8 +129,14 @@ const listChip = (o: any, stage: Stage): { label: string; tone: Tone } => {
       return isPickup(o) ? { label: 'Ready to collect', tone: 'green' } : { label: 'Passed hub check', tone: 'green' };
     case 'on_the_way':
       return { label: 'On the way · confirm when it arrives', tone: 'blue' };
+    case 'confirm':
+      return { label: isPickup(o) ? 'Collected · confirm it' : 'Delivered · confirm it', tone: 'green' };
     case 'delivered':
-      return hasDispute(o) ? { label: 'Problem resolved', tone: 'green' } : { label: isPickup(o) ? 'Collected' : 'Delivered', tone: 'green' };
+      return o.disputes?.some((d: any) => d.outcome === 'not_upheld')
+        ? { label: 'Case closed · not upheld', tone: 'neutral' }
+        : hasDispute(o)
+          ? { label: 'Problem resolved', tone: 'green' }
+          : { label: isPickup(o) ? 'Collected' : 'Delivered', tone: 'green' };
     case 'cancelled':
       return { label: 'Cancelled', tone: 'red' };
     case 'refunded':
@@ -160,6 +175,12 @@ const payLeft = (o: any, now: number) => {
   return m >= 60 ? `${Math.floor(m / 60)}h` : `${m}m`;
 };
 
+/** "11h" / "45m" until an ISO time. */
+const hoursLeft = (iso: string, now: number) => {
+  const m = Math.max(0, Math.floor((new Date(iso).getTime() - now) / 60000));
+  return m >= 60 ? `${Math.floor(m / 60)}h` : `${m}m`;
+};
+
 const itemAmount = (o: any) => Number(o?.item_amount ?? Number(o?.total_amount ?? 0) - Number(o?.delivery_fee ?? 0));
 const titleOf = (o: any) => o?.gadget?.title ?? 'Your gadget';
 const sellerOf = (o: any) => (o?.seller?.full_name ? `Verified seller ${o.seller.full_name}` : 'Verified seller');
@@ -171,24 +192,6 @@ const eventAt = (o: any, kind: 'payment' | 'fulfillment', status: string): strin
 };
 
 /* ================= Shared bits ================= */
-
-const SecondaryButton: React.FC<{
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  style?: object;
-  compact?: boolean;
-}> = ({ label, onPress, disabled, style, compact }) => (
-  <Pressable
-    onPress={onPress}
-    disabled={disabled}
-    style={({ pressed }) => [styles.secondary, compact && styles.secondaryCompact, pressed && styles.pressed, disabled && styles.disabled, style]}
-    accessibilityRole="button"
-    accessibilityState={{ disabled }}
-  >
-    <Text style={[styles.secondaryText, compact && styles.secondaryTextCompact]}>{label}</Text>
-  </Pressable>
-);
 
 const confirmDelivery = (order: any, onDone: () => void) => {
   const pickup = isPickup(order);
@@ -213,29 +216,27 @@ const confirmDelivery = (order: any, onDone: () => void) => {
   );
 };
 
-/** Buyers get help by email (in-app support chat is for sellers), same as Profile › Help centre. */
-const SUPPORT_EMAIL = 'support@gadgetbid.ng';
-const emailSupport = (order: any) => {
-  const subject = encodeURIComponent(`Help with order ${order.order_number}`);
-  Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}`).catch(() =>
-    Alert.alert('Email us', `Write to ${SUPPORT_EMAIL} and mention order ${order.order_number}. We reply within a day.`)
-  );
-};
 
 /* ================= My orders ================= */
 
 type Tab = 'progress' | 'completed' | 'disputes';
+type Row = { kind: 'order'; key: string; at: string; o: any } | { kind: 'missed'; key: string; at: string; m: MissedPayment };
 
 export const MyOrdersScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const now = useNow(60_000);
   const [orders, setOrders] = useState<any[] | null>(null);
+  const [missed, setMissed] = useState<MissedPayment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('progress');
 
   const load = useCallback(async () => {
     try {
-      const res = await orderService.getMyOrders(1, 50);
+      const [res, misses] = await Promise.all([
+        orderService.getMyOrders(1, 50),
+        meService.missedPayments().catch(() => null),
+      ]);
       setOrders(res.data ?? []);
+      setMissed(misses?.items ?? []);
     } catch (e) {
       setOrders(o => o ?? []);
       toast(errText(e, "Couldn't load your orders. Pull down to try again."));
@@ -250,14 +251,23 @@ export const MyOrdersScreen: React.FC<{ navigation: any }> = ({ navigation }) =>
 
   const groups = useMemo(() => {
     const list = orders ?? [];
-    const progress = list.filter(o => !openDispute(o) && IN_PROGRESS.includes(stageOf(o, now)));
-    const completed = list.filter(o => !openDispute(o) && !IN_PROGRESS.includes(stageOf(o, now)));
-    const disputes = list.filter(hasDispute).sort((a, b) => Number(openDispute(b)) - Number(openDispute(a)));
+    // An order you missed paying for shows once, as the missed payment.
+    const missedOrderIds = new Set(missed.map(m => m.order_id).filter(Boolean));
+    const asRow = (o: any): Row => ({ kind: 'order', key: o.id, at: o.updated_at ?? o.created_at, o });
+    const progress = list.filter(o => !caseActive(o) && IN_PROGRESS.includes(stageOf(o, now))).map(asRow);
+    const completed = [
+      ...list.filter(o => !caseActive(o) && !IN_PROGRESS.includes(stageOf(o, now)) && !missedOrderIds.has(o.id)).map(asRow),
+      ...missed.map((m): Row => ({ kind: 'missed', key: m.id, at: m.created_at, m })),
+    ].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const disputes = list
+      .filter(hasDispute)
+      .sort((a, b) => Number(caseActive(b)) - Number(caseActive(a)))
+      .map(asRow);
     return { progress, completed, disputes };
-  }, [orders, now]);
+  }, [orders, missed, now]);
 
   const shown = groups[tab];
-  const openDisputes = groups.disputes.filter(openDispute).length;
+  const openDisputes = (orders ?? []).filter(caseActive).length;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -289,7 +299,13 @@ export const MyOrdersScreen: React.FC<{ navigation: any }> = ({ navigation }) =>
           {shown.length === 0 ? (
             <EmptyOrders tab={tab} onExplore={() => navigation.navigate('MainTabs', { screen: 'Explore' })} />
           ) : (
-            shown.map(o => <OrderCard key={o.id} order={o} now={now} navigation={navigation} onChanged={load} />)
+            shown.map(r =>
+              r.kind === 'order' ? (
+                <OrderCard key={r.key} order={r.o} now={now} navigation={navigation} onChanged={load} />
+              ) : (
+                <MissedCard key={r.key} m={r.m} navigation={navigation} />
+              )
+            )
           )}
         </ScrollView>
       )}
@@ -313,6 +329,35 @@ const EmptyOrders: React.FC<{ tab: Tab; onExplore: () => void }> = ({ tab, onExp
   );
 };
 
+const MissedCard: React.FC<{ m: MissedPayment; navigation: any }> = ({ m, navigation }) => {
+  const open = () => navigation.navigate('MissedPayment', { missedPaymentId: m.id });
+  return (
+    <Pressable onPress={open} accessibilityRole="button" accessibilityLabel={`${m.gadget_title}, time to pay ran out`}>
+      <GlassCard style={styles.card}>
+        <View style={styles.cardTop}>
+          <GadgetImage uri={m.gadget_image} size={44} style={styles.thumb} />
+          <View style={styles.flex}>
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              {m.gadget_title}
+            </Text>
+            <Text style={styles.cardSub} numberOfLines={2}>
+              {m.order_number}
+            </Text>
+            <View style={styles.cardChip}>
+              <StatusChip label="Time to pay ran out" tone="red" />
+            </View>
+          </View>
+          <View style={styles.cardRight}>
+            <Text style={styles.cardPrice}>{formatCurrency(m.winning_bid)}</Text>
+            <Text style={styles.cardWhen}>{dayLabel(m.created_at)}</Text>
+          </View>
+        </View>
+        <SecondaryButton label="See what happened" compact onPress={open} />
+      </GlassCard>
+    </Pressable>
+  );
+};
+
 const OrderCard: React.FC<{ order: any; now: number; navigation: any; onChanged: () => void }> = ({
   order,
   now,
@@ -321,9 +366,14 @@ const OrderCard: React.FC<{ order: any; now: number; navigation: any; onChanged:
 }) => {
   const stage = stageOf(order, now);
   const chip = listChip(order, stage);
-  const open = () => navigation.navigate('OrderDetail', { orderId: order.id });
+  const caseId: string | undefined = order.disputes?.[0]?.id;
+  const open = () =>
+    caseId && hasDispute(order)
+      ? navigation.navigate('Case', { disputeId: caseId })
+      : navigation.navigate('OrderDetail', { orderId: order.id });
 
   const when = (() => {
+    if (stage === 'offer') return `Ends in ${hoursLeft(order.offer_expires_at, now)}`;
     if (stage === 'unpaid') return `Pay in ${payLeft(order, now)}`;
     if (stage === 'delivered') {
       const at = eventAt(order, 'fulfillment', 'delivered');
@@ -335,12 +385,16 @@ const OrderCard: React.FC<{ order: any; now: number; navigation: any; onChanged:
   })();
 
   const action =
-    stage === 'unpaid' && !openDispute(order) ? (
+    stage === 'offer' ? (
+      <PrimaryButton label="View offer" compact onPress={() => navigation.navigate('SecondChance', { orderId: order.id })} />
+    ) : stage === 'confirm' && !caseActive(order) ? (
+      <PrimaryButton label="Confirm delivery" compact onPress={open} />
+    ) : stage === 'unpaid' && !caseActive(order) ? (
       <PrimaryButton label="Pay now" compact onPress={() => navigation.navigate('Checkout', { orderId: order.id })} />
-    ) : stage === 'on_the_way' && !openDispute(order) ? (
+    ) : stage === 'on_the_way' && !caseActive(order) ? (
       <PrimaryButton label="Confirm delivery" compact onPress={() => confirmDelivery(order, onChanged)} />
     ) : (
-      <SecondaryButton label="View order" compact onPress={open} />
+      <SecondaryButton label={caseId && hasDispute(order) ? `View case ${order.disputes[0].case_number ?? ''}`.trim() : 'View order'} compact onPress={open} />
     );
 
   return (
@@ -360,8 +414,8 @@ const OrderCard: React.FC<{ order: any; now: number; navigation: any; onChanged:
             </View>
           </View>
           <View style={styles.cardRight}>
-            <Text style={styles.cardPrice}>{formatCurrency(order.total_amount)}</Text>
-            {when ? <Text style={[styles.cardWhen, stage === 'unpaid' && styles.dueText]}>{when}</Text> : null}
+            <Text style={styles.cardPrice}>{formatCurrency(stage === 'offer' ? itemAmount(order) : order.total_amount)}</Text>
+            {when ? <Text style={[styles.cardWhen, (stage === 'unpaid' || stage === 'offer') && styles.dueText]}>{when}</Text> : null}
           </View>
         </View>
         <View style={styles.cardAction}>{action}</View>
@@ -381,7 +435,7 @@ const buildSteps = (o: any): Step[] => {
   const order: Stage[] = pickup
     ? ['paid', 'at_hub', 'checked', 'delivered']
     : ['paid', 'at_hub', 'checked', 'on_the_way', 'delivered'];
-  const reachedIdx = paid ? order.indexOf(stage) : -1;
+  const reachedIdx = paid ? order.indexOf(stage === 'confirm' ? 'delivered' : stage) : -1;
   const reached = (s: Stage) => paid && reachedIdx >= order.indexOf(s);
   const steps: Step[] = [
     {
@@ -423,10 +477,15 @@ const PICKUP_LABELS = ['Paid', 'At hub', 'Checked', 'Collected'];
 /** Big status card at the top of the order page. */
 const statusCopy = (o: any, stage: Stage, now: number): { chip: string; tone: Tone; note: string | null; title: string } => {
   const pickup = isPickup(o);
-  if (openDispute(o)) {
+  if (refundPending(o)) {
+    return { chip: 'Refund approved', tone: 'amber', note: 'Send it back to the hub', title: "You'll get a full refund" };
+  }
+  if (caseActive(o)) {
     return { chip: 'In review', tone: 'teal', note: 'We reply within a day', title: "We're looking into your problem" };
   }
   switch (stage) {
+    case 'offer':
+      return { chip: 'Second chance', tone: 'violet', note: `Ends in ${hoursLeft(o.offer_expires_at, now)}`, title: 'It can still be yours' };
     case 'unpaid':
       return { chip: 'Waiting for payment', tone: 'amber', note: `Pay in ${payLeft(o, now)}`, title: 'Pay to secure your win' };
     case 'expired':
@@ -441,6 +500,7 @@ const statusCopy = (o: any, stage: Stage, now: number): { chip: string; tone: To
         : { chip: 'Passed check', tone: 'green', note: 'Leaves the hub in 1–2 days', title: 'Passed our hub check' };
     case 'on_the_way':
       return { chip: 'On the way', tone: 'blue', note: o.tracking_number ? `Tracking ${o.tracking_number}` : null, title: 'On its way to you' };
+    case 'confirm':
     case 'delivered':
       return { chip: pickup ? 'Collected' : 'Delivered', tone: 'green', note: null, title: pickup ? 'You collected it' : 'Delivered to you' };
     case 'cancelled':
@@ -457,13 +517,6 @@ const maskPhone = (p?: string) => {
   return `${local.slice(0, 4)} ••• ${local.slice(-4)}`;
 };
 
-const DISPUTE_REASONS: { key: string; label: string }[] = [
-  { key: 'item_not_received', label: "It hasn't arrived" },
-  { key: 'item_damaged', label: 'It arrived damaged' },
-  { key: 'item_not_as_described', label: "It's not as described" },
-  { key: 'other', label: 'Something else' },
-];
-
 export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
   const { orderId } = route.params;
   const now = useNow(60_000);
@@ -471,7 +524,6 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
   const [updatesOn, setUpdatesOn] = useState<boolean | null>(null);
   const [sending, setSending] = useState(false);
   const [addressSheet, setAddressSheet] = useState(false);
-  const [problemSheet, setProblemSheet] = useState(false);
   const [myRating, setMyRating] = useState<{ score: number } | null | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -501,6 +553,11 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
 
   const stage = order ? stageOf(order, now) : null;
 
+  // A second-chance offer has its own screen.
+  useEffect(() => {
+    if (stage === 'offer') navigation.replace('SecondChance', { orderId });
+  }, [stage, navigation, orderId]);
+
   useEffect(() => {
     if (stage === 'delivered' && myRating === undefined) {
       meService
@@ -526,7 +583,13 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
   const labels = pickup ? PICKUP_LABELS : PROGRESS_LABELS;
   const filled = steps.filter(s => s.reached).length;
   const inFlight = ['paid', 'at_hub', 'checked', 'on_the_way'].includes(stage);
-  const canReport = ['on_the_way', 'delivered'].includes(stage) && !openDispute(order);
+  const canReport = ['on_the_way', 'confirm', 'delivered'].includes(stage) && !caseActive(order);
+  const report = () => navigation.navigate('ReportProblem', { orderId: order.id });
+  const latestCase = order.disputes?.[0];
+
+  if (stage === 'confirm' && !caseActive(order)) {
+    return <AfterDelivery order={order} now={now} navigation={navigation} onConfirmed={load} onReport={report} />;
+  }
   const condition = CONDITION_LABEL[order.gadget?.condition];
   const won = order.auction?.end_time
     ? `Won ${dayInline(order.auction.end_time)}${order.auction.total_bids ? ` · ${order.auction.total_bids} bids` : ''}`
@@ -569,9 +632,9 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
   const footer =
     stage === 'unpaid' ? (
       <PrimaryButton label="Pay now" onPress={() => navigation.navigate('Checkout', { orderId: order.id })} />
-    ) : stage === 'on_the_way' && !openDispute(order) ? (
+    ) : stage === 'on_the_way' && !caseActive(order) ? (
       <PrimaryButton label="Confirm delivery" onPress={() => confirmDelivery(order, load)} />
-    ) : pickup && stage === 'checked' && !openDispute(order) ? (
+    ) : pickup && stage === 'checked' && !caseActive(order) ? (
       <PrimaryButton label="I collected it" onPress={() => confirmDelivery(order, load)} />
     ) : inFlight && updatesOn === false ? (
       <SecondaryButton label="Get delivery updates" onPress={turnOnUpdates} />
@@ -631,7 +694,7 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
             {pickup ? (
               <>
                 <Text style={styles.addressTitle}>Gadgets Bidding hub</Text>
-                <Text style={styles.addressSub}>Computer Village, Ikeja, Lagos · bring a photo ID</Text>
+                <Text style={styles.addressSub}>2nd floor, 14 Ola-Ayeni Street, Computer Village, Ikeja · bring a photo ID</Text>
               </>
             ) : address ? (
               <>
@@ -682,21 +745,33 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
           {paid || stage === 'refunded' ? (
             <SecondaryButton label={sending ? 'Sending…' : 'Email receipt'} onPress={emailReceipt} disabled={sending} style={styles.flex} />
           ) : null}
-          <SecondaryButton label="Get help" onPress={() => emailSupport(order)} style={styles.flex} />
+          <SecondaryButton
+            label="Get help"
+            onPress={() => navigation.navigate('ContactSupport', { orderId: order.id, topic: 'order' })}
+            style={styles.flex}
+          />
         </View>
 
+        {latestCase ? (
+          <PrimaryButton
+            label={`View case ${latestCase.case_number ?? ''}`.trim()}
+            onPress={() => navigation.navigate('Case', { disputeId: latestCase.id })}
+            style={styles.caseButton}
+          />
+        ) : null}
+
         {canReport ? (
-          <Pressable onPress={() => setProblemSheet(true)} style={styles.reportLink} accessibilityRole="button">
+          <Pressable onPress={report} style={styles.reportLink} accessibilityRole="button">
             <Text style={styles.reportText}>Report a problem with this order</Text>
           </Pressable>
         ) : null}
 
-        {stage === 'delivered' && !openDispute(order) && myRating !== undefined ? (
+        {stage === 'delivered' && !caseActive(order) && myRating !== undefined ? (
           <RateSeller orderId={order.id} rating={myRating} onRated={setMyRating} />
         ) : null}
       </ScrollView>
 
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+      {footer ? <FooterBar>{footer}</FooterBar> : null}
 
       <AddressSheet
         visible={addressSheet}
@@ -705,10 +780,138 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
         onSaved={load}
         onAddNew={() => {
           setAddressSheet(false);
-          navigation.navigate('ShippingAddress');
+          navigation.navigate('AddressForm');
         }}
       />
-      <ProblemSheet visible={problemSheet} onClose={() => setProblemSheet(false)} orderId={order.id} onSent={load} />
+    </GlassScreen>
+  );
+};
+
+/** "Nov 24" or "Today, 1:15 pm". */
+const sideDate = (iso: string | null) => {
+  if (!iso) return '';
+  const l = dayLabel(iso);
+  return l === 'Today' || l === 'Yesterday' ? `${l}, ${timeLabel(iso)}` : l;
+};
+/** "1d 21h" / "5h 10m" */
+const dh = (ms: number) => {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  return d > 0 ? `${d}d ${h}h` : `${h}h ${m % 60}m`;
+};
+
+/** Delivered, waiting for the buyer: check it, then confirm or report a problem. */
+const AfterDelivery: React.FC<{
+  order: any;
+  now: number;
+  navigation: any;
+  onConfirmed: () => void;
+  onReport: () => void;
+}> = ({ order, now, navigation, onConfirmed, onReport }) => {
+  const [busy, setBusy] = useState(false);
+  const pickup = isPickup(order);
+  const address = order.shipping_address;
+  const deliveredAt = eventAt(order, 'fulfillment', 'delivered');
+  const left = order.confirm_by ? new Date(order.confirm_by).getTime() - now : 0;
+  const fills = useSequentialFill([true, true, true, true, false]);
+
+  const rows: { title: string; sub: string; at: string | null; now?: boolean }[] = [
+    { title: 'Paid', sub: 'Held safely in escrow', at: eventAt(order, 'payment', 'paid') },
+    { title: 'Checked at hub', sub: 'Matched the listing', at: eventAt(order, 'fulfillment', 'received_by_backoffice') },
+    ...(pickup
+      ? []
+      : [
+          {
+            title: 'Out for delivery',
+            sub: order.tracking_number ? `Rider picked it up · ${order.tracking_number}` : 'Rider picked it up at Computer Village',
+            at: eventAt(order, 'fulfillment', 'shipped'),
+          },
+        ]),
+    {
+      title: pickup ? 'Collected' : 'Delivered',
+      sub: pickup ? 'At our Computer Village hub' : [address?.city, address?.state].filter(Boolean).join(', ') || 'To your address',
+      at: deliveredAt,
+    },
+    { title: 'You confirm', sub: 'Waiting for you', at: null, now: true },
+  ];
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await orderService.confirmDelivery(order.id);
+      toast('Thanks! The seller gets paid from escrow.', 'success');
+      onConfirmed();
+    } catch (e) {
+      toast(errText(e, "We couldn't confirm that. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <GlassScreen>
+      <GlassHeader title={`Order ${order.order_number}`} onBack={() => navigation.goBack()} />
+      <ScrollView contentContainerStyle={styles.content}>
+        <GlassCard style={[styles.item, styles.itemFirst]}>
+          <GadgetImage uri={order.gadget?.images?.[0]} size={48} style={styles.itemThumb} />
+          <View style={styles.flex}>
+            <Text style={styles.itemTitle} numberOfLines={2}>
+              {titleOf(order)}
+            </Text>
+            <Text style={styles.itemSub}>Sold by a verified seller</Text>
+            <Text style={styles.itemSub}>
+              Paid {formatCurrency(itemAmount(order))}
+              {Number(order.delivery_fee) > 0 ? ' + delivery' : ''}
+            </Text>
+          </View>
+        </GlassCard>
+
+        <GlassCard style={[styles.timeline, styles.gapTop]}>
+          {rows.map((r, i) => {
+            const state = r.now ? 'now' : 'done';
+            return (
+              <View key={r.title} style={styles.tlRow}>
+                <View style={styles.tlRail}>
+                  <View style={styles.tlDot}>
+                    <Animated.View
+                      style={[
+                        StyleSheet.absoluteFill,
+                        state === 'done' ? styles.tlDone : styles.tlNow,
+                        state === 'done' ? { opacity: fills[i]?.dot ?? 1, transform: [{ scale: fills[i]?.dot ?? 1 }] } : null,
+                      ]}
+                    />
+                  </View>
+                  {i < rows.length - 1 ? <View style={[styles.tlLine, i < rows.length - 2 && styles.tlLineDone]} /> : null}
+                </View>
+                <View style={[styles.tlBody, styles.tlBodyRow]}>
+                  <View style={styles.flex}>
+                    <Text style={[styles.tlTitle, state === 'now' && styles.tlTitleNow]}>{r.title}</Text>
+                    <Text style={styles.tlSub}>{r.sub}</Text>
+                  </View>
+                  {r.at ? <Text style={styles.tlSide}>{sideDate(r.at)}</Text> : null}
+                </View>
+              </View>
+            );
+          })}
+        </GlassCard>
+
+        <GlassCard style={styles.okCard}>
+          <Text style={styles.okTitle}>Is everything okay?</Text>
+          <Text style={styles.okText}>
+            Check it works and matches the listing. When you confirm, we pay the seller.
+            {left > 0 ? (
+              <>
+                {' '}If you don't reply in <Text style={styles.okStrong}>{dh(left)}</Text>, we'll confirm for you.
+              </>
+            ) : null}
+          </Text>
+        </GlassCard>
+      </ScrollView>
+      <FooterBar>
+        <PrimaryButton label={busy ? 'Confirming…' : "Yes, it's all good"} onPress={confirm} disabled={busy} />
+        <SecondaryButton label="Something's wrong" onPress={onReport} danger style={styles.gapTop8} />
+      </FooterBar>
     </GlassScreen>
   );
 };
@@ -785,7 +988,9 @@ const Timeline: React.FC<{ steps: Step[]; done: boolean }> = ({ steps, done }) =
 
 const EscrowNote: React.FC<{ order: any; stage: Stage }> = ({ order, stage }) => {
   const what = isPickup(order) ? 'you collect it' : 'you confirm it arrived okay';
-  const text = openDispute(order)
+  const text = refundPending(order)
+    ? 'Your money stays in escrow. We refund you in full as soon as the item is back at the hub.'
+    : caseActive(order)
     ? "The seller's payment is on hold in escrow while we look into your problem."
     : stage === 'unpaid'
       ? `When you pay, your money is held in escrow. The seller is paid only after ${what}.`
@@ -878,6 +1083,7 @@ const AddressSheet: React.FC<{
         state: a.state,
         postal_code: a.postal_code,
         country: a.country || 'Nigeria',
+        delivery_note: a.delivery_note,
       });
       toast('Address changed. The hub will send it there.', 'success');
       onClose();
@@ -928,70 +1134,6 @@ const AddressSheet: React.FC<{
   );
 };
 
-const ProblemSheet: React.FC<{ visible: boolean; onClose: () => void; orderId: string; onSent: () => void }> = ({
-  visible,
-  onClose,
-  orderId,
-  onSent,
-}) => {
-  const [reason, setReason] = useState<string | null>(null);
-  const [details, setDetails] = useState('');
-  const [busy, setBusy] = useState(false);
-  const tooShort = details.trim().length < 20;
-
-  const send = async () => {
-    if (!reason || tooShort) return;
-    setBusy(true);
-    try {
-      await orderService.createDispute(orderId, reason as any, details.trim());
-      toast("Thanks. We've paused the seller's payment and will reply within a day.", 'success');
-      setReason(null);
-      setDetails('');
-      onClose();
-      onSent();
-    } catch (e) {
-      toast(errText(e, "We couldn't send that. Try again."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <BottomSheet visible={visible} onClose={onClose}>
-      <Text style={styles.sheetTitle}>What's wrong?</Text>
-      <Text style={styles.sheetSub}>We hold the seller's payment while we look into it.</Text>
-      <View style={styles.reasons}>
-        {DISPUTE_REASONS.map(r => {
-          const on = r.key === reason;
-          return (
-            <Pressable
-              key={r.key}
-              onPress={() => setReason(r.key)}
-              style={[styles.reason, on && styles.reasonOn]}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: on }}
-            >
-              <Text style={[styles.reasonText, on && styles.reasonTextOn]}>{r.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <Text style={styles.fieldLabel}>What happened?</Text>
-      <TextInput
-        value={details}
-        onChangeText={setDetails}
-        multiline
-        placeholderTextColor={G.faint}
-        style={styles.textArea}
-        accessibilityLabel="What happened"
-        maxLength={1000}
-      />
-      <Text style={styles.fieldHint}>A few sentences help us sort it faster (20 characters or more).</Text>
-      <PrimaryButton label={busy ? 'Sending…' : 'Send to support'} onPress={send} disabled={!reason || tooShort || busy} />
-    </BottomSheet>
-  );
-};
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
@@ -1001,17 +1143,6 @@ const styles = StyleSheet.create({
   chip: { height: 26, paddingHorizontal: 10, borderRadius: 8, justifyContent: 'center', alignSelf: 'flex-start' },
   chipText: { fontSize: 12, fontFamily: fonts.medium },
 
-  secondary: {
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  secondaryCompact: { height: 38, borderRadius: 11 },
-  secondaryText: { color: G.ink, fontSize: 15, fontFamily: fonts.medium },
-  secondaryTextCompact: { fontSize: 13 },
 
   /* List */
   tabs: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 12 },
@@ -1067,6 +1198,16 @@ const styles = StyleSheet.create({
   tlTitleNow: { color: G.blue600 },
   tlTitleTodo: { color: G.faint },
   tlSub: { color: G.muted, fontSize: 12, fontFamily: fonts.regular, marginTop: 2 },
+  tlBodyRow: { flexDirection: 'row', gap: 8 },
+  tlSide: { color: G.muted, fontSize: 12, fontFamily: fonts.regular, marginTop: 2 },
+  tlLineDone: { backgroundColor: '#2E9E5E' },
+  itemFirst: { marginTop: 0 },
+  gapTop: { marginTop: 12 },
+  gapTop8: { marginTop: 8 },
+  okCard: { padding: 16, marginTop: 12 },
+  okTitle: { color: G.ink, fontSize: 19, fontFamily: fonts.medium },
+  okText: { color: G.slate, fontSize: 14, lineHeight: 21, fontFamily: fonts.regular, marginTop: 8 },
+  okStrong: { color: G.ink, fontFamily: fonts.medium },
   tlSubTodo: { color: G.faint },
 
   address: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
@@ -1092,24 +1233,16 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
   reportLink: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
+  caseButton: { marginTop: 12 },
   reportText: { color: '#D9536A', fontSize: 14, fontFamily: fonts.medium },
 
   rate: { padding: 16, marginTop: 12, gap: 12, alignItems: 'center' },
   rateTitle: { color: G.ink, fontSize: 15, fontFamily: fonts.medium },
   stars: { flexDirection: 'row', gap: 8 },
 
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.9)',
-  },
 
   /* Sheets */
   sheetTitle: { color: G.ink, fontSize: 19, fontFamily: fonts.medium },
-  sheetSub: { color: G.muted, fontSize: 14, fontFamily: fonts.regular, marginTop: 4 },
   sheetLoader: { marginVertical: 24 },
   sheetList: { gap: 8, marginTop: 16, marginBottom: 16 },
   option: {
@@ -1137,23 +1270,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  reasons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16, marginBottom: 16 },
-  reason: { height: 36, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#F5F6F9', justifyContent: 'center' },
-  reasonOn: { backgroundColor: G.ink },
-  reasonText: { color: G.ink, fontSize: 14, fontFamily: fonts.medium },
-  reasonTextOn: { color: '#FFFFFF' },
   fieldLabel: { color: G.slate, fontSize: 14, fontFamily: fonts.medium, marginBottom: 8 },
-  textArea: {
-    minHeight: 96,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#EDEFF4',
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    fontSize: 15,
-    fontFamily: fonts.regular,
-    color: G.ink,
-    textAlignVertical: 'top',
-  },
-  fieldHint: { color: G.muted, fontSize: 12, fontFamily: fonts.regular, marginTop: 6, marginBottom: 16 },
 });

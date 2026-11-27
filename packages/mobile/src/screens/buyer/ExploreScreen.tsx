@@ -44,7 +44,7 @@ type SortKey = (typeof SORTS)[number]['key'];
 export const ExploreScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
   const now = useNow();
   const input = useRef<TextInput>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState<string>(route.params?.query ?? '');
   const [category, setCategory] = useState<string | null>(route.params?.category ?? null);
   const [sort, setSort] = useState<SortKey>('ending_soon');
   const [sortOpen, setSortOpen] = useState(false);
@@ -54,9 +54,10 @@ export const ExploreScreen: React.FC<{ navigation: any; route: any }> = ({ navig
   const [loading, setLoading] = useState(true);
   const [alertSaved, setAlertSaved] = useState(false);
 
-  // Home's chips and search bar hand over a category / focus request.
+  // Home's chips and search bar (and the not-found state) hand over a category, query or focus request.
   useEffect(() => {
     if (route.params?.category !== undefined) setCategory(route.params.category);
+    if (route.params?.query) setQuery(route.params.query);
     if (route.params?.focusSearch) setTimeout(() => input.current?.focus(), 250);
   }, [route.params]);
 

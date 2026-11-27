@@ -17,52 +17,181 @@ const URGENT_TYPES = new Set<NotificationType>([
   'payment_reminder',
 ]);
 
-/* ---------------- Alert preferences (Settings screen) ---------------- */
+/* ---------------- Alert preferences (Profile › Notifications) ---------------- */
 
-export interface NotificationPrefs {
-  bids: boolean;
-  orders: boolean;
+/** One switch per row on the Notifications screen. */
+export interface AlertSwitches {
+  outbid: boolean;
+  ending_soon: boolean;
+  autobid_max: boolean;
+  won: boolean;
+  payment_reminders: boolean;
+  delivery_updates: boolean;
+  dispute_updates: boolean;
+  saved_search: boolean;
+  /** "Offers and news" */
   marketing: boolean;
 }
 
-export const DEFAULT_PREFS: NotificationPrefs = { bids: true, orders: true, marketing: false };
+export interface NotificationPrefs extends AlertSwitches {
+  /** How we reach you. The in-app list always gets everything. */
+  channels: { push: boolean; email: boolean; sms: boolean };
+  /** 10:00 pm – 7:00 am Lagos: no phone alerts, except payment deadlines and security. */
+  quiet_hours: boolean;
+  /** Older app versions read and write these three group switches. */
+  bids: boolean;
+  orders: boolean;
+}
 
-/** Which Settings switch controls each type. Types not listed (account, support, admin) always send. */
-const PREF_FOR_TYPE: Partial<Record<NotificationType, keyof NotificationPrefs>> = {
-  bid_placed: 'bids',
-  outbid: 'bids',
-  auction_won: 'bids',
-  auction_lost: 'bids',
-  auction_ending_soon: 'bids',
-  bid_defaulted: 'bids',
-  order_created: 'orders',
-  order_shipped: 'orders',
-  order_delivered: 'orders',
-  payment_initiated: 'orders',
-  payment_received: 'orders',
-  payment_failed: 'orders',
-  payment_reminder: 'orders',
+const SWITCH_DEFAULTS: AlertSwitches = {
+  outbid: true,
+  ending_soon: true,
+  autobid_max: true,
+  won: true,
+  payment_reminders: true,
+  delivery_updates: true,
+  dispute_updates: true,
+  saved_search: true,
+  marketing: false,
+};
+const CHANNEL_DEFAULTS = { push: true, email: true, sms: false };
+
+const GROUPS: Record<'bids' | 'orders', (keyof AlertSwitches)[]> = {
+  bids: ['outbid', 'ending_soon', 'autobid_max', 'won'],
+  orders: ['payment_reminders', 'delivery_updates', 'dispute_updates'],
+};
+
+export const DEFAULT_PREFS: NotificationPrefs = {
+  ...SWITCH_DEFAULTS,
+  channels: CHANNEL_DEFAULTS,
+  quiet_hours: false,
+  bids: true,
+  orders: true,
+};
+
+/**
+ * Which switch controls each type. Types not listed (account, security, support, admin)
+ * always send. Typed loosely so new types can be mapped before the shared union has them.
+ */
+const SWITCH_FOR_TYPE: Record<string, keyof AlertSwitches> = {
+  outbid: 'outbid',
+  bid_placed: 'outbid',
+  auction_ending_soon: 'ending_soon',
+  auction_won: 'won',
+  auction_lost: 'won',
+  bid_defaulted: 'won',
+  payment_reminder: 'payment_reminders',
+  payment_failed: 'payment_reminders',
+  payment_initiated: 'delivery_updates',
+  payment_received: 'delivery_updates',
+  order_created: 'delivery_updates',
+  order_shipped: 'delivery_updates',
+  order_delivered: 'delivery_updates',
+  fulfillment_updated: 'delivery_updates',
+  dispute_opened: 'dispute_updates',
+  dispute_updated: 'dispute_updates',
+  saved_search_match: 'saved_search',
+  store_new_listing: 'saved_search',
+};
+
+/** Payment deadlines still reach the phone during quiet hours. */
+const QUIET_HOURS_EXEMPT = new Set<string>(['payment_reminder', 'payment_failed', 'auction_won', 'bid_defaulted']);
+
+/** Receipts for something the user just did themselves: phone and app only, never an extra email or text. */
+const OWN_ACTION_TYPES = new Set<string>(['bid_placed', 'payment_initiated', 'order_created']);
+
+const switchFor = (type: string, data?: Record<string, any>): keyof AlertSwitches | undefined =>
+  // "Auto-bid hit your max" is sent as an outbid alert carrying the max.
+  type === 'outbid' && data?.autoBidMax != null ? 'autobid_max' : SWITCH_FOR_TYPE[type];
+
+/** 10:00 pm – 7:00 am in Lagos. */
+const inQuietHours = (now = new Date()) => {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Africa/Lagos' }).format(now)
+  );
+  return hour >= 22 || hour < 7;
+};
+
+/** Stored JSON (old or new shape) → full preferences. */
+const normalizePrefs = (stored: Record<string, any> | null | undefined): NotificationPrefs => {
+  const raw = stored || {};
+  const switches = { ...SWITCH_DEFAULTS };
+  // Old group switches seed the rows they used to cover.
+  for (const group of ['bids', 'orders'] as const) {
+    if (typeof raw[group] === 'boolean') for (const k of GROUPS[group]) switches[k] = raw[group];
+  }
+  for (const k of Object.keys(SWITCH_DEFAULTS) as (keyof AlertSwitches)[]) {
+    if (typeof raw[k] === 'boolean') switches[k] = raw[k];
+  }
+  const channels = { ...CHANNEL_DEFAULTS };
+  for (const c of ['push', 'email', 'sms'] as const) {
+    if (typeof raw.channels?.[c] === 'boolean') channels[c] = raw.channels[c];
+  }
+  return {
+    ...switches,
+    channels,
+    quiet_hours: raw.quiet_hours === true,
+    bids: GROUPS.bids.some(k => switches[k]),
+    orders: GROUPS.orders.some(k => switches[k]),
+  };
 };
 
 export const getPreferences = async (userId: string): Promise<NotificationPrefs> => {
   const rows = await query('SELECT notification_prefs FROM users WHERE id = $1', [userId]);
-  return { ...DEFAULT_PREFS, ...(rows[0]?.notification_prefs || {}) };
+  return normalizePrefs(rows[0]?.notification_prefs);
 };
 
 export const updatePreferences = async (
   userId: string,
-  changes: Partial<NotificationPrefs>
+  changes: Partial<Omit<NotificationPrefs, 'channels'>> & { channels?: Partial<NotificationPrefs['channels']> }
 ): Promise<NotificationPrefs> => {
-  const clean: Partial<NotificationPrefs> = {};
-  for (const key of Object.keys(DEFAULT_PREFS) as (keyof NotificationPrefs)[]) {
-    if (typeof changes[key] === 'boolean') clean[key] = changes[key];
+  const current = await getPreferences(userId);
+  const next: NotificationPrefs = { ...current, channels: { ...current.channels } };
+  // An old app flipping a group switch flips every row in it.
+  for (const group of ['bids', 'orders'] as const) {
+    if (typeof changes[group] === 'boolean') for (const k of GROUPS[group]) next[k] = changes[group] as boolean;
   }
-  const next = { ...(await getPreferences(userId)), ...clean };
+  for (const k of Object.keys(SWITCH_DEFAULTS) as (keyof AlertSwitches)[]) {
+    if (typeof changes[k] === 'boolean') next[k] = changes[k] as boolean;
+  }
+  for (const c of ['push', 'email', 'sms'] as const) {
+    if (typeof changes.channels?.[c] === 'boolean') next.channels[c] = changes.channels[c] as boolean;
+  }
+  if (typeof changes.quiet_hours === 'boolean') next.quiet_hours = changes.quiet_hours;
+  next.bids = GROUPS.bids.some(k => next[k]);
+  next.orders = GROUPS.orders.some(k => next[k]);
+  const { bids: _b, orders: _o, ...stored } = next;
   await query('UPDATE users SET notification_prefs = $2, updated_at = NOW() WHERE id = $1', [
     userId,
-    JSON.stringify(next),
+    JSON.stringify(stored),
   ]);
   return next;
+};
+
+const escapeHtml = (v: string) =>
+  v.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] as string);
+
+/** Plain alert email (design guide: one heading, no glass; footer says why they got it). */
+const sendAlertEmail = async (userId: string, title: string, message: string) => {
+  const rows = await query('SELECT email FROM users WHERE id = $1 AND deleted_at IS NULL', [userId]);
+  const to = rows[0]?.email;
+  if (!to) return;
+  const { sendEmail } = await import('./email.service');
+  await sendEmail({
+    to,
+    subject: title,
+    html: `
+      <div style="background:#F6F7FA;padding:32px 0;">
+        <div style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;max-width:680px;margin:0 auto;background:#FFFFFF;border-radius:18px;padding:32px;">
+          <div style="font-size:17px;font-weight:600;color:#1C1F2A;margin-bottom:24px;">Gadgets Bidding</div>
+          <h1 style="font-size:22px;font-weight:600;color:#1C1F2A;margin:0 0 12px;">${escapeHtml(title)}</h1>
+          <p style="color:#5C6273;font-size:15px;line-height:1.6;margin:0;">${escapeHtml(message)}</p>
+          <p style="color:#7C8293;font-size:12px;line-height:1.6;margin:28px 0 0;border-top:1px solid #EDEFF4;padding-top:16px;">
+            You're getting this because email alerts are on. Turn them off in the app under Profile › Notifications. We'll never ask for your password or PIN by email.
+          </p>
+        </div>
+      </div>`,
+  });
 };
 
 /**
@@ -87,17 +216,24 @@ export const createNotification = async (
 
   const notification = result[0];
 
-  // The in-app list always gets it; push and SMS respect the user's Settings switches.
-  const pref = PREF_FOR_TYPE[type];
-  const muted = pref ? !(await getPreferences(userId).catch(() => DEFAULT_PREFS))[pref] : false;
+  // The in-app list and the live socket always get it. The phone, email and SMS follow the
+  // user's switches, channels and quiet hours.
+  const prefs = await getPreferences(userId).catch(() => DEFAULT_PREFS);
+  const sw = switchFor(type, data);
+  const switchedOff = sw ? !prefs[sw] : false;
+  const quiet = prefs.quiet_hours && sw !== undefined && !QUIET_HOURS_EXEMPT.has(type) && inQuietHours();
 
-  // Send via appropriate channels
-  for (const channel of channels) {
-    if (muted && channel !== 'push') continue;
+  // "How we reach you": alerts the user can switch on/off also go by email/SMS when they picked those.
+  const send = new Set<NotificationChannel>(channels);
+  if (sw && !OWN_ACTION_TYPES.has(type)) {
+    if (prefs.channels.email) send.add('email');
+    if (prefs.channels.sms) send.add('sms');
+  }
+
+  for (const channel of send) {
     try {
       switch (channel) {
         case 'push':
-          // Send via Socket.io for real-time
           socketService.emitToUser(userId, 'notification', {
             id: notification.id,
             type,
@@ -106,9 +242,9 @@ export const createNotification = async (
             data,
             timestamp: new Date(),
           });
-          // And to the phone itself, so it arrives with the app closed.
+          // To the phone itself, so it arrives with the app closed.
           // Not awaited: a slow push service must never hold up a bid or an order.
-          if (muted) break;
+          if (switchedOff || quiet || !prefs.channels.push) break;
           void pushService.sendToUser(userId, {
             title,
             body: message,
@@ -117,24 +253,22 @@ export const createNotification = async (
           });
           break;
 
-        case 'sms':
-          // Get user phone number
-          const userResult = await query(
-            'SELECT phone_number FROM users WHERE id = $1',
-            [userId]
-          );
+        case 'sms': {
+          if (switchedOff || quiet || !prefs.channels.sms) break;
+          const userResult = await query('SELECT phone_number FROM users WHERE id = $1', [userId]);
           // Email/social sign-ups get a placeholder +9… number; never text it.
+          // Not awaited, like push: a slow SMS or email provider must never hold up a bid.
           if (userResult.length > 0 && !String(userResult[0].phone_number).startsWith('+9')) {
-            await smsService.sendSMS({
-              to: userResult[0].phone_number,
-              message,
-            });
+            void smsService
+              .sendSMS({ to: userResult[0].phone_number, message })
+              .catch((e: unknown) => logger.error('Failed to send sms notification:', e));
           }
           break;
+        }
 
         case 'email':
-          // TODO: Implement email notifications
-          logger.info(`Email notification queued for user ${userId}: ${title}`);
+          if (switchedOff || !prefs.channels.email) break;
+          void sendAlertEmail(userId, title, message).catch(e => logger.error('Failed to send email notification:', e));
           break;
       }
     } catch (error) {
@@ -505,8 +639,43 @@ export const notifyAuctionLost = async (
   await createNotification(
     userId,
     'auction_lost',
-    'Auction ended',
-    `The auction for "${gadgetTitle}" has ended and you didn't win. Your held bid funds have been released.`,
+    "You didn't win this one",
+    `${gadgetTitle} sold to another bidder. Nothing was charged and your bid hold is back in your wallet.`,
+    { auctionId },
+    ['push']
+  );
+};
+
+/** Bidders and watchers: it ended with nobody winning (bids under the reserve, or no bids). */
+export const notifyAuctionNoSale = async (
+  userId: string,
+  auctionId: string,
+  gadgetTitle: string,
+  reason: 'reserve' | 'no_bids'
+): Promise<void> => {
+  await createNotification(
+    userId,
+    'auction_no_sale',
+    'Ended without a sale',
+    reason === 'reserve'
+      ? `Bids on ${gadgetTitle} didn't reach the seller's reserve price, so nobody won. Nothing was charged.`
+      : `Nobody bid on ${gadgetTitle}. We'll tell you if the seller relists it.`,
+    { auctionId },
+    ['push']
+  );
+};
+
+/** People who bid on or watched an unsold auction: the seller put it up again. */
+export const notifyAuctionRelisted = async (
+  userId: string,
+  auctionId: string,
+  gadgetTitle: string
+): Promise<void> => {
+  await createNotification(
+    userId,
+    'auction_relisted',
+    'Back up for auction',
+    `${gadgetTitle} is listed again. Bidding is open now.`,
     { auctionId },
     ['push']
   );

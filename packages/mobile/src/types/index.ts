@@ -204,11 +204,14 @@ export interface ShippingAddress {
   full_name: string;
   phone_number: string;
   address_line1: string;
+  /** Nearest landmark ("Opposite Ikeja City Mall"). */
   address_line2?: string;
   city: string;
   state: string;
   postal_code?: string;
   country: string;
+  /** Optional note for the rider ("Call when you get to the gate"). */
+  delivery_note?: string;
 }
 
 export interface UserAddress extends ShippingAddress {
@@ -280,7 +283,10 @@ export interface AuctionFilters {
   category?: string;
   min_price?: number;
   max_price?: number;
+  /** One condition or a comma list: "excellent", "new,like_new". */
   condition?: string;
+  /** Gadget brand, exact: "Apple". */
+  brand?: string;
   search?: string;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';

@@ -68,7 +68,8 @@ router.delete(
 
 /**
  * @route   GET|PUT /api/v1/notifications/preferences
- * @desc    Alert switches from Settings (bids, orders, marketing)
+ * @desc    Alert switches from Profile › Notifications: one per row, delivery channels
+ *          { push, email, sms } and quiet_hours. Old apps' bids / orders / marketing still work.
  * @access  Private
  */
 router.get('/preferences', authenticate, notificationController.getPreferences);
@@ -77,9 +78,24 @@ router.put(
   notificationMutationRateLimiter,
   authenticate,
   [
-    body('bids').optional().isBoolean(),
-    body('orders').optional().isBoolean(),
-    body('marketing').optional().isBoolean(),
+    ...[
+      'bids',
+      'orders',
+      'marketing',
+      'outbid',
+      'ending_soon',
+      'autobid_max',
+      'won',
+      'payment_reminders',
+      'delivery_updates',
+      'dispute_updates',
+      'saved_search',
+      'quiet_hours',
+    ].map(k => body(k).optional().isBoolean()),
+    body('channels').optional().isObject(),
+    body('channels.push').optional().isBoolean(),
+    body('channels.email').optional().isBoolean(),
+    body('channels.sms').optional().isBoolean(),
   ],
   handleValidationErrors,
   notificationController.updatePreferences

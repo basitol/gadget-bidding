@@ -1,6 +1,6 @@
 import React from 'react';
 import { Sentry } from '../config/sentry';
-import { ErrorFallback } from './ErrorFallback';
+import { ErrorState, errorCodeFrom } from './states';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -8,36 +8,30 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  message?: string;
+  code?: string;
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return {
-      hasError: true,
-      message: error?.message || 'An unexpected error occurred. Please try again.',
-    };
+  static getDerivedStateFromError(): Partial<ErrorBoundaryState> {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     if (__DEV__) {
       console.error('Unhandled error caught by ErrorBoundary:', error, info);
     }
-    Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
+    // The code on screen is the start of the Sentry event id, so support can find the report.
+    const eventId = Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
+    this.setState({ code: errorCodeFrom(eventId) });
   }
 
-  reset = () => this.setState({ hasError: false, message: undefined });
+  reset = () => this.setState({ hasError: false, code: undefined });
 
   render() {
     if (this.state.hasError) {
-      return (
-        <ErrorFallback
-          onRetry={this.reset}
-          message={this.state.message}
-        />
-      );
+      return <ErrorState code={this.state.code ?? errorCodeFrom()} onRetry={this.reset} />;
     }
     return this.props.children;
   }

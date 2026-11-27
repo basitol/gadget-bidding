@@ -24,6 +24,8 @@ const BID_TYPES = new Set([
   'bid_placed',
   'auction_won',
   'auction_lost',
+  'auction_no_sale',
+  'auction_relisted',
   'auction_ending',
   'auction_ending_soon',
   'bid_defaulted',
@@ -142,8 +144,8 @@ export const BuyerNotificationsScreen: React.FC<{ navigation: any }> = ({ naviga
         return d.secondChance
           ? {
               icon: ICONS.tag,
-              open: openDefault,
-              action: { label: 'See offer', primary: false, go: () => d.orderId && navigation.navigate('YouWon', { orderId: d.orderId }) },
+              open: () => d.orderId && navigation.navigate('SecondChance', { orderId: d.orderId }),
+              action: { label: 'See offer', primary: true, go: () => d.orderId && navigation.navigate('SecondChance', { orderId: d.orderId }) },
             }
           : {
               icon: ICONS.shield,
@@ -152,12 +154,36 @@ export const BuyerNotificationsScreen: React.FC<{ navigation: any }> = ({ naviga
                 ? { label: 'Pay now', primary: true, go: () => navigation.navigate('YouWon', { orderId: d.orderId }) }
                 : null,
             };
+      case 'auction_lost':
+      case 'auction_no_sale': {
+        const result = () => d.auctionId && navigation.navigate('AuctionResult', { auctionId: d.auctionId });
+        return { icon: ICONS.bell, open: result, action: { label: 'See what happened', primary: false, go: result } };
+      }
+      case 'auction_relisted':
+        return { icon: ICONS.gavel, open: auction(), action: { label: 'View auction', primary: true, go: auction() } };
       case 'payment_failed':
         return {
           icon: ICONS.wallet,
           open: openDefault,
-          action: { label: 'Fix payment', primary: true, go: () => d.orderId && navigation.navigate('CheckoutPayment', { orderId: d.orderId }) },
+          action: { label: 'Fix payment', primary: true, go: () => d.orderId && navigation.navigate('PaymentFailed', { orderId: d.orderId }) },
         };
+      case 'dispute_updated':
+      case 'dispute_opened':
+        return d.disputeId
+          ? {
+              icon: ICONS.shield,
+              open: () => navigation.navigate('Case', { disputeId: d.disputeId }),
+              action: { label: 'View case', primary: false, go: () => navigation.navigate('Case', { disputeId: d.disputeId }) },
+            }
+          : { icon: ICONS.shield, open: openDefault, action: null };
+      case 'bid_defaulted':
+        return d.missedPaymentId
+          ? {
+              icon: ICONS.bell,
+              open: () => navigation.navigate('MissedPayment', { missedPaymentId: d.missedPaymentId }),
+              action: { label: 'See what happened', primary: false, go: () => navigation.navigate('MissedPayment', { missedPaymentId: d.missedPaymentId }) },
+            }
+          : { icon: ICONS.bell, open: () => {}, action: null };
       case 'payment_reminder':
         return {
           icon: ICONS.wallet,

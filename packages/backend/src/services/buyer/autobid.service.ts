@@ -5,6 +5,7 @@ import * as biddingService from '../bidding/bidding.service';
 import * as auctionService from '../auction/auction.service';
 import * as socketService from '../socket/socket.service';
 import * as notificationService from '../notification/notification.service';
+import { MaintenanceError, isMaintenanceActive } from '../app/appConfig.service';
 
 /**
  * Auto-bid (proxy bidding). A user sets a maximum; whenever they're outbid the system bids for
@@ -140,6 +141,8 @@ const placeFor = async (userId: string, auctionId: string, amount: number, autoB
     await announce(auctionId, userId, amount, bid, previousHighBidderId);
     return true;
   } catch (err: any) {
+    // Maintenance isn't the bidder's problem: keep their auto-bid for when bidding reopens.
+    if (err instanceof MaintenanceError) return false;
     logger.warn(`Auto-bid ${autoBidId} could not bid ₦${amount}: ${err?.message}`);
     await retire(autoBidId, userId, auctionId, max, err?.message || 'unknown error');
     return false;
@@ -150,6 +153,8 @@ const placeFor = async (userId: string, auctionId: string, amount: number, autoB
 export const resolveAutoBids = (auctionId: string): Promise<void> => {
   const run = async () => {
     try {
+      // Bidding is paused for maintenance: nothing to settle until it reopens.
+      if (await isMaintenanceActive()) return;
       // Each pass settles one contest; a handful covers three-way fights.
       for (let i = 0; i < 6 && (await resolveOnce(auctionId)); i++);
     } catch (err) {

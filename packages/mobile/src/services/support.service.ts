@@ -24,7 +24,20 @@ export type SupportMessage = {
   };
 };
 
+/** Help › Contact support topics (backend support.service CONTACT_TOPICS). */
+export type ContactTopic = 'order' | 'paying' | 'account' | 'other';
+
 export const supportService = {
+  /** Topic, optional order and a message (10+ characters) to our team. */
+  async contact(data: { topic: ContactTopic; order_id?: string | null; body: string }) {
+    const res = await api.post<{
+      success: boolean;
+      message?: string;
+      data: { thread_id: string; reply_within: string };
+    }>('/support/contact', data);
+    return res.data;
+  },
+
   async getMyThread() {
     const res = await api.get<{ success: boolean; data: SupportThread }>(
       '/support/thread'

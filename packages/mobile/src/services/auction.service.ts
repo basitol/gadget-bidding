@@ -229,6 +229,32 @@ class AuctionService {
     }
   }
 
+  /** Put an unsold gadget up again (same settings, starts now). reserve_price: null removes the reserve. */
+  async relistAuction(
+    auctionId: string,
+    changes: { starting_price?: number; reserve_price?: number | null } = {}
+  ): Promise<ApiResponse<Auction>> {
+    try {
+      const response = await api.post(`/auctions/${auctionId}/relist`, changes);
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /** Live auctions per category, and per brand inside one category (brand chips). */
+  async liveFacets(category?: string): Promise<{
+    categories: { slug: string; name: string; count: number }[];
+    category: { slug: string; live: number; brands: { brand: string; count: number }[] } | null;
+  }> {
+    try {
+      const response = await api.get('/auctions/facets', { params: category ? { category } : {} });
+      return response.data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
   // Get auctions with filters
   async getAuctions(
     filters: AuctionFilters = {},

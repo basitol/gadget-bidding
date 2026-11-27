@@ -21,9 +21,19 @@ const mapMessage = (m: any) => ({
     : undefined,
 });
 
+/** Buyers are 'bidder' accounts; support calls them buyers. */
+const ownerRole = (role?: string | null) => (role === 'seller' ? 'seller' : 'buyer');
+
+const OWNER_SELECT = { id: true, fullName: true, phoneNumber: true, email: true, role: true } as const;
+
+/**
+ * A support thread belongs to one person (buyer or seller). The column is still called
+ * seller_id from when only sellers could message us; it holds the owner's user id.
+ */
 const mapThread = (t: any) => ({
   id: t.id,
   seller_id: t.sellerId,
+  owner_role: t.seller ? ownerRole(t.seller.role) : undefined,
   status: t.status,
   subject: t.subject,
   last_message_at: t.lastMessageAt?.toISOString?.() || t.lastMessageAt,
@@ -35,19 +45,20 @@ const mapThread = (t: any) => ({
     ? {
         id: t.seller.id,
         full_name: t.seller.fullName,
-        phone_number: t.seller.phoneNumber,
+        // Email sign-ups get a placeholder +9… number; staff should see the email instead.
+        phone_number: String(t.seller.phoneNumber || '').startsWith('+9') ? null : t.seller.phoneNumber,
+        email: t.seller.email ?? null,
+        role: ownerRole(t.seller.role),
       }
     : undefined,
 });
 
-/** Seller: get open thread or create one */
-export const getOrCreateSellerThread = async (sellerId: string) => {
+/** Buyer or seller: their open thread, or a new one. One open thread per person. */
+export const getOrCreateOwnThread = async (sellerId: string) => {
   let thread = await prisma.supportThread.findFirst({
     where: { sellerId, status: 'open' },
     include: {
-      seller: {
-        select: { id: true, fullName: true, phoneNumber: true },
-      },
+      seller: { select: OWNER_SELECT },
     },
     orderBy: { lastMessageAt: 'desc' },
   });
@@ -60,9 +71,7 @@ export const getOrCreateSellerThread = async (sellerId: string) => {
         status: 'open',
       },
       include: {
-        seller: {
-          select: { id: true, fullName: true, phoneNumber: true },
-        },
+        seller: { select: OWNER_SELECT },
       },
     });
   }
@@ -70,7 +79,7 @@ export const getOrCreateSellerThread = async (sellerId: string) => {
   return mapThread(thread);
 };
 
-export const listSellerThreads = async (sellerId: string) => {
+export const listOwnThreads = async (sellerId: string) => {
   const threads = await prisma.supportThread.findMany({
     where: { sellerId },
     orderBy: { lastMessageAt: 'desc' },
@@ -111,7 +120,7 @@ export const getThreadMessages = async (
   };
 };
 
-export const assertSellerOwnsThread = async (
+export const assertOwnsThread = async (
   threadId: string,
   sellerId: string
 ) => {
@@ -122,16 +131,18 @@ export const assertSellerOwnsThread = async (
   return thread;
 };
 
-export const sendSellerMessage = async (
+/** A message from the thread's owner (buyer or seller) to our team. */
+export const sendOwnerMessage = async (
   threadId: string,
   sellerId: string,
-  body: string
+  body: string,
+  subject?: string
 ) => {
   const text = body.trim();
-  if (!text) throw new Error('Message cannot be empty');
-  if (text.length > 2000) throw new Error('Message is too long');
+  if (!text) throw new Error('Write a message first.');
+  if (text.length > 2000) throw new Error('Keep it under 2,000 characters.');
 
-  await assertSellerOwnsThread(threadId, sellerId);
+  await assertOwnsThread(threadId, sellerId);
 
   const message = await prisma.$transaction(async tx => {
     const msg = await tx.supportMessage.create({
@@ -153,6 +164,7 @@ export const sendSellerMessage = async (
         adminUnreadCount: { increment: 1 },
         sellerUnreadCount: 0,
         status: 'open',
+        ...(subject ? { subject: subject.slice(0, 255) } : {}),
         updatedAt: new Date(),
       },
     });
@@ -176,22 +188,76 @@ export const sendSellerMessage = async (
   notificationService
     .notifyBackofficeSupportMessage(
       threadId,
-      payload.sender?.full_name || 'A seller',
+      payload.sender?.full_name || 'Someone',
       preview(text)
     )
     .catch(error => {
       logger.error('Failed to notify backoffice about support message:', error);
     });
 
-  logger.info(`Support message from seller ${sellerId} on thread ${threadId}`);
+  logger.info(`Support message from user ${sellerId} on thread ${threadId}`);
   return payload;
 };
 
-export const markSellerThreadRead = async (
+/* ---------------- Contact support (Help › Contact support) ---------------- */
+
+export const CONTACT_TOPICS = {
+  order: 'An order',
+  paying: 'Paying',
+  account: 'My account',
+  other: 'Something else',
+} as const;
+export type ContactTopic = keyof typeof CONTACT_TOPICS;
+export const CONTACT_MIN_LENGTH = 10;
+/** What the app promises: "We reply within 1 working day". */
+export const REPLY_WITHIN = '1 working day';
+
+/**
+ * The Contact support form: a topic, an optional order and a message. It lands in the
+ * person's own support thread with the topic and order on top, so staff see them first.
+ */
+export const contactSupport = async (
+  userId: string,
+  input: { topic: string; order_id?: string | null; body: string }
+) => {
+  const topic = input.topic as ContactTopic;
+  if (!CONTACT_TOPICS[topic]) throw new Error("Choose what it's about.");
+  const text = String(input.body || '').trim();
+  if (text.length < CONTACT_MIN_LENGTH) {
+    throw new Error(`Tell us a bit more (at least ${CONTACT_MIN_LENGTH} characters).`);
+  }
+  if (text.length > 1800) throw new Error('Keep it under 1,800 characters.');
+
+  let orderLabel: string | null = null;
+  let orderId: string | null = null;
+  if (input.order_id) {
+    const order = await prisma.order.findFirst({
+      where: { id: input.order_id, OR: [{ buyerId: userId }, { sellerId: userId }] },
+      select: { id: true, orderNumber: true, auction: { select: { gadget: { select: { title: true } } } } },
+    });
+    if (!order) throw new Error("We couldn't find that order on your account. Choose another or leave it empty.");
+    orderId = order.id;
+    orderLabel = [order.orderNumber, order.auction?.gadget?.title].filter(Boolean).join(' · ');
+  }
+
+  const subject = [CONTACT_TOPICS[topic], orderLabel].filter(Boolean).join(' · ');
+  const thread = await getOrCreateOwnThread(userId);
+  const message = await sendOwnerMessage(thread.id, userId, `Topic: ${subject}\n\n${text}`, subject);
+
+  return {
+    thread_id: thread.id,
+    message,
+    topic,
+    order_id: orderId,
+    reply_within: REPLY_WITHIN,
+  };
+};
+
+export const markOwnerThreadRead = async (
   threadId: string,
   sellerId: string
 ) => {
-  await assertSellerOwnsThread(threadId, sellerId);
+  await assertOwnsThread(threadId, sellerId);
   await prisma.supportThread.update({
     where: { id: threadId },
     data: { sellerUnreadCount: 0 },
@@ -216,6 +282,7 @@ export const listThreadsForAdmin = async (opts: {
       OR: [
         { fullName: { contains: opts.search, mode: 'insensitive' } },
         { phoneNumber: { contains: opts.search } },
+        { email: { contains: opts.search, mode: 'insensitive' } },
       ],
     };
   }
@@ -224,9 +291,7 @@ export const listThreadsForAdmin = async (opts: {
     prisma.supportThread.findMany({
       where,
       include: {
-        seller: {
-          select: { id: true, fullName: true, phoneNumber: true },
-        },
+        seller: { select: OWNER_SELECT },
       },
       orderBy: { lastMessageAt: 'desc' },
       skip,
@@ -292,6 +357,14 @@ export const sendAdminMessage = async (
   emitToSupportThread(threadId, 'support:message', event);
   emitToUser(thread.sellerId, 'support:message', event);
 
+  // Buyers have no chat screen: the reply reaches them in Notifications, on the phone and by email.
+  const owner = await prisma.user.findUnique({ where: { id: thread.sellerId }, select: { role: true } });
+  if (owner && ownerRole(owner.role) === 'buyer') {
+    notificationService
+      .createNotification(thread.sellerId, 'support_message', 'Support replied', text, { threadId }, ['push', 'email'])
+      .catch(error => logger.error('Failed to notify buyer about support reply:', error));
+  }
+
   logger.info(`Support reply from admin ${adminId} on thread ${threadId}`);
   return payload;
 };
@@ -312,9 +385,7 @@ export const closeThread = async (threadId: string) => {
     where: { id: threadId },
     data: { status: 'closed', updatedAt: new Date() },
     include: {
-      seller: {
-        select: { id: true, fullName: true, phoneNumber: true },
-      },
+      seller: { select: OWNER_SELECT },
     },
   });
   return mapThread(thread);

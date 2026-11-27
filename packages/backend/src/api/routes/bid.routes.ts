@@ -4,6 +4,7 @@ import * as bidValidator from '../validators/bid.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import { authenticate } from '../middlewares/auth.middleware';
 import { bidRateLimiter } from '../middlewares/security.middleware';
+import { biddingGate } from '../middlewares/appGate.middleware';
 
 const router: Router = Router();
 
@@ -59,6 +60,7 @@ router.get(
 router.post(
   '/',
   bidRateLimiter,
+  ...biddingGate, // too-old app → 426, maintenance → 503
   authenticate,
   bidValidator.validatePlaceBid,
   handleValidationErrors,
@@ -73,6 +75,7 @@ router.post(
 router.post(
   '/buy-now/:auctionId',
   bidRateLimiter,
+  ...biddingGate,
   authenticate,
   bidValidator.validateBuyNow,
   handleValidationErrors,

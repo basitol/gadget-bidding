@@ -93,6 +93,12 @@ export const validateShippingAddress = [
     .default('Nigeria')
     .isLength({ max: 100 })
     .withMessage('Country must be less than 100 characters'),
+  body('delivery_note')
+    .optional({ values: 'falsy' })
+    .isString()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Keep the note for the rider under 200 characters'),
 ];
 
 /**
@@ -124,6 +130,9 @@ export const validateDisputeCreate = [
       'item_not_received',
       'item_damaged',
       'item_not_as_described',
+      'not_working',
+      'missing_parts',
+      'wrong_item',
       'fraud',
       'other',
     ])
@@ -131,7 +140,9 @@ export const validateDisputeCreate = [
   body('description')
     .trim()
     .isLength({ min: 20, max: 1000 })
-    .withMessage('Description must be between 20 and 1000 characters'),
+    .withMessage('Tell us a little more (20 characters or more)'),
+  body('evidence').optional().isArray({ max: 4 }).withMessage('Add up to 4 photos'),
+  body('evidence.*').optional().isString().isLength({ max: 1000 }),
 ];
 
 /**

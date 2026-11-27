@@ -208,7 +208,7 @@ export const getPreferences = async (req: Request, res: Response) => {
 };
 
 /**
- * PUT /api/v1/notifications/preferences  { bids?, orders?, marketing? }
+ * PUT /api/v1/notifications/preferences  { outbid?, …, channels?: { push, email, sms }, quiet_hours? }
  */
 export const updatePreferences = async (req: Request, res: Response) => {
   try {

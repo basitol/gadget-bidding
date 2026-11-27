@@ -308,11 +308,14 @@ export interface ShippingAddress {
   full_name: string;
   phone_number: string;
   address_line1: string;
+  /** Nearest landmark ("Opposite Ikeja City Mall"). */
   address_line2?: string;
   city: string;
   state: string;
   postal_code?: string;
   country: string;
+  /** Optional note for the rider ("Call when you get to the gate"). */
+  delivery_note?: string;
 }
 
 export interface UserAddress extends ShippingAddress {
@@ -347,6 +350,8 @@ export interface Order {
   tracking_number?: string;
   disputes?: Dispute[];
   open_dispute?: boolean;
+  /** A refund was decided; the order is on hold until the item is back and refunded. */
+  refund_pending?: boolean;
   /** Each payment/fulfillment status change, oldest first (buyer tracking timeline). */
   events?: OrderEvent[];
   /** Unpaid orders: when the payment window closes. */
@@ -355,6 +360,12 @@ export interface Order {
   paid_with?: string | null;
   /** Buyer view: the delivery address can still change (item hasn't left the hub). */
   address_editable?: boolean;
+  /** Second-chance offer: accept or decline before this time. */
+  offer_expires_at?: string | null;
+  /** When the buyer confirmed it arrived okay (or we did after 48 hours). */
+  buyer_confirmed_at?: string | null;
+  /** Delivered, not yet confirmed: we confirm for the buyer at this time. */
+  confirm_by?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -381,6 +392,9 @@ export type NotificationType =
   | 'outbid'
   | 'auction_won'
   | 'auction_lost'
+  | 'auction_no_sale'
+  | 'auction_relisted'
+  | 'listing_reported'
   | 'auction_created'
   | 'auction_ending_soon'
   | 'bid_defaulted'
@@ -391,6 +405,7 @@ export type NotificationType =
   | 'fulfillment_updated'
   | 'delivery_confirmed_admin'
   | 'dispute_opened'
+  | 'dispute_updated'
   | 'support_message'
   | 'payment_received'
   | 'payment_failed'
@@ -426,6 +441,9 @@ export type DisputeType =
   | 'item_not_received'
   | 'item_damaged'
   | 'item_not_as_described'
+  | 'not_working'
+  | 'missing_parts'
+  | 'wrong_item'
   | 'fraud'
   | 'other';
 

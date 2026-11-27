@@ -184,6 +184,8 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
           logger.error('Socket bid error:', error);
           socket.emit('bid:error', {
             message: error.message || 'Failed to place bid',
+            // MAINTENANCE → the app shows the maintenance screen.
+            ...(error?.code === 'MAINTENANCE' && { code: error.code, maintenance: error.maintenance }),
           });
         }
       }

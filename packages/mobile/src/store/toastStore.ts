@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useNetworkStore } from './networkStore';
 
 export type ToastType = 'error' | 'success' | 'info';
 
@@ -67,6 +68,8 @@ export const useToastStore = create<ToastState>(set => ({
   type: 'info',
 
   show: (message, type = 'error', options) => {
+    // While the offline screen is up it already says what's wrong; failed calls stay quiet.
+    if (type === 'error' && useNetworkStore.getState().offline) return;
     enqueue(message, type, options);
   },
 

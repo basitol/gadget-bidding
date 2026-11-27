@@ -215,8 +215,9 @@ const seedDemoAuction = async (sellerId: string) => {
 
   const existingGadget = await prisma.gadget.findFirst({
     where: { sellerId, title: 'Staging Test iPhone 12 64GB' },
-    include: { auction: true },
+    include: { auctions: { orderBy: { createdAt: 'desc' }, take: 1 } },
   });
+  const existingAuction = existingGadget?.auctions[0];
 
   const now = new Date();
   const endTime = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -245,9 +246,9 @@ const seedDemoAuction = async (sellerId: string) => {
       },
     }));
 
-  if (existingGadget?.auction) {
+  if (existingAuction) {
     await prisma.auction.update({
-      where: { id: existingGadget.auction.id },
+      where: { id: existingAuction.id },
       data: {
         startingPrice: 1000,
         currentPrice: 1000,
@@ -260,7 +261,7 @@ const seedDemoAuction = async (sellerId: string) => {
         winnerId: null,
       },
     });
-    return existingGadget.auction.id;
+    return existingAuction.id;
   }
 
   const auction = await prisma.auction.create({

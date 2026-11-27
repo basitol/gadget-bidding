@@ -112,23 +112,47 @@ export const routeForNotification = (
   if (!data) return null;
   const orderId = (data.orderId ?? data.order_id) as string | undefined;
   const auctionId = (data.auctionId ?? data.auction_id) as string | undefined;
+  const missedPaymentId = data.missedPaymentId as string | undefined;
+  const disputeId = data.disputeId as string | undefined;
+  if (missedPaymentId) return { name: 'MissedPayment', params: { missedPaymentId } };
+  if (disputeId) return { name: 'Case', params: { disputeId } };
+  if (orderId && data.secondChance) return { name: 'SecondChance', params: { orderId } };
   if (orderId) return { name: 'OrderDetail', params: { orderId } };
   if (auctionId) return { name: 'AuctionDetail', params: { auctionId } };
   return { name: 'Notifications' };
 };
 
+/** The three group switches older screens use (still honoured by the server). */
 export interface AlertPrefs {
   bids: boolean;
   orders: boolean;
   marketing: boolean;
 }
 
-export const getAlertPrefs = async (): Promise<AlertPrefs> => {
+/** Everything on Profile › Notifications: one switch per row, channels and quiet hours. */
+export interface NotificationSettings extends AlertPrefs {
+  outbid: boolean;
+  ending_soon: boolean;
+  autobid_max: boolean;
+  won: boolean;
+  payment_reminders: boolean;
+  delivery_updates: boolean;
+  dispute_updates: boolean;
+  saved_search: boolean;
+  channels: { push: boolean; email: boolean; sms: boolean };
+  quiet_hours: boolean;
+}
+
+export type NotificationSettingsChange = Partial<Omit<NotificationSettings, 'channels'>> & {
+  channels?: Partial<NotificationSettings['channels']>;
+};
+
+export const getAlertPrefs = async (): Promise<NotificationSettings> => {
   const res = await api.get('/notifications/preferences');
   return res.data.data;
 };
 
-export const saveAlertPrefs = async (changes: Partial<AlertPrefs>): Promise<AlertPrefs> => {
+export const saveAlertPrefs = async (changes: NotificationSettingsChange): Promise<NotificationSettings> => {
   const res = await api.put('/notifications/preferences', changes);
   return res.data.data;
 };

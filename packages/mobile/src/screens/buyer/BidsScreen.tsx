@@ -13,6 +13,7 @@ import {
   isUrgent,
   useNow,
 } from '../../components/glass';
+import { BidsSkeleton } from '../../components/glass/Skeleton';
 import { fonts } from '../../constants';
 import { meService, MyBidRow, BidTab } from '../../services';
 import { formatCurrency, formatDate } from '../../utils';
@@ -37,6 +38,8 @@ export const BidsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [rows, setRows] = useState<MyBidRow[]>([]);
   const [counts, setCounts] = useState<Record<BidTab, number>>({ bidding: 0, won: 0, lost: 0 });
   const [loading, setLoading] = useState(true);
+  // The tab pills are skeletons too until the first answer (their counts are unknown).
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (t: BidTab) => {
@@ -48,6 +51,7 @@ export const BidsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       // keep what we had
     } finally {
       setLoading(false);
+      setLoadedOnce(true);
     }
   }, []);
 
@@ -125,7 +129,7 @@ export const BidsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   };
 
   const renderLost = (r: MyBidRow) => (
-    <Pressable onPress={() => openAuction(r.id)} accessibilityRole="button" accessibilityLabel={r.title}>
+    <Pressable onPress={() => navigation.navigate('AuctionResult', { auctionId: r.id })} accessibilityRole="button" accessibilityLabel={r.title}>
       <GlassCard style={[styles.card, styles.row]}>
         <GadgetImage uri={r.image} size={48} style={styles.thumb} />
         <View style={styles.body}>
@@ -133,7 +137,7 @@ export const BidsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             {r.title}
           </Text>
           <Text style={styles.meta}>Your best bid {formatCurrency(r.my_bid)}</Text>
-          <Status tone="grey" label={r.status === 'cancelled' ? 'Cancelled' : 'Sold to another bidder'} />
+          <Status tone="grey" label={r.status === 'cancelled' ? 'No sale' : 'Sold to another bidder'} />
         </View>
         <Text style={styles.price}>{formatCurrency(r.current_price)}</Text>
       </GlassCard>
@@ -167,6 +171,7 @@ export const BidsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           />
         }
         ListHeaderComponent={
+          loadedOnce ? (
           <View style={styles.tabs}>
             <PillTabs
               value={tab}
@@ -182,11 +187,12 @@ export const BidsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               ]}
             />
           </View>
+          ) : null
         }
         renderItem={({ item }) => (tab === 'bidding' ? renderBidding(item) : tab === 'won' ? renderWon(item) : renderLost(item))}
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator color={G.blue} style={styles.loader} />
+            <BidsSkeleton tabs={!loadedOnce} />
           ) : (
             <GlassCard style={styles.empty}>
               <Image source={require('../../../assets/icons/gavel.png')} style={styles.emptyIcon} />

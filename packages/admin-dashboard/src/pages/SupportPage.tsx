@@ -42,6 +42,10 @@ function mergeMessages(current: any[], incoming: any[]) {
   );
 }
 
+/** Phone when it's real; email sign-ups have a placeholder +9… number. */
+const contactOf = (t: any) =>
+  [t.seller?.phone_number, t.seller?.email].filter(Boolean).join(' · ');
+
 export function SupportPage() {
   const { confirm } = useConfirmDialog();
   const [status, setStatus] = useState('open');
@@ -195,7 +199,7 @@ export function SupportPage() {
     <>
       <PageHeader
         title="Support chat"
-        description="Reply to sellers who message Gadgets Bidding from the app."
+        description="Reply to buyers and sellers who message Gadgets Bidding from the app."
       />
 
       <ErrorAlert>{error}</ErrorAlert>
@@ -216,7 +220,7 @@ export function SupportPage() {
               ]}
             />
             <SearchInput
-              placeholder="Seller name or phone…"
+              placeholder="Name, phone or email…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => {
@@ -244,7 +248,7 @@ export function SupportPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>Seller</TableHead>
+                    <TableHead>From</TableHead>
                     <TableHead>Preview</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
@@ -261,11 +265,22 @@ export function SupportPage() {
                     >
                       <TableCell>
                         <div className="font-medium">
-                          {t.seller?.full_name || 'Seller'}
+                          {t.seller?.full_name || 'Customer'}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {t.seller?.phone_number}
+                          {contactOf(t)}
                         </div>
+                        <Badge
+                          tone="neutral"
+                          className={cn(
+                            'mt-1',
+                            // Seller identity is violet (design guide); buyers stay neutral.
+                            t.owner_role === 'seller' &&
+                              'bg-[#F5F2FF] text-[#7C68E8]'
+                          )}
+                        >
+                          {t.owner_role === 'seller' ? 'Seller' : 'Buyer'}
+                        </Badge>
                         {t.admin_unread_count > 0 ? (
                           <Badge tone="danger" className="mt-1">
                             {t.admin_unread_count} new
@@ -273,6 +288,9 @@ export function SupportPage() {
                         ) : null}
                       </TableCell>
                       <TableCell>
+                        {t.subject && t.subject !== 'Support' ? (
+                          <div className="text-sm font-medium">{t.subject}</div>
+                        ) : null}
                         <div className="line-clamp-2 text-sm">
                           {t.last_message_preview || '—'}
                         </div>
@@ -312,10 +330,13 @@ export function SupportPage() {
               <div className="flex items-start justify-between gap-3 border-b bg-muted/60 px-5 py-4">
                 <div>
                   <div className="font-medium">
-                    {selected.seller?.full_name}
+                    {selected.seller?.full_name}{' '}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      · {selected.owner_role === 'seller' ? 'Seller' : 'Buyer'}
+                    </span>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {selected.seller?.phone_number}
+                    {contactOf(selected)}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -362,7 +383,7 @@ export function SupportPage() {
                         >
                           {fromAdmin
                             ? 'You (Support)'
-                            : m.sender?.full_name || 'Seller'}
+                            : m.sender?.full_name || 'Customer'}
                         </div>
                         <div className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words pr-1">
                           {m.body}
@@ -388,7 +409,11 @@ export function SupportPage() {
                   <Textarea
                     value={reply}
                     onChange={e => setReply(e.target.value)}
-                    placeholder="Write a reply to the seller…"
+                    placeholder={
+                      selected.owner_role === 'seller'
+                        ? 'Write a reply to the seller…'
+                        : 'Write a reply. The buyer gets it as a notification and by email.'
+                    }
                     rows={3}
                   />
                   <div className="flex justify-end">

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import prisma from '../../config/prisma';
+import { Prisma } from '../../generated/prisma';
 import { hashPassword, comparePassword } from '../../utils/password';
 import { generateAccessToken, generateRefreshToken } from '../../utils/jwt';
 import { generateOTP, getOTPExpiry, isOTPExpired } from '../../utils/otp';
@@ -958,4 +959,95 @@ export const completePasswordReset = async (data: {
   ]);
   logger.info(`Password reset for user ${v.user!.id}`);
   return { email: v.user!.email! };
+};
+
+/* ------------------------------------------------------------------ */
+/* Delete my account                                                   */
+/* Refused while money or an order is still moving; otherwise personal */
+/* data is wiped and the row kept (orders and payouts point at it).    */
+/* ------------------------------------------------------------------ */
+
+export const deleteAccount = async (userId: string): Promise<{ deleted: true }> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, deletedAt: true, wallet: { select: { balance: true } } },
+  });
+  if (!user || user.deletedAt) throw new Error('Account not found');
+
+  const [unpaid, inFlight, sellerInFlight, openDisputes, liveBids, liveListings] = await Promise.all([
+    prisma.order.count({
+      where: { buyerId: userId, paymentStatus: 'pending', NOT: { fulfillmentStatus: 'cancelled' } },
+    }),
+    prisma.order.count({
+      where: {
+        buyerId: userId,
+        paymentStatus: 'paid',
+        OR: [
+          { fulfillmentStatus: { notIn: ['delivered', 'cancelled'] } },
+          { fulfillmentStatus: 'delivered', buyerConfirmedAt: null },
+        ],
+      },
+    }),
+    prisma.order.count({
+      where: {
+        sellerId: userId,
+        paymentStatus: 'paid',
+        OR: [{ fulfillmentStatus: { notIn: ['delivered', 'cancelled'] } }, { payoutStatus: { in: ['ready', 'held'] } }],
+      },
+    }),
+    prisma.dispute.count({
+      where: {
+        status: { in: ['open', 'investigating'] },
+        OR: [{ raisedBy: userId }, { order: { OR: [{ buyerId: userId }, { sellerId: userId }] } }],
+      },
+    }),
+    // Any bid on a live auction still has ₦1,000 held in the wallet; it must be released first.
+    prisma.bid.count({ where: { bidderId: userId, auction: { status: { in: ['active', 'scheduled'] } } } }),
+    prisma.auction.count({ where: { sellerId: userId, status: { in: ['active', 'scheduled'] } } }),
+  ]);
+
+  if (unpaid) throw new Error('You have an order waiting for payment. Pay for it or let it lapse first.');
+  if (inFlight || sellerInFlight) throw new Error("You have an order that isn't finished yet. You can delete your account once it's done.");
+  if (openDisputes) throw new Error("You have a problem report that's still open. We'll need to close it first.");
+  if (liveBids) throw new Error("You've bid on an auction that's still live. You can delete your account after it ends.");
+  if (liveListings) throw new Error('You have a listing that is live or coming up. End it first.');
+  const balance = Number(user.wallet?.balance ?? 0);
+  if (balance > 0) {
+    throw new Error(`Withdraw the ₦${Math.round(balance).toLocaleString('en-NG')} in your wallet first.`);
+  }
+
+  const phone = await makeSyntheticPhone();
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        fullName: 'Deleted user',
+        email: null,
+        username: null,
+        phoneNumber: phone,
+        passwordHash: await hashPassword(randomUUID()),
+        avatarUrl: null,
+        notificationPrefs: Prisma.DbNull,
+        interests: Prisma.DbNull,
+        twoFactorEnabled: false,
+        personalisedPicks: true,
+        usageStats: true,
+        isActive: false,
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    }),
+    prisma.refreshToken.updateMany({ where: { userId }, data: { isRevoked: true } }),
+    prisma.pushToken.deleteMany({ where: { userId } }),
+    prisma.savedCard.deleteMany({ where: { userId } }),
+    prisma.savedSearch.deleteMany({ where: { userId } }),
+    prisma.watch.deleteMany({ where: { userId } }),
+    prisma.autoBid.deleteMany({ where: { userId } }),
+    prisma.userAddress.deleteMany({ where: { userId } }),
+    prisma.socialAccount.deleteMany({ where: { userId } }),
+    // A pending "Download my data" request holds the old email; nothing is left to send.
+    prisma.dataRequest.deleteMany({ where: { userId } }),
+  ]);
+  logger.info(`Account deleted (anonymised): ${userId}`);
+  return { deleted: true };
 };

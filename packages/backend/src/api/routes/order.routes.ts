@@ -189,4 +189,40 @@ router.post(
   orderController.emailReceipt
 );
 
+/**
+ * Pay without the web checkout: one-time transfer account or USSD code, then poll status.
+ * @access Private (Buyer)
+ */
+router.post(
+  '/:orderId/payment/bank-transfer',
+  authenticate,
+  walletFundingRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.startBankTransfer
+);
+router.post(
+  '/:orderId/payment/ussd',
+  authenticate,
+  walletFundingRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.startUssd
+);
+router.get(
+  '/:orderId/payment/status',
+  authenticate,
+  paymentVerificationRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.paymentStatus
+);
+
+/**
+ * Second-chance offers (the winner didn't pay; the next bidder can buy at their last bid).
+ * @access Private (Buyer)
+ */
+router.post('/:orderId/offer/accept', authenticate, orderValidator.validateOrderId, handleValidationErrors, orderController.acceptOffer);
+router.post('/:orderId/offer/decline', authenticate, orderValidator.validateOrderId, handleValidationErrors, orderController.declineOffer);
+
 export default router;

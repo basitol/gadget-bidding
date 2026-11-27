@@ -350,6 +350,64 @@ export const PrimaryButton: React.FC<{
   </Pressable>
 );
 
+/** White button for the second choice ("Pay another way", "View order"). */
+export const SecondaryButton: React.FC<{
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  compact?: boolean;
+  danger?: boolean;
+}> = ({ label, onPress, disabled, style, compact, danger }) => (
+  <Pressable
+    onPress={onPress}
+    disabled={disabled}
+    style={({ pressed }) => [
+      styles.secondary,
+      compact && styles.primaryCompact,
+      pressed && styles.pressed,
+      disabled && styles.secondaryDisabled,
+      style,
+    ]}
+    accessibilityRole="button"
+    accessibilityState={{ disabled }}
+  >
+    <Text style={[styles.secondaryText, compact && styles.primaryTextCompact, danger && styles.dangerText]}>{label}</Text>
+  </Pressable>
+);
+
+/** Quiet text button under a footer's primary action ("Pay another way"). */
+export const TextButton: React.FC<{ label: string; onPress: () => void }> = ({ label, onPress }) => (
+  <Pressable onPress={onPress} style={styles.textButton} accessibilityRole="button" hitSlop={6}>
+    <Text style={styles.textButtonLabel}>{label}</Text>
+  </Pressable>
+);
+
+/** Green-tick list of reassurances. */
+export const CheckList: React.FC<{ items: React.ReactNode[]; style?: StyleProp<ViewStyle> }> = ({ items, style }) => (
+  <View style={[styles.checks, style]}>
+    {items.map((item, i) => (
+      <View key={i} style={styles.checkRow}>
+        <Ionicons name="checkmark" size={16} color="#2E9E5E" style={styles.checkIcon} />
+        <Text style={styles.checkText}>{item}</Text>
+      </View>
+    ))}
+  </View>
+);
+
+/** Amber banner with a label and a running time ("You still have time to pay · 18h 41m"). */
+export const DueBanner: React.FC<{ label: string; value: string; style?: StyleProp<ViewStyle> }> = ({ label, value, style }) => (
+  <View style={[styles.due, style]} accessibilityLabel={`${label} ${value}`}>
+    <Text style={styles.dueLabel}>{label}</Text>
+    <Text style={styles.dueValue}>{value}</Text>
+  </View>
+);
+
+/** Frosted footer bar that sits above the home indicator. */
+export const FooterBar: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <View style={styles.footerBar}>{children}</View>
+);
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#EEF2FB' },
   bg: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
@@ -465,6 +523,35 @@ const styles = StyleSheet.create({
   menuTitle: { color: G.ink, fontSize: 16, fontFamily: fonts.medium },
   menuSub: { color: G.muted, fontSize: 13, fontFamily: fonts.regular, marginTop: 2 },
 
+  secondary: { height: 50, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  secondaryDisabled: { opacity: 0.5 },
+  secondaryText: { color: G.ink, fontSize: 15, fontFamily: fonts.medium },
+  dangerText: { color: '#D9536A' },
+  textButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
+  textButtonLabel: { color: G.slate, fontSize: 15, fontFamily: fonts.medium },
+  checks: { gap: 10 },
+  checkRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  checkIcon: { marginTop: 2 },
+  checkText: { flex: 1, color: G.slate, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular },
+  due: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#FFF6EE',
+  },
+  dueLabel: { color: '#B5621F', fontSize: 14, fontFamily: fonts.regular },
+  dueValue: { color: '#DB7A2E', fontSize: 20, fontFamily: fonts.medium, fontVariant: ['tabular-nums'] },
+  footerBar: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 28,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.9)',
+  },
   primary: { height: 50, borderRadius: 14, backgroundColor: G.blue, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
   primaryCompact: { height: 38, borderRadius: 11, paddingHorizontal: 18 },
   primaryDisabled: { backgroundColor: '#E6E9F1' },

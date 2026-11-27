@@ -119,12 +119,29 @@ export const updateProfile = async (
   }
   if (input.username !== undefined) {
     const username = input.username.trim().toLowerCase();
-    if (!USERNAME_PATTERN.test(username)) throw new Error('Usernames are 3–20 letters, numbers or _');
-    const taken = await prisma.user.findFirst({ where: { username, NOT: { id: userId } }, select: { id: true } });
-    if (taken) throw new Error('That username is taken. Try another.');
-    data.username = username;
+    const current = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true, usernameChangedAt: true },
+    });
+    if (username !== current?.username) {
+      if (!USERNAME_PATTERN.test(username)) throw new Error('Usernames are 3–20 letters, numbers or _');
+      const next = usernameChangeAvailableAt(current?.usernameChangedAt ?? null);
+      if (next && next > new Date()) {
+        throw new Error(`You can change your username again on ${lagosDay(next)}.`);
+      }
+      const taken = await prisma.user.findFirst({ where: { username, NOT: { id: userId } }, select: { id: true } });
+      if (taken) throw new Error('That username is taken. Try another.');
+      data.username = username;
+      data.usernameChangedAt = new Date();
+    }
   }
   if (input.phone_number !== undefined) {
+    // A number on the account can only be swapped with a code sent to the new one
+    // (POST /me/contact/start). Adding a first real number is still fine here.
+    const current = await prisma.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
+    if (current?.phoneNumber && !current.phoneNumber.startsWith('+9')) {
+      throw new Error('Change your phone number with a code instead');
+    }
     // Nigerian numbers only, stored as +234XXXXXXXXXX (same as registration).
     const digits = input.phone_number.replace(/\D/g, '');
     const phone = digits.startsWith('234') ? `+${digits}` : digits.startsWith('0') ? `+234${digits.slice(1)}` : `+234${digits}`;
@@ -134,6 +151,46 @@ export const updateProfile = async (
     data.phoneNumber = phone;
   }
   if (input.avatar_url !== undefined) data.avatarUrl = input.avatar_url || null;
-  if (!Object.keys(data).length) throw new Error('Nothing to update');
+  if (!Object.keys(data).length) return;
   await prisma.user.update({ where: { id: userId }, data: { ...data, updatedAt: new Date() } });
+};
+
+/* ---------------- Personal details ---------------- */
+
+export const USERNAME_CHANGE_DAYS = 30;
+
+const usernameChangeAvailableAt = (changedAt: Date | null) =>
+  changedAt ? new Date(changedAt.getTime() + USERNAME_CHANGE_DAYS * 24 * 3_600_000) : null;
+
+/** "Dec 27" (Lagos). */
+const lagosDay = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
+
+/** What the Personal details screen shows. The +9… placeholder phone is never sent. */
+export const getProfile = async (userId: string) => {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      fullName: true,
+      username: true,
+      usernameChangedAt: true,
+      email: true,
+      isVerified: true,
+      phoneNumber: true,
+      avatarUrl: true,
+    },
+  });
+  if (!u) throw new Error('Account not found');
+  const [first, ...rest] = u.fullName.trim().split(/\s+/);
+  const next = usernameChangeAvailableAt(u.usernameChangedAt);
+  return {
+    first_name: first ?? '',
+    last_name: rest.join(' '),
+    full_name: u.fullName,
+    username: u.username,
+    username_change_available_at: next && next > new Date() ? next.toISOString() : null,
+    email: u.email,
+    email_verified: !!u.email && !!u.isVerified,
+    phone_number: u.phoneNumber.startsWith('+9') ? null : u.phoneNumber,
+    avatar_url: u.avatarUrl,
+  };
 };

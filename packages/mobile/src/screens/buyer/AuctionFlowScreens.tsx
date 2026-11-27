@@ -33,7 +33,9 @@ import {
   timeLeft,
   isUrgent,
   useNow,
+  FooterBar,
 } from '../../components/glass';
+import { AuctionDetailSkeleton, FooterSkeleton } from '../../components/glass/Skeleton';
 import { fonts } from '../../constants';
 import { api, socketService } from '../../services';
 import { meService } from '../../services/me.service';
@@ -41,6 +43,7 @@ import { useAuctionStore, useAuthStore } from '../../store';
 import { useWatchStore } from '../../store/watchStore';
 import { useToastStore } from '../../store/toastStore';
 import { formatCurrency, mediaUrl } from '../../utils';
+import { AuctionNotFound } from '../../components/states';
 
 /* ---------------- Shared ---------------- */
 
@@ -109,9 +112,15 @@ const useLiveAuction = (auctionId: string, onOutbid?: () => void) => {
   } = useAuctionStore();
   const onOutbidRef = useRef(onOutbid);
   onOutbidRef.current = onOutbid;
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
-    fetchAuction(auctionId);
+    setMissing(false);
+    fetchAuction(auctionId).then(() => {
+      // Ended and removed, taken down, or a bad link: show "We can't find that auction".
+      const s = useAuctionStore.getState();
+      if (s.currentAuction?.id !== auctionId && /not found|valid UUID/i.test(s.error ?? '')) setMissing(true);
+    });
     fetchAuctionBids(auctionId);
     let cancelled = false;
     socketService
@@ -138,7 +147,7 @@ const useLiveAuction = (auctionId: string, onOutbid?: () => void) => {
 
   const auction =
     currentAuction?.id === auctionId ? (currentAuction as any) : null;
-  return { auction, bids: auction ? (currentBids as any[]) : [] };
+  return { auction, bids: auction ? (currentBids as any[]) : [], missing };
 };
 
 const ProductMini: React.FC<{
@@ -216,7 +225,7 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
   const focused = useRef(true);
 
   const me = useAuthStore(s => s.user?.id);
-  const { auction, bids } = useLiveAuction(auctionId, () => {
+  const { auction, bids, missing } = useLiveAuction(auctionId, () => {
     if (focused.current) navigation.navigate('Outbid', { auctionId });
   });
 
@@ -234,11 +243,18 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
     };
   }, [auctionId, navigation]);
 
+  if (!auction && missing) return <AuctionNotFound navigation={navigation} />;
+
   if (!auction) {
     return (
       <GlassScreen>
-        <GlassHeader title="Auction" onBack={() => navigation.goBack()} />
-        <ActivityIndicator color={G.blue} style={styles.loader} />
+        <GlassHeader title="Loading" onBack={() => navigation.goBack()} />
+        <ScrollView contentContainerStyle={styles.skeletonContent} scrollEnabled={false}>
+          <AuctionDetailSkeleton />
+        </ScrollView>
+        <FooterBar>
+          <FooterSkeleton />
+        </FooterBar>
       </GlassScreen>
     );
   }
@@ -471,6 +487,19 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
             </View>
           )}
         </GlassCard>
+
+        {auction.seller_id !== me ? (
+          <Pressable
+            onPress={() => navigation.navigate('ReportListing', { auctionId })}
+            style={styles.reportLink}
+            hitSlop={8}
+            accessibilityRole="button"
+          >
+            <Text style={styles.reportText}>
+              Something wrong with this listing? <Text style={styles.reportStrong}>Report it</Text>
+            </Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
 
       <BottomBar>
@@ -493,11 +522,14 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
             />
           </View>
         ) : (
-          <PrimaryButton
-            label={scheduled ? 'Not open for bids yet' : 'Bidding has ended'}
-            onPress={() => {}}
-            disabled
-          />
+          scheduled ? (
+            <PrimaryButton label="Not open for bids yet" onPress={() => {}} disabled />
+          ) : (
+            <PrimaryButton
+              label="See how it ended"
+              onPress={() => navigation.navigate('AuctionResult', { auctionId })}
+            />
+          )
         )}
       </BottomBar>
     </GlassScreen>
@@ -572,6 +604,10 @@ export const PlaceBidScreen: React.FC<{ navigation: any; route: any }> = ({
         e instanceof Error
           ? e.message
           : 'Your bid didn’t go through. Try again.';
+      if (/bidding is paused/i.test(msg)) {
+        navigation.navigate('AccountPaused');
+        return;
+      }
       toast(msg);
       if (/wallet/i.test(msg)) navigation.navigate('Wallet');
     } finally {
@@ -1046,8 +1082,10 @@ export const AutoBidScreen: React.FC<{ navigation: any; route: any }> = ({
             />
           </View>
           <Text style={[styles.help, !valid && styles.helpBad]}>
-            Must be at least {formatCurrency(min)} · that's{' '}
-            {formatCurrency(step)} above the current bid
+            Must be at least {formatCurrency(min)}
+            {max > Number(auction.current_price)
+              ? ` · that's ${formatCurrency(max - Number(auction.current_price))} above the current bid`
+              : ''}
           </Text>
           <View style={styles.quick}>
             {[25000, 50000, 100000].map(n => (
@@ -1118,6 +1156,10 @@ export const AutoBidScreen: React.FC<{ navigation: any; route: any }> = ({
 /* ---------------- Styles ---------------- */
 
 const styles = StyleSheet.create({
+  reportLink: { alignItems: 'center', paddingVertical: 18 },
+  reportText: { color: G.muted, fontSize: 13, fontFamily: fonts.regular },
+  reportStrong: { color: G.blue600, fontFamily: fonts.medium },
+  skeletonContent: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24 },
   flex: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 30 },
   loader: { marginTop: 60 },

@@ -14,6 +14,8 @@ import {
   PrimaryButton,
   useNow,
 } from '../../components/glass';
+import { HomeSkeleton } from '../../components/glass/Skeleton';
+import { CategoriesSheet } from './BrowseScreens';
 import { fonts } from '../../constants';
 import { auctionService, notificationService } from '../../services';
 import { useAuthStore } from '../../store';
@@ -38,6 +40,9 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
   const [live, setLive] = useState<Auction[]>([]);
   const [unread, setUnread] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  // Skeleton until the first load answers (then empty states mean empty, not loading).
+  const [loaded, setLoaded] = useState(false);
+  const [browse, setBrowse] = useState(false);
 
   const load = useCallback(async () => {
     const [ending, hot, count] = await Promise.allSettled([
@@ -48,6 +53,7 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     if (ending.status === 'fulfilled') setFeatured(ending.value.data?.[0] ?? null);
     if (hot.status === 'fulfilled') setLive(hot.value.data ?? []);
     if (count.status === 'fulfilled') setUnread(count.value.data?.unread_count ?? 0);
+    setLoaded(true);
   }, []);
 
   useFocusEffect(
@@ -65,6 +71,7 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
 
   const open = (auctionId: string) => navigation.navigate('AuctionDetail', { auctionId });
   const explore = (params?: object) => navigation.navigate('Explore', params);
+  const openCategory = (slug: string, label: string) => navigation.navigate('Category', { slug, label });
 
   return (
     <GlassScreen>
@@ -73,6 +80,8 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={G.blue} />}
       >
+        {loaded ? (
+        <>
         <View style={styles.top}>
           <Image source={require('../../../assets/brand/logo-wordmark.png')} style={styles.wordmark} accessibilityLabel="Gadgets Bidding" />
           <View style={styles.topActions}>
@@ -108,9 +117,24 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {CATEGORY_CHIPS.map(c => (
-            <Chip key={c.label} label={c.label} selected={c.slug === null} onPress={() => explore({ category: c.slug })} />
+            <Chip
+              key={c.label}
+              label={c.label}
+              selected={c.slug === null}
+              onPress={() => (c.slug ? openCategory(c.slug, c.label) : explore())}
+            />
           ))}
         </ScrollView>
+
+        <Pressable
+          onPress={() => setBrowse(true)}
+          style={({ pressed }) => [styles.browse, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Browse by category"
+        >
+          <Text style={styles.browseTitle}>Browse by category</Text>
+          <Text style={styles.browseLink}>Phones, laptops, audio →</Text>
+        </Pressable>
 
         {featured ? (
           <Pressable onPress={() => open(featured.id)} accessibilityRole="button" accessibilityLabel={featured.gadget?.title}>
@@ -134,14 +158,14 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
           </Pressable>
         ) : null}
 
-        <View style={styles.trust}>
-          {TRUST.map(t => (
-            <GlassCard key={t.label} style={styles.trustCard}>
+        <GlassCard style={styles.trust}>
+          {TRUST.map((t, i) => (
+            <View key={t.label} style={[styles.trustCell, i > 0 && styles.trustRule]}>
               <Image source={t.icon} style={styles.trustIcon} />
               <Text style={styles.trustText}>{t.label}</Text>
-            </GlassCard>
+            </View>
           ))}
-        </View>
+        </GlassCard>
 
         <SectionLabel
           right={
@@ -177,7 +201,19 @@ export const BuyerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) =
             <Text style={styles.emptyText}>No live auctions right now. New ones go live every day.</Text>
           </GlassCard>
         )}
+        </>
+        ) : (
+          <HomeSkeleton />
+        )}
       </ScrollView>
+      <CategoriesSheet
+        visible={browse}
+        onClose={() => setBrowse(false)}
+        onPick={(slug, label) => {
+          setBrowse(false);
+          openCategory(slug, label);
+        }}
+      />
     </GlassScreen>
   );
 };
@@ -212,6 +248,22 @@ const styles = StyleSheet.create({
   },
   searchText: { color: G.faint, fontSize: 14, fontFamily: fonts.regular },
   chips: { gap: 8, paddingVertical: 14 },
+  pressed: { opacity: 0.75 },
+  browse: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.56)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    marginBottom: 14,
+  },
+  browseTitle: { color: G.ink, fontSize: 15, fontFamily: fonts.medium },
+  browseLink: { color: G.blue600, fontSize: 14, fontFamily: fonts.medium },
 
   featured: { padding: 14 },
   featuredTop: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -223,8 +275,9 @@ const styles = StyleSheet.create({
   featuredFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   featuredPrice: { color: G.ink, fontSize: 22, fontFamily: fonts.medium, fontVariant: ['tabular-nums'] },
 
-  trust: { flexDirection: 'row', gap: 8, marginVertical: 16 },
-  trustCard: { flex: 1, alignItems: 'center', paddingVertical: 12, gap: 6 },
+  trust: { flexDirection: 'row', marginVertical: 16, paddingVertical: 12 },
+  trustCell: { flex: 1, alignItems: 'center', gap: 6, paddingHorizontal: 4 },
+  trustRule: { borderLeftWidth: 1, borderLeftColor: G.line },
   trustIcon: { width: 30, height: 30, resizeMode: 'contain' },
   trustText: { color: G.slate, fontSize: 11, fontFamily: fonts.medium, textAlign: 'center' },
 

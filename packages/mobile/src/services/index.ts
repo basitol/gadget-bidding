@@ -14,6 +14,17 @@ export { addressService } from './address.service';
 export { notificationService } from './notification.service';
 export { socketService } from './socket.service';
 export { supportService } from './support.service';
-export type { SupportThread, SupportMessage } from './support.service';
+export type { SupportThread, SupportMessage, ContactTopic } from './support.service';
 export { meService } from './me.service';
-export type { AuctionCard, MyBidRow, ProfileSummary, SavedSearch, SavedCard, WatchFilter, BidTab } from './me.service';
+export type {
+  AuctionCard,
+  MyBidRow,
+  ProfileSummary,
+  SavedSearch,
+  SavedCard,
+  WatchFilter,
+  BidTab,
+  PrivacySettings,
+  PrivacySwitch,
+  DataRequest,
+} from './me.service';

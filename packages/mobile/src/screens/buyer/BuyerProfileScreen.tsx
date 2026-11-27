@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Alert, Linking, RefreshControl } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { G, GlassScreen, GlassHeader, GlassCard, SectionLabel, MenuRow } from '../../components/glass';
@@ -112,7 +112,7 @@ export const BuyerProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
             icon="location-outline"
             title="Delivery addresses"
             subtitle={s ? s.addresses.join(', ') || 'Add where we should deliver' : null}
-            onPress={() => navigation.navigate('ShippingAddress')}
+            onPress={() => navigation.navigate('DeliveryAddresses')}
           />
           <MenuRow
             icon="card-outline"
@@ -141,7 +141,7 @@ export const BuyerProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
             icon="notifications-outline"
             title="Notifications"
             subtitle="Outbid, ending soon, orders"
-            onPress={() => navigation.navigate('Settings')}
+            onPress={() => navigation.navigate('NotificationSettings')}
           />
           <MenuRow
             icon="shield-outline"
@@ -158,14 +158,14 @@ export const BuyerProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
             icon="help-circle-outline"
             title="Help centre"
             subtitle="Buying, paying, disputes"
-            onPress={() => Linking.openURL('mailto:support@gadgetbid.ng?subject=Help%20with%20my%20account')}
+            onPress={() => navigation.navigate('Help')}
           />
           <MenuRow
             icon="document-outline"
             title="Terms & buyer protection"
-            onPress={() => navigation.navigate('Policy')}
+            onPress={() => navigation.navigate('Terms')}
           />
-          <MenuRow icon="document-outline" title="Privacy & your data" onPress={() => navigation.navigate('Policy')} />
+          <MenuRow icon="document-outline" title="Privacy & your data" onPress={() => navigation.navigate('PrivacyData')} />
           <MenuRow icon="log-out-outline" title="Log out" danger onPress={confirmLogout} last />
         </GlassCard>
 

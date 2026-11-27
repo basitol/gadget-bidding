@@ -10,6 +10,7 @@ import * as walletService from '../wallet/wallet.service';
 import logger from '../../utils/logger';
 import { bidderLabel } from '../../utils/bidderLabel';
 import config from '../../config';
+import { assertBiddingOpen } from '../app/appConfig.service';
 
 // Helper to convert Prisma Decimal to number
 const toNumber = (value: any): number => {
@@ -38,6 +39,9 @@ export const placeBid = async (
   opts: { isAutoBid?: boolean } = {}
 ): Promise<{ bid: Bid; previousHighBidderId?: string }> => {
   return prisma.$transaction(async tx => {
+    // Maintenance pauses all bidding (REST, socket and auto-bids all come through here).
+    await assertBiddingOpen(tx);
+
     // Get auction with gadget
     const auction = await tx.auction.findUnique({
       where: { id: data.auction_id },
@@ -62,6 +66,13 @@ export const placeBid = async (
     // Prevent seller from bidding on their own auction
     if (auction.gadget?.sellerId === bidderId) {
       throw new Error('You cannot bid on your own auction');
+    }
+
+    // After repeated missed payments, bidding pauses for a while.
+    const bidder = await tx.user.findUnique({ where: { id: bidderId }, select: { biddingPausedUntil: true } });
+    if (bidder?.biddingPausedUntil && bidder.biddingPausedUntil > now) {
+      const until = bidder.biddingPausedUntil.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
+      throw new Error(`Bidding is paused on your account until ${until} because of missed payments.`);
     }
 
     // Validate bid amount
@@ -239,6 +250,8 @@ export const buyNow = async (
   logger.info(`BuyNow: Starting for buyer=${buyerId}, auction=${auctionId}`);
 
   return prisma.$transaction(async tx => {
+    await assertBiddingOpen(tx);
+
     // Get auction with gadget
     const auction = await tx.auction.findUnique({
       where: { id: auctionId },
@@ -653,6 +666,12 @@ export const endAuction = async (
 
       logger.info(`Auction ${auctionId} ended with no bids`);
     }
+
+    // It's over either way: nobody's auto-bid keeps running.
+    await tx.autoBid.updateMany({
+      where: { auctionId, isActive: true },
+      data: { isActive: false, updatedAt: new Date() },
+    });
 
     return { winnerId, finalPrice, reserveMet };
   });

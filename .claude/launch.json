@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "admin-dashboard",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@gadget-bidding/admin-dashboard", "dev"],
+      "port": 5173
+    }
+  ]
+}

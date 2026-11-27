@@ -10,6 +10,7 @@ import * as buyerAlerts from '../../services/notification/buyerAlerts';
 import * as auctionService from '../../services/auction/auction.service';
 import * as supportService from '../../services/support/support.service';
 import * as riskService from '../../services/risk/risk.service';
+import * as overviewService from '../../services/admin/overview.service';
 
 const toNumber = (value: unknown): number => {
   if (value == null) return 0;
@@ -318,8 +319,11 @@ export const getGadgets = async (req: Request, res: Response) => {
           seller: {
             select: { id: true, fullName: true, phoneNumber: true },
           },
-          auction: {
+          // Latest run (a gadget can be relisted after a run that didn't sell).
+          auctions: {
             select: { id: true, status: true, currentPrice: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -351,11 +355,11 @@ export const getGadgets = async (req: Request, res: Response) => {
               phone_number: g.seller.phoneNumber,
             }
           : null,
-        auction: g.auction
+        auction: g.auctions[0]
           ? {
-              id: g.auction.id,
-              status: g.auction.status,
-              current_price: toNumber(g.auction.currentPrice),
+              id: g.auctions[0].id,
+              status: g.auctions[0].status,
+              current_price: toNumber(g.auctions[0].currentPrice),
             }
           : null,
       })),
@@ -726,6 +730,8 @@ export const getUsers = async (req: Request, res: Response) => {
     if (role && role !== 'all') where.role = role;
     if (active === 'true') where.isActive = true;
     if (active === 'false') where.isActive = false;
+    const kyb = req.query.kyb as string | undefined;
+    if (kyb && ['pending', 'approved', 'rejected'].includes(kyb)) where.sellerKybStatus = kyb;
     if (search) {
       where.OR = [
         { fullName: { contains: search, mode: 'insensitive' } },
@@ -959,6 +965,8 @@ export const getSellerProfile = async (req: Request, res: Response) => {
         where: { order: { sellerId: id } },
         select: {
           id: true,
+          caseNumber: true,
+          outcome: true,
           disputeType: true,
           description: true,
           status: true,
@@ -1066,6 +1074,8 @@ export const getSellerProfile = async (req: Request, res: Response) => {
       })),
       latest_disputes: latestDisputes.map(d => ({
         id: d.id,
+        case_number: `D-${d.caseNumber}`,
+        outcome: d.outcome,
         dispute_type: d.disputeType,
         description: d.description,
         status: d.status,
@@ -1379,6 +1389,8 @@ export const getDisputes = async (req: Request, res: Response) => {
       res,
       disputes.map(d => ({
         id: d.id,
+        case_number: `D-${d.caseNumber}`,
+        outcome: d.outcome,
         dispute_type: d.disputeType,
         description: d.description,
         status: d.status,
@@ -1757,7 +1769,22 @@ export const getPendingSellerKyb = async (req: Request, res: Response) => {
       }),
     ]);
 
-    sendPaginated(res, sellers, page, limit, total);
+    sendPaginated(
+      res,
+      sellers.map(s => ({
+        id: s.id,
+        full_name: s.fullName,
+        phone_number: s.phoneNumber,
+        email: s.email,
+        business_name: s.businessName,
+        cac_number: s.cacNumber,
+        seller_kyb_submitted_at: s.sellerKybSubmittedAt?.toISOString() ?? null,
+        created_at: s.createdAt?.toISOString() ?? null,
+      })),
+      page,
+      limit,
+      total
+    );
   } catch (error: any) {
     logger.error('Get pending seller KYB error:', error);
     sendError(res, error.message || 'Failed to get pending seller KYB', 500);
@@ -1817,5 +1844,111 @@ export const rejectSellerKyb = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Reject seller KYB error:', error);
     sendError(res, error.message || 'Failed to reject seller KYB', 400);
+  }
+};
+
+/* ---------------- Cases (disputes) for our team ---------------- */
+
+const caseAction =
+  (fn: (req: Request) => Promise<unknown>, auditAction?: string, message?: string) =>
+  async (req: Request, res: Response) => {
+    try {
+      const result = await fn(req);
+      if (auditAction) await audit(req, auditAction, 'dispute', req.params.id, req.body ?? {});
+      sendSuccess(res, result, message);
+    } catch (error: any) {
+      logger.error(`Admin case action failed (${req.path}):`, error);
+      sendError(res, error.message || 'Failed to update the case', 400);
+    }
+  };
+
+/** GET /api/v1/admin/disputes/:id — the full case: report, thread, decision, return */
+export const getDisputeCase = caseAction(async req => {
+  const { getCaseForTeam } = await import('../../services/buyer/case.service');
+  return getCaseForTeam(req.params.id);
+});
+
+/** POST /api/v1/admin/disputes/:id/messages { body } — reply as Gadgets Bidding team */
+export const postDisputeMessage = caseAction(
+  async req => {
+    const { postTeamMessage } = await import('../../services/buyer/case.service');
+    return postTeamMessage(req.user!.user_id, req.params.id, String(req.body?.body ?? ''));
+  },
+  'dispute_message',
+  'Message sent'
+);
+
+/** PUT /api/v1/admin/disputes/:id/next-step { text } — the "what happens next" line the buyer sees */
+export const setDisputeNextStep = caseAction(
+  async req => {
+    const { setNextStep } = await import('../../services/buyer/case.service');
+    return setNextStep(req.params.id as string, String(req.body?.text ?? ''));
+  },
+  'dispute_next_step',
+  'Next step updated'
+);
+
+/** POST /api/v1/admin/disputes/:id/decision { outcome: 'refund'|'not_upheld', findings } */
+export const decideDispute = caseAction(
+  async req => {
+    const { decide } = await import('../../services/buyer/case.service');
+    return decide(req.user!.user_id, req.params.id, req.body?.outcome, String(req.body?.findings ?? ''));
+  },
+  'dispute_decision',
+  'Decision sent to the buyer'
+);
+
+/** POST /api/v1/admin/disputes/:id/return-received — item is back at the hub: refund the buyer */
+export const markDisputeReturnReceived = caseAction(
+  async req => {
+    const { markReturnReceived } = await import('../../services/buyer/case.service');
+    return markReturnReceived(req.params.id);
+  },
+  'dispute_return_received',
+  'Refund started'
+);
+
+
+/* ---------------- Overview (admin home) ---------------- */
+
+/** GET /admin/overview — headline numbers, queues, 30-day series and what needs attention */
+export const getOverview = async (req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getOverview(req.user?.user_id));
+  } catch (error: any) {
+    logger.error('Admin overview error:', error);
+    sendError(res, error.message || 'Failed to load the overview', 500);
+  }
+};
+
+/** GET /admin/queues — counts for the sidebar and rail */
+export const getQueues = async (req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getQueueCounts(req.user?.user_id));
+  } catch (error: any) {
+    sendError(res, error.message || 'Failed to load queues', 500);
+  }
+};
+
+/** GET /admin/tasks — everything waiting on the team, soonest due first */
+export const getTasks = async (_req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getAttention(200));
+  } catch (error: any) {
+    sendError(res, error.message || 'Failed to load tasks', 500);
+  }
+};
+
+/** GET /admin/rules — fees and rules the apps run on (read-only) */
+export const getRules = async (_req: Request, res: Response) => {
+  sendSuccess(res, overviewService.getRules());
+};
+
+/** GET /admin/launch-checklist — launch readiness (yes/no only, never secrets) */
+export const getLaunchChecklist = async (_req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getLaunchChecklist());
+  } catch (error: any) {
+    sendError(res, error.message || 'Failed to load the checklist', 500);
   }
 };

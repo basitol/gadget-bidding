@@ -6,6 +6,8 @@ import axios, {
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, STORAGE_KEYS } from '../constants';
 import { useErrorLogStore } from '../store/errorLogStore';
+import { useNetworkStore } from '../store/networkStore';
+import { GATE_CODES, INSTALLED_VERSION, useAppGateStore } from '../store/appGateStore';
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -39,6 +41,11 @@ api.interceptors.request.use(
       if (config.headers) {
         delete config.headers['Content-Type'];
       }
+    }
+
+    // Lets the server refuse bids from builds below the minimum version (→ "Time to update").
+    if (config.headers) {
+      config.headers['X-App-Version'] = INSTALLED_VERSION;
     }
 
     if (isPublicAuthRequest(config.url)) {
@@ -77,11 +84,24 @@ const processQueue = (error: any, token: string | null = null) => {
 
 // Response interceptor for token refresh + error logging
 api.interceptors.response.use(
-  response => response,
+  response => {
+    useNetworkStore.getState().markOnline();
+    return response;
+  },
   async (error: AxiosError) => {
+    // No response at all (not even an error page): the phone is offline or can't reach us.
+    if (!error.response && error.code !== 'ERR_CANCELED') {
+      useNetworkStore.getState().markOffline();
+    }
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
+
+    // Maintenance / too-old app: show the full-screen state instead of a one-off error.
+    const gate = (error.response?.data as { code?: string; data?: unknown } | undefined) ?? undefined;
+    if (gate?.code === GATE_CODES.MAINTENANCE || gate?.code === GATE_CODES.APP_UPDATE_REQUIRED) {
+      useAppGateStore.getState().applyServerGate(gate.code, gate.data);
+    }
 
     // Record API failures in the local error log (skip public auth routes —
     // wrong-password on a login form is not a defect worth persisting).

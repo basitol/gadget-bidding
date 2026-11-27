@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { View, Text, Image, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,7 +42,11 @@ const useOrder = (orderId: string) => {
 };
 
 const itemAmount = (o: any) => Number(o?.item_amount ?? Number(o?.total_amount ?? 0) - Number(o?.delivery_fee ?? 0));
-const deadline = (o: any) => new Date(o.created_at).getTime() + BID_PAYMENT_DEADLINE_HOURS * 3600_000;
+/** Pay-by time from the server (accepted second-chance offers get a fresh window), else created + 24h. */
+const deadline = (o: any) =>
+  o.payment_due_at
+    ? new Date(o.payment_due_at).getTime()
+    : new Date(o.created_at).getTime() + BID_PAYMENT_DEADLINE_HOURS * 3600_000;
 const leftLabel = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
@@ -292,6 +296,7 @@ export const CheckoutAddressScreen: React.FC<{ navigation: any; route: any }> = 
   const [list, setList] = useState<UserAddress[] | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const seen = useRef<Set<string> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -299,8 +304,13 @@ export const CheckoutAddressScreen: React.FC<{ navigation: any; route: any }> = 
         .listAddresses()
         .then(r => {
           const items = r.data ?? [];
+          // Coming back from "Add a new address": pick the one just added.
+          const added = seen.current ? items.find(a => !seen.current!.has(a.id)) : undefined;
+          seen.current = new Set(items.map(a => a.id));
           setList(items);
-          setPicked(p => (p && items.some(a => a.id === p) ? p : items.find(a => a.is_default)?.id ?? items[0]?.id ?? null));
+          setPicked(p =>
+            added?.id ?? (p && items.some(a => a.id === p) ? p : items.find(a => a.is_default)?.id ?? items[0]?.id ?? null)
+          );
         })
         .catch(() => setList([]));
     }, [])
@@ -320,6 +330,7 @@ export const CheckoutAddressScreen: React.FC<{ navigation: any; route: any }> = 
         state: a.state,
         postal_code: a.postal_code,
         country: a.country || 'Nigeria',
+        delivery_note: a.delivery_note,
       });
       navigation.navigate('CheckoutPayment', { orderId });
     } catch (e) {
@@ -348,7 +359,7 @@ export const CheckoutAddressScreen: React.FC<{ navigation: any; route: any }> = 
               />
             ))}
             <Pressable
-              onPress={() => navigation.navigate('ShippingAddress', { orderId })}
+              onPress={() => navigation.navigate('AddressForm', { first: !list?.length })}
               style={({ pressed }) => [styles.addNew, pressed && styles.pressed]}
               accessibilityRole="button"
             >
@@ -401,14 +412,17 @@ export const CheckoutPaymentScreen: React.FC<{ navigation: any; route: any }> = 
       try {
         await meService.payWithCard(orderId, choice.card.id);
         navigation.replace('Paid', { orderId, paidWith: choice.card.label });
-      } catch (e) {
-        toast(e instanceof Error ? e.message : 'Your card was not charged. Try another way to pay.');
+      } catch {
+        // Declined: show what happened and the other ways to pay.
+        navigation.navigate('PaymentFailed', { orderId, failedCardId: choice.card.id, failedLabel: choice.card.label });
       } finally {
         setBusy(false);
       }
       return;
     }
-    // Paystack checkout limited to the chosen method.
+    if (choice.kind === 'bank_transfer') return navigation.navigate('BankTransfer', { orderId });
+    if (choice.kind === 'ussd') return navigation.navigate('Ussd', { orderId });
+    // Paystack checkout for a new card.
     navigation.navigate('Payment', {
       orderId,
       orderNumber: order.order_number,
@@ -454,7 +468,7 @@ export const CheckoutPaymentScreen: React.FC<{ navigation: any; route: any }> = 
             sub="One-time account number"
             onPress={() => setChoice({ kind: 'bank_transfer' })}
           />
-          <Option on={on('ussd')} title="USSD" sub="Pay with your bank's USSD code" onPress={() => setChoice({ kind: 'ussd' })} />
+          <Option on={on('ussd')} title="USSD" sub="GTBank, Zenith or UBA" onPress={() => setChoice({ kind: 'ussd' })} />
         </View>
         <View style={styles.secure}>
           <Ionicons name="lock-closed-outline" size={13} color={G.muted} />

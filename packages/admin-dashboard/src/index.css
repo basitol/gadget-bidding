@@ -1,13 +1,24 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: 'Satoshi', ui-sans-serif, system-ui, sans-serif;
+    /* Design guide colours (docs/DESIGN_GUIDE.md) */
+    --color-blue-brand: #4F7BFF;
+    --color-blue-press: #3E6AF0;
+    --color-blue-tint: #F1F5FF;
+    --color-violet-brand: #9B87F5;
+    --color-ink: #1C1F2A;
+    --color-slate: #5C6273;
+    --color-hint: #7C8293;
+    --color-faint: #A9AEBB;
+    --color-line: #EDEFF4;
+    --color-fill: #F5F6F9;
+    --color-canvas: #F6F7FA;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,40 +59,40 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Gadgets Bidding brand — electric blue / sky / indigo */
+/* Gadgets Bidding — design guide tokens (Blue 500 action, Ink text, Line borders) */
 :root {
-    --background: oklch(0.985 0.012 250);
-    --foreground: oklch(0.22 0.04 255);
-    --card: oklch(1 0.005 250);
-    --card-foreground: oklch(0.22 0.04 255);
-    --popover: oklch(1 0.005 250);
-    --popover-foreground: oklch(0.22 0.04 255);
-    --primary: oklch(0.55 0.22 260);
-    --primary-foreground: oklch(0.99 0.01 250);
-    --secondary: oklch(0.94 0.04 230);
-    --secondary-foreground: oklch(0.35 0.1 240);
-    --muted: oklch(0.96 0.02 250);
-    --muted-foreground: oklch(0.5 0.04 255);
-    --accent: oklch(0.93 0.06 280);
-    --accent-foreground: oklch(0.35 0.14 280);
-    --destructive: oklch(0.58 0.22 25);
-    --border: oklch(0.9 0.03 250);
-    --input: oklch(0.92 0.03 250);
-    --ring: oklch(0.55 0.22 260);
-    --chart-1: oklch(0.55 0.22 260);
-    --chart-2: oklch(0.68 0.16 230);
-    --chart-3: oklch(0.65 0.18 155);
-    --chart-4: oklch(0.75 0.16 75);
-    --chart-5: oklch(0.62 0.2 20);
+    --background: #F6F7FA;
+    --foreground: #1C1F2A;
+    --card: #FFFFFF;
+    --card-foreground: #1C1F2A;
+    --popover: #FFFFFF;
+    --popover-foreground: #1C1F2A;
+    --primary: #4F7BFF;
+    --primary-foreground: #FFFFFF;
+    --secondary: #F5F6F9;
+    --secondary-foreground: #1C1F2A;
+    --muted: #F5F6F9;
+    --muted-foreground: #5C6273;
+    --accent: #F1F5FF;
+    --accent-foreground: #3E6AF0;
+    --destructive: #D9536A;
+    --border: #EDEFF4;
+    --input: #EDEFF4;
+    --ring: #4F7BFF;
+    --chart-1: #4F7BFF;
+    --chart-2: #9B87F5;
+    --chart-3: #2E9E5E;
+    --chart-4: #DB7A2E;
+    --chart-5: #D9536A;
     --radius: 0.75rem;
-    --sidebar: oklch(0.96 0.02 250);
-    --sidebar-foreground: oklch(0.32 0.05 255);
-    --sidebar-primary: oklch(0.55 0.22 260);
-    --sidebar-primary-foreground: oklch(0.99 0.01 250);
-    --sidebar-accent: oklch(0.94 0.03 255);
-    --sidebar-accent-foreground: oklch(0.22 0.04 255);
-    --sidebar-border: oklch(0.91 0.02 250);
-    --sidebar-ring: oklch(0.55 0.22 260);
+    --sidebar: transparent;
+    --sidebar-foreground: #1C1F2A;
+    --sidebar-primary: #4F7BFF;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: rgba(255, 255, 255, 0.7);
+    --sidebar-accent-foreground: #1C1F2A;
+    --sidebar-border: #EDEFF4;
+    --sidebar-ring: #4F7BFF;
 }
 
 .dark {
@@ -118,6 +129,21 @@
     --sidebar-ring: oklch(0.72 0.16 230);
 }
 
+/* Satoshi: Regular for reading, Medium for anything you scan. Heavier weights map to
+   Medium so nothing is faux-bolded (the guide uses two weights only). */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('./assets/fonts/Satoshi-Regular.ttf') format('truetype');
+  font-weight: 100 450;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('./assets/fonts/Satoshi-Medium.ttf') format('truetype');
+  font-weight: 451 900;
+  font-display: swap;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -127,7 +153,32 @@
   }
   html {
     @apply font-sans;
+    font-feature-settings: 'tnum' 1;
   }
+}
+
+/* Page background: canvas with four soft blobs (blue, violet, teal, amber). */
+.gb-canvas {
+  background-color: #EEF1FB;
+  background-image:
+    radial-gradient(42% 38% at 8% 4%, rgba(79, 123, 255, 0.28), transparent 70%),
+    radial-gradient(38% 34% at 92% 8%, rgba(155, 135, 245, 0.24), transparent 70%),
+    radial-gradient(40% 36% at 6% 96%, rgba(14, 139, 138, 0.14), transparent 70%),
+    radial-gradient(36% 32% at 96% 94%, rgba(219, 122, 46, 0.12), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Glass: white 56%, blur 22, saturate 170%, 1px white 75% border. Cards radius 16+ only. */
+.gb-glass {
+  background-color: rgba(255, 255, 255, 0.56);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+}
+
+/* Level 1 elevation */
+.gb-elev {
+  box-shadow: 0 1px 2px rgba(20, 28, 60, 0.04), 0 6px 16px rgba(20, 28, 60, 0.05);
 }
 
 /* Design-system toggle/switch elevation */
@@ -155,4 +206,63 @@
   .gb-row-flash {
     animation-duration: 1ms;
   }
+}
+
+/* ---------- Sign-in brand panel motion ----------
+   Only the left panel moves; the form stays still. Transform and opacity only.
+   With "reduce motion" on, none of these run and the panel is a still image. */
+@keyframes gb-drift {
+  from { transform: translate(0, 0); }
+  to { transform: translate(28px, 28px); } /* one dot-space, so the loop is seamless */
+}
+@keyframes gb-blob-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, 30px) scale(1.08); }
+  66% { transform: translate(-20px, 50px) scale(0.95); }
+}
+@keyframes gb-blob-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-40px, 24px) scale(1.1); }
+  66% { transform: translate(24px, -30px) scale(0.92); }
+}
+@keyframes gb-blob-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-50px, -30px) scale(1.12); }
+}
+@keyframes gb-spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes gb-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes gb-live-ring {
+  0% { transform: scale(1); opacity: 0.7; }
+  80%, 100% { transform: scale(2.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .gb-drift { animation: gb-drift 6s linear infinite; }
+  .gb-blob-a { animation: gb-blob-a 14s ease-in-out infinite; }
+  .gb-blob-b { animation: gb-blob-b 18s ease-in-out infinite; }
+  .gb-blob-c { animation: gb-blob-c 12s ease-in-out infinite; }
+  .gb-ring { animation: gb-spin-slow 60s linear infinite; }
+  .gb-bob-6 { animation: gb-bob 6s ease-in-out infinite; }
+  .gb-bob-7 { animation: gb-bob 7s ease-in-out -2.3s infinite; }
+  .gb-bob-8 { animation: gb-bob 8s ease-in-out -5.1s infinite; }
+  .gb-live-ring { animation: gb-live-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+}
+
+/* Form messages: errors and next steps fade up 6px (a plain quick fade with reduce motion). */
+@keyframes gb-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes gb-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.gb-fade-up { animation: gb-fade-up 300ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .gb-fade-up { animation: gb-fade 150ms ease-out both; }
 }

@@ -18,6 +18,7 @@ const mapAddress = (row: any): UserAddress => ({
   state: row.state,
   postal_code: row.postal_code || undefined,
   country: row.country,
+  delivery_note: row.delivery_note || undefined,
   is_default: row.is_default,
   created_at: row.created_at,
   updated_at: row.updated_at,
@@ -59,8 +60,8 @@ export const createAddress = async (
 
     const result = await client.query(
       `INSERT INTO user_addresses
-       (user_id, label, full_name, phone_number, address_line1, address_line2, city, state, postal_code, country, is_default)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       (user_id, label, full_name, phone_number, address_line1, address_line2, city, state, postal_code, country, is_default, delivery_note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         userId,
@@ -74,6 +75,7 @@ export const createAddress = async (
         input.postal_code || null,
         input.country || 'Nigeria',
         shouldDefault,
+        input.delivery_note?.trim() || null,
       ]
     );
 
@@ -106,6 +108,7 @@ export const updateAddress = async (
            postal_code = $10,
            country = $11,
            is_default = CASE WHEN $12::boolean THEN true ELSE is_default END,
+           delivery_note = $13,
            updated_at = NOW()
        WHERE id = $1 AND user_id = $2
        RETURNING *`,
@@ -122,6 +125,7 @@ export const updateAddress = async (
         input.postal_code || null,
         input.country || 'Nigeria',
         input.is_default === true,
+        input.delivery_note?.trim() || null,
       ]
     );
 
@@ -137,14 +141,23 @@ export const deleteAddress = async (
   userId: string,
   addressId: string
 ): Promise<void> => {
-  const result = await query<{ id: string }>(
-    'DELETE FROM user_addresses WHERE id = $1 AND user_id = $2 RETURNING id',
-    [addressId, userId]
-  );
-
-  if (result.length === 0) {
-    throw new Error('Address not found');
-  }
+  await transaction(async client => {
+    const result = await client.query(
+      'DELETE FROM user_addresses WHERE id = $1 AND user_id = $2 RETURNING is_default',
+      [addressId, userId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error('Address not found');
+    }
+    // Deleting the default: the most recently used one left takes its place.
+    if (result.rows[0].is_default) {
+      await client.query(
+        `UPDATE user_addresses SET is_default = true, updated_at = NOW()
+         WHERE id = (SELECT id FROM user_addresses WHERE user_id = $1 ORDER BY updated_at DESC, created_at DESC LIMIT 1)`,
+        [userId]
+      );
+    }
+  });
 };
 
 export const setDefaultAddress = async (

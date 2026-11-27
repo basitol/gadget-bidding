@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { connectAdminSocket } from '@/lib/socket';
 import { adminApi } from '@/api';
 import { mediaUrl } from '@/lib/media';
@@ -31,8 +32,10 @@ import { toast } from 'sonner';
 export function AuctionsPage() {
   const { confirm } = useConfirmDialog();
   const [status, setStatus] = useState('all');
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  // ?search= lets other pages (Listing reports) link straight to one listing.
+  const [params] = useSearchParams();
+  const [search, setSearch] = useState(params.get('search') ?? '');
+  const [appliedSearch, setAppliedSearch] = useState(params.get('search') ?? '');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [items, setItems] = useState<any[]>([]);

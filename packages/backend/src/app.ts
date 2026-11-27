@@ -25,9 +25,12 @@ import addressRoutes from './api/routes/address.routes';
 import notificationRoutes from './api/routes/notification.routes';
 import supportRoutes from './api/routes/support.routes';
 import adminRoutes from './api/routes/admin.routes';
+import adminReportRoutes from './api/routes/adminReports.routes';
 import sellerRoutes from './api/routes/seller.routes';
 import meRoutes from './api/routes/me.routes';
 import storeRoutes from './api/routes/store.routes';
+import caseRoutes from './api/routes/case.routes';
+import { publicRouter as appConfigRoutes } from './api/routes/appConfig.routes';
 import * as walletController from './api/controllers/wallet.controller';
 
 const app: Application = express();
@@ -179,6 +182,7 @@ app.use(
 app.use(`/api/${config.apiVersion}/auth`, authRoutes);
 app.use(`/api/${config.apiVersion}/me`, meRoutes);
 app.use(`/api/${config.apiVersion}/stores`, storeRoutes);
+app.use(`/api/${config.apiVersion}/cases`, caseRoutes);
 app.use(`/api/${config.apiVersion}/wallet`, walletRoutes);
 app.use(`/api/${config.apiVersion}/gadgets`, gadgetRoutes);
 app.use(`/api/${config.apiVersion}/auctions`, auctionRoutes);
@@ -187,8 +191,11 @@ app.use(`/api/${config.apiVersion}/orders`, orderRoutes);
 app.use(`/api/${config.apiVersion}/addresses`, addressRoutes);
 app.use(`/api/${config.apiVersion}/notifications`, notificationRoutes);
 app.use(`/api/${config.apiVersion}/support`, supportRoutes);
+app.use(`/api/${config.apiVersion}/admin/listing-reports`, adminReportRoutes);
 app.use(`/api/${config.apiVersion}/admin`, adminRoutes);
 app.use(`/api/${config.apiVersion}/seller`, sellerRoutes);
+// Public: minimum app version, store links, maintenance state (the app checks it at launch).
+app.use(`/api/${config.apiVersion}/app-config`, appConfigRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
