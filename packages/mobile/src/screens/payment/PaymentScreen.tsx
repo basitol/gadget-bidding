@@ -48,7 +48,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       setIsLoading(true);
       setError(null);
 
-      const response = await orderService.initializePayment(orderId);
+      const response = await orderService.initializePayment(orderId, undefined, (route.params as any)?.channel);
 
       if (response.data?.authorization_url) {
         setPaymentUrl(response.data.authorization_url);
@@ -108,7 +108,12 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           'success',
           { duration: 6000 }
         );
-        navigation.replace('OrderDetail', { orderId });
+        const channel = (route.params as any)?.channel as string | undefined;
+        navigation.replace('Paid', {
+          orderId,
+          paidWith:
+            channel === 'bank_transfer' ? 'Bank transfer' : channel === 'ussd' ? 'USSD' : channel === 'card' ? 'Card' : undefined,
+        });
       } else {
         throw new Error('Payment verification failed');
       }

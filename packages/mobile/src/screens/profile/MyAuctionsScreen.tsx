@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
-import { EmptyState, LoadingScreen, Button } from '../../components';
+import { EmptyState, LoadingScreen, Button, SegmentedTabs } from '../../components';
 import { useIsTabRoot } from '../../hooks';
 import { auctionService } from '../../services';
 import {
@@ -284,56 +284,20 @@ export const MyAuctionsScreen: React.FC<MyAuctionsScreenProps> = ({
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'all' ? styles.activeTab : undefined,
-          ]}
-          onPress={() => setActiveTab('all')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'all' ? styles.activeTabText : undefined,
-            ]}
-          >
-            All
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'active' ? styles.activeTab : undefined,
-          ]}
-          onPress={() => setActiveTab('active')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'active' ? styles.activeTabText : undefined,
-            ]}
-          >
-            Active
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'ended' ? styles.activeTab : undefined,
-          ]}
-          onPress={() => setActiveTab('ended')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'ended' ? styles.activeTabText : undefined,
-            ]}
-          >
-            Ended
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <SegmentedTabs
+        tabs={[
+          { key: 'all', label: 'All' },
+          { key: 'active', label: 'Active' },
+          { key: 'ended', label: 'Ended' },
+        ]}
+        value={activeTab}
+        onChange={setActiveTab}
+        style={styles.tabContainer}
+        padding={spacing.xs}
+        indicatorStyle={styles.activeTab}
+        textStyle={styles.tabText}
+        activeTextStyle={styles.activeTabText}
+      />
 
       {/* Auctions List */}
       {filteredAuctions.length === 0 ? (
@@ -457,6 +421,7 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
   },
   tabText: {
     color: colors.textSecondary,

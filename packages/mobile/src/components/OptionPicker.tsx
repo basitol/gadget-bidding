@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks';
 import { ThemeColors, fonts, borderRadius, spacing } from '../constants';
 import { Input } from './Input';
+import { BottomSheet } from './motion';
 
 interface OptionPickerProps {
   label: string;
@@ -96,14 +97,8 @@ export const OptionPicker: React.FC<OptionPickerProps> = ({
         {error && <Text style={styles.errorText}>{error}</Text>}
       </View>
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setOpen(false)}
-      >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
-        <View style={styles.sheet}>
+      <BottomSheet visible={open} onClose={() => setOpen(false)} style={styles.sheet}>
+        <View>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{label}</Text>
             <TouchableOpacity
@@ -156,7 +151,7 @@ export const OptionPicker: React.FC<OptionPickerProps> = ({
             }
           />
         </View>
-      </Modal>
+      </BottomSheet>
     </>
   );
 };

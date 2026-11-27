@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
-import { EmptyState, LoadingScreen } from '../../components';
+import { EmptyState, LoadingScreen, SegmentedTabs } from '../../components';
 import { useIsTabRoot } from '../../hooks';
 import { orderService } from '../../services';
 import { formatCurrency, formatDate, getOrderStatusLabel } from '../../utils';
@@ -167,7 +167,12 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
       <TouchableOpacity
         style={styles.orderCard}
         activeOpacity={0.8}
-        onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
+        onPress={() =>
+          // Unpaid wins go through checkout; everything else opens the order.
+          activeTab === 'purchases' && item.payment_status === 'pending' && item.fulfillment_status === 'pending'
+            ? navigation.navigate('YouWon', { orderId: item.id })
+            : navigation.navigate('OrderDetail', { orderId: item.id })
+        }
       >
         <View style={styles.orderHeader}>
           <View>
@@ -262,40 +267,19 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'purchases' ? styles.activeTab : undefined,
-          ]}
-          onPress={() => setActiveTab('purchases')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'purchases' ? styles.activeTabText : undefined,
-            ]}
-          >
-            Purchases
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'sales' ? styles.activeTab : undefined,
-          ]}
-          onPress={() => setActiveTab('sales')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'sales' ? styles.activeTabText : undefined,
-            ]}
-          >
-            Sales
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <SegmentedTabs
+        tabs={[
+          { key: 'purchases', label: 'Purchases' },
+          { key: 'sales', label: 'Sales' },
+        ]}
+        value={activeTab}
+        onChange={setActiveTab}
+        style={styles.tabContainer}
+        padding={spacing.xs}
+        indicatorStyle={styles.activeTab}
+        textStyle={styles.tabText}
+        activeTextStyle={styles.activeTabText}
+      />
 
       {/* Orders List */}
       {isLoading ? (
@@ -405,6 +389,7 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
   },
   tabText: {
     color: colors.textSecondary,

@@ -19,7 +19,7 @@ import {
   useWalletStore,
 } from '../../store';
 import { auctionService, orderService } from '../../services';
-import { formatCurrency, formatDate } from '../../utils';
+import { formatCurrency, formatDate, contactLabel } from '../../utils';
 
 type ProfileScreenProps = {
   navigation: any;
@@ -136,7 +136,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         {
           icon: 'chatbubbles-outline',
           title: 'Help & Support',
-          subtitle: 'Chat with GadgetBid support',
+          subtitle: 'Chat with Gadgets Bidding support',
           onPress: () => navigation.navigate('SupportChat'),
         },
       ];
@@ -204,7 +204,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           </View>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.full_name || 'User'}</Text>
-            <Text style={styles.userPhone}>{user?.phone_number}</Text>
+            <Text style={styles.userPhone}>{contactLabel(user)}</Text>
             <View style={styles.roleBadge}>
               <Ionicons
                 name={isSeller ? 'storefront-outline' : 'cart-outline'}
@@ -332,7 +332,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         </View>
 
         <View style={styles.versionContainer}>
-          <Text style={styles.versionText}>GadgetBid v1.0.0</Text>
+          <Text style={styles.versionText}>Gadgets Bidding v1.0.0</Text>
           <Text style={styles.copyrightText}>
             Member since {user?.created_at ? formatDate(user.created_at) : 'N/A'}
           </Text>

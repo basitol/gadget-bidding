@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
-import { EmptyState, LoadingScreen } from '../../components';
+import { EmptyState, LoadingScreen, SegmentedTabs } from '../../components';
 import { auctionService } from '../../services';
 import { formatCurrency, formatRelativeTime } from '../../utils';
 import { mediaUrl } from '../../utils/images';
@@ -223,40 +223,19 @@ export const MyBidsScreen: React.FC<MyBidsScreenProps> = ({ navigation }) => {
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'all' ? styles.activeTab : undefined,
-          ]}
-          onPress={() => setActiveTab('all')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'all' ? styles.activeTabText : undefined,
-            ]}
-          >
-            All Bids
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'active' ? styles.activeTab : undefined,
-          ]}
-          onPress={() => setActiveTab('active')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'active' ? styles.activeTabText : undefined,
-            ]}
-          >
-            Winning ({activeBids.length})
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <SegmentedTabs
+        tabs={[
+          { key: 'all', label: 'All Bids' },
+          { key: 'active', label: `Winning (${activeBids.length})` },
+        ]}
+        value={activeTab}
+        onChange={setActiveTab}
+        style={styles.tabContainer}
+        padding={spacing.xs}
+        indicatorStyle={styles.activeTab}
+        textStyle={styles.tabText}
+        activeTextStyle={styles.activeTabText}
+      />
 
       {/* Bids List */}
       {displayBids.length === 0 ? (
@@ -375,6 +354,7 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
   },
   tabText: {
     color: colors.textSecondary,

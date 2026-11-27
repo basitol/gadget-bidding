@@ -122,11 +122,12 @@ export function getColors(mode: ThemeMode): ThemeColors {
 export const colors = darkColors;
 
 export const fonts = {
-  regular: 'Inter_400Regular',
-  medium: 'Inter_500Medium',
-  semiBold: 'Inter_600SemiBold',
-  bold: 'Inter_700Bold',
-  extraBold: 'Inter_800ExtraBold',
+  // Satoshi, two weights only (design guide). Heavier names map to Medium so old screens follow.
+  regular: 'Satoshi-Regular',
+  medium: 'Satoshi-Medium',
+  semiBold: 'Satoshi-Medium',
+  bold: 'Satoshi-Medium',
+  extraBold: 'Satoshi-Medium',
   sizes: {
     xs: 10,
     sm: 12,

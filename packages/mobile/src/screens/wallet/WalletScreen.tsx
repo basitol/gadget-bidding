@@ -22,12 +22,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView, WebViewNavigation } from 'react-native-webview';
-import {
-  WalletCard,
-  Button,
-  EmptyState,
-  LoadingScreen,
-} from '../../components';
+import { WalletCard, Button, EmptyState, LoadingScreen, BottomSheet } from '../../components';
 import { useIsTabRoot } from '../../hooks';
 import { useAuthStore, useWalletStore } from '../../store';
 import { walletService } from '../../services';
@@ -426,22 +421,12 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Fund Modal */}
-      <Modal
+      {/* Fund sheet */}
+      <BottomSheet
         visible={showFundModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowFundModal(false)}
+        onClose={() => setShowFundModal(false)}
+        style={styles.modalContent}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-          style={styles.modalOverlay}
-        >
-          <TouchableWithoutFeedback onPress={() => setShowFundModal(false)}>
-            <View style={styles.modalBackground} />
-          </TouchableWithoutFeedback>
-          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Fund Wallet</Text>
               <TouchableOpacity onPress={() => setShowFundModal(false)}>
@@ -500,82 +485,66 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
                 size="lg"
               />
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
 
-      {/* Withdraw Modal */}
-      <Modal
+      {/* Withdraw sheet */}
+      <BottomSheet
         visible={showWithdrawModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowWithdrawModal(false)}
+        onClose={() => setShowWithdrawModal(false)}
+        style={styles.modalContent}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowWithdrawModal(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={e => e.stopPropagation()}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Withdraw Funds</Text>
-                <TouchableOpacity onPress={() => setShowWithdrawModal(false)}>
-                  <Ionicons
-                    name="close"
-                    size={22}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Withdraw Funds</Text>
+            <TouchableOpacity onPress={() => setShowWithdrawModal(false)}>
+              <Ionicons
+                name="close"
+                size={22}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
 
-              <View style={styles.modalBody}>
-                <View style={styles.availableBalance}>
-                  <Text style={styles.availableLabel}>Available Balance</Text>
-                  <Text style={styles.availableAmount}>
-                    {formatCurrency(
-                      (wallet?.balance || 0) - (wallet?.held_balance || 0)
-                    )}
-                  </Text>
-                </View>
-
-                <Text style={styles.modalLabel}>Amount (₦)</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={withdrawAmount}
-                  onChangeText={setWithdrawAmount}
-                  keyboardType="number-pad"
-                  placeholder="Enter amount"
-                  placeholderTextColor={colors.textMuted}
-                />
-
-                <View style={styles.withdrawInfo}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={20}
-                    color={colors.primary}
-                  />
-                  <Text style={styles.withdrawInfoText}>
-                    Withdrawals are processed within 24 hours. Minimum
-                    withdrawal is ₦1,000.
-                  </Text>
-                </View>
-
-                <Button
-                  title="Request Withdrawal"
-                  onPress={handleWithdraw}
-                  loading={isProcessing}
-                  fullWidth
-                  size="lg"
-                />
-              </View>
+          <View style={styles.modalBody}>
+            <View style={styles.availableBalance}>
+              <Text style={styles.availableLabel}>Available Balance</Text>
+              <Text style={styles.availableAmount}>
+                {formatCurrency(
+                  (wallet?.balance || 0) - (wallet?.held_balance || 0)
+                )}
+              </Text>
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+
+            <Text style={styles.modalLabel}>Amount (₦)</Text>
+            <TextInput
+              style={styles.amountInput}
+              value={withdrawAmount}
+              onChangeText={setWithdrawAmount}
+              keyboardType="number-pad"
+              placeholder="Enter amount"
+              placeholderTextColor={colors.textMuted}
+            />
+
+            <View style={styles.withdrawInfo}>
+              <Ionicons
+                name="information-circle-outline"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.withdrawInfoText}>
+                Withdrawals are processed within 24 hours. Minimum
+                withdrawal is ₦1,000.
+              </Text>
+            </View>
+
+            <Button
+              title="Request Withdrawal"
+              onPress={handleWithdraw}
+              loading={isProcessing}
+              fullWidth
+              size="lg"
+            />
+          </View>
+      </BottomSheet>
 
       <Modal
         visible={showPaymentWebView}

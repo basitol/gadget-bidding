@@ -1,127 +1,76 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Alert, Image, TextInput } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { Button, Input } from '../../components';
-import {
-  AuthLayout,
-  AuthFooterLink,
-  SocialAuthButtons,
-} from '../../components/auth';
+import { BottomSheet } from '../../components';
+import { SocialAuthButtons } from '../../components/auth';
 import { SocialAuthResult } from '../../components/auth/SocialAuthButtons';
+import {
+  A,
+  AuthButton,
+  AuthShell,
+  AuthTitle,
+  CodeBoxes,
+  Field,
+  PasswordField,
+  TextField,
+  TextLink,
+} from '../../components/auth/GlassAuthKit';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
-import { useTheme } from '../../hooks';
-import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
+import { fonts } from '../../constants';
 import { useAuthStore } from '../../store';
+import type { TwoFactorChallenge } from '../../store/authStore';
 import { useToastStore } from '../../store/toastStore';
 import { authService } from '../../services';
-import {
-  isValidNigerianPhone,
-  isValidEmail,
-  formatToInternational,
-} from '../../utils';
-import { AppInterfaceType } from '../../utils/roles';
+import { isValidNigerianPhone, isValidEmail, formatToInternational } from '../../utils';
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
   route: RouteProp<AuthStackParamList, 'Login'>;
 };
 
-const COPY: Record<
-  AppInterfaceType,
-  {
-    title: string;
-    subtitle: string;
-    features: Array<{ icon: keyof typeof Ionicons.glyphMap; label: string }>;
-    registerLabel: string;
-  }
-> = {
-  buyer: {
-    title: 'Buyer sign in',
-    subtitle: 'Sign in to browse auctions and place bids',
-    features: [
-      { icon: 'flash-outline', label: 'Live bidding' },
-      { icon: 'shield-checkmark-outline', label: 'Secure wallet' },
-    ],
-    registerLabel: 'Create buyer account',
-  },
-  seller: {
-    title: 'Seller sign in',
-    subtitle: 'Sign in to manage listings and auctions',
-    features: [
-      { icon: 'storefront-outline', label: 'List gadgets' },
-      { icon: 'stats-chart-outline', label: 'Track sales' },
-    ],
-    registerLabel: 'Create seller account',
-  },
+const toast = (m: string, t: 'success' | 'error' = 'error') => useToastStore.getState().show(m, t);
+
+/** Accounts made before email sign-up used a phone number; still let those log in. */
+const normalizeIdentifier = (value: string) => {
+  const v = value.trim();
+  return v.includes('@') ? v.toLowerCase() : formatToInternational(v);
+};
+const identifierError = (value: string): string | null => {
+  const v = value.trim();
+  if (!v) return null;
+  if (v.includes('@')) return isValidEmail(v) ? null : 'Check your email address. It looks incomplete.';
+  return isValidNigerianPhone(v) ? null : 'Enter the email you signed up with.';
 };
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({
-  navigation,
-  route,
-}) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) => {
   const interfaceType = route.params.interfaceType;
-  const copy = COPY[interfaceType];
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const seller = interfaceType === 'seller';
 
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(route.params.email ?? '');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{
-    identifier?: string;
-    password?: string;
-  }>({});
+  const [idError, setIdError] = useState<string | null>(null);
+  const passwordRef = useRef<TextInput>(null);
 
-  const { login, socialLogin, isLoading, error, clearError } = useAuthStore();
-  const showToast = useToastStore(state => state.show);
+  const { login, completeTwoFactor, socialLogin, isLoading, error, clearError } = useAuthStore();
+  // 2-step sign-in: password accepted, waiting for the emailed code.
+  const [challenge, setChallenge] = useState<TwoFactorChallenge | null>(null);
+  const [code, setCode] = useState('');
 
-  // authStore.error is global and would otherwise leak into whichever
-  // screen next reads it — surface it once as a toast, then clear it so it
-  // can't reappear on a screen you've since navigated to.
+  // authStore.error is global; show it once here, then clear it so it can't leak to another screen.
   useEffect(() => {
     if (error) {
-      showToast(error, 'error');
+      toast(error);
       clearError();
     }
-  }, [error, showToast, clearError]);
+  }, [error, clearError]);
 
-  const validateForm = (): boolean => {
-    const newErrors: { identifier?: string; password?: string } = {};
-
-    const value = identifier.trim();
-    if (!value) {
-      newErrors.identifier = 'Email or phone number is required';
-    } else if (value.includes('@')) {
-      if (!isValidEmail(value)) {
-        newErrors.identifier = 'Enter a valid email address';
-      }
-    } else if (!isValidNigerianPhone(value)) {
-      newErrors.identifier = 'Enter a valid Nigerian phone number';
-    }
-
-    if (!password) {
-      newErrors.password = 'Password is required';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const canSubmit = !!identifier.trim() && password.length > 0 && !identifierError(identifier);
 
   const handleUnverifiedAccount = async (formatted: string) => {
     try {
       const response = await authService.resendOtp(formatted);
-      if (!response.data?.verification_id) {
-        throw new Error('Could not send a verification code');
-      }
+      if (!response.data?.verification_id) throw new Error("We couldn't send a code. Try again.");
       navigation.navigate('OtpVerification', {
         phone_number: response.data.phone_number,
         email: response.data.email || '',
@@ -130,45 +79,44 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         interfaceType,
       });
     } catch (err) {
-      useToastStore.getState().show(
-        err instanceof Error ? err.message : 'Could not resend code. Please try again.',
-        'error'
-      );
+      toast(err instanceof Error ? err.message : "We couldn't send a code. Try again.");
     }
   };
 
   const handleLogin = async () => {
     clearError();
-    if (!validateForm()) return;
+    const problem = identifierError(identifier);
+    setIdError(problem);
+    if (problem || !canSubmit) return;
 
+    const formatted = normalizeIdentifier(identifier);
     try {
-      const value = identifier.trim();
-      const formatted = value.includes('@')
-        ? value.toLowerCase()
-        : formatToInternational(value);
-      await login(formatted, password, interfaceType);
+      const pending = await login(formatted, password, interfaceType);
+      if (pending) {
+        setCode('');
+        setChallenge(pending);
+      }
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Please check your credentials and try again';
-
+      const message = err instanceof Error ? err.message : "That didn't work. Check your details and try again.";
       if (message.toLowerCase().includes('verify your account')) {
-        const value = identifier.trim();
-        const formatted = value.includes('@')
-          ? value.toLowerCase()
-          : formatToInternational(value);
-        Alert.alert('Account not verified', 'Send a new verification code?', [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Send code',
-            onPress: () => handleUnverifiedAccount(formatted),
-          },
+        Alert.alert('Confirm your account first', "We'll send you a new code to finish setting it up.", [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Send code', onPress: () => handleUnverifiedAccount(formatted) },
         ]);
         return;
       }
+      toast(message);
+    }
+  };
 
-      useToastStore.getState().show(message, 'error');
+  const submitCode = async (value = code) => {
+    if (!challenge || value.length !== 6) return;
+    try {
+      await completeTwoFactor(challenge.verification_id, value, interfaceType);
+      setChallenge(null);
+    } catch (err) {
+      setCode('');
+      toast(err instanceof Error ? err.message : "That code didn't match. Try again.");
     }
   };
 
@@ -178,203 +126,118 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         await socialLogin(result.provider, result.idToken, interfaceType);
       } catch (err) {
-        useToastStore.getState().show(
-          err instanceof Error ? err.message : 'Social login failed. Please try again.',
-          'error'
-        );
+        toast(err instanceof Error ? err.message : "That didn't work. Try again.");
       }
     },
     [clearError, socialLogin, interfaceType]
   );
 
-  const handleSocialError = useCallback((message: string) => {
-    Alert.alert('Sign in', message);
-  }, []);
-
-  const goBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.navigate('Splash');
-    }
-  };
-
-  const switchInterface = () => {
-    const nextType: AppInterfaceType =
-      interfaceType === 'buyer' ? 'seller' : 'buyer';
-    navigation.replace('Login', { interfaceType: nextType });
-  };
+  const goBack = () => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Splash'));
 
   return (
-    <AuthLayout
-      onBack={goBack}
-      title={copy.title}
-      subtitle={copy.subtitle}
-      footer={
-        <>
-          <AuthFooterLink
-            text="Don't have an account?"
-            linkText={copy.registerLabel}
-            onPress={() => navigation.navigate('Register', { interfaceType })}
-          />
-          <TouchableOpacity
-            style={styles.switchInterface}
-            onPress={switchInterface}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.switchInterfaceText}>
-              {interfaceType === 'buyer'
-                ? 'Selling instead? Switch to seller login'
-                : 'Buying instead? Switch to buyer login'}
-            </Text>
-          </TouchableOpacity>
-        </>
-      }
-    >
-      <View style={styles.interfaceBadge}>
-        <Ionicons
-          name={interfaceType === 'buyer' ? 'cart-outline' : 'storefront-outline'}
-          size={16}
-          color={colors.primary}
+    <AuthShell title="Log in" onBack={goBack}>
+      <Image
+        source={require('../../../assets/brand/logo-wordmark.png')}
+        style={styles.wordmark}
+        accessibilityLabel="Gadgets Bidding"
+      />
+      <AuthTitle
+        title="Welcome back"
+        sub={seller ? 'Log in to manage your listings and payouts.' : 'Log in to keep bidding and track your orders.'}
+      />
+
+      <Field label="Email" error={idError}>
+        <TextField
+          value={identifier}
+          onChangeText={t => {
+            setIdentifier(t);
+            if (idError) setIdError(null);
+          }}
+          onBlur={() => setIdError(identifierError(identifier))}
+          placeholder="you@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          autoComplete="email"
+          textContentType="username"
+          returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+          invalid={!!idError}
         />
-        <Text style={styles.interfaceBadgeText}>
-          {interfaceType === 'buyer' ? 'Buyer account' : 'Seller account'}
+      </Field>
+
+      <Field label="Password">
+        <PasswordField
+          ref={passwordRef}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Your password"
+          autoComplete="password"
+          textContentType="password"
+          returnKeyType="go"
+          onSubmitEditing={handleLogin}
+        />
+      </Field>
+
+      <TextLink
+        label="Forgot password?"
+        onPress={() =>
+          navigation.navigate('ResetPassword', {
+            interfaceType,
+            email: identifier.includes('@') ? identifier.trim() : undefined,
+          })
+        }
+        style={styles.forgot}
+      />
+
+      <AuthButton label="Log in" onPress={handleLogin} disabled={!canSubmit} busy={isLoading && !challenge} />
+
+      <Text style={styles.or}>or</Text>
+
+      <SocialAuthButtons layout="stacked" onSuccess={handleSocialSuccess} onError={m => Alert.alert('Log in', m)} />
+
+      <Text style={styles.newHere}>
+        New here?{' '}
+        <Text
+          style={styles.newHereLink}
+          accessibilityRole="link"
+          onPress={() => (seller ? navigation.navigate('Register', { interfaceType: 'seller' }) : navigation.navigate('SignUp'))}
+        >
+          {seller ? 'Open a seller account' : 'Create an account'}
         </Text>
-      </View>
+      </Text>
+      {seller ? (
+        <TextLink
+          label="Buying instead? Log in as a buyer"
+          muted
+          onPress={() => navigation.replace('Login', { interfaceType: 'buyer' })}
+          style={styles.switch}
+        />
+      ) : null}
 
-      <View style={styles.featureRow}>
-        {copy.features.map(feature => (
-          <View key={feature.label} style={styles.featurePill}>
-            <Ionicons name={feature.icon} size={14} color={colors.primary} />
-            <Text style={styles.featureText}>{feature.label}</Text>
-          </View>
-        ))}
-      </View>
-
-      <Input
-        label="Email or phone number"
-        placeholder="you@example.com or 08012345678"
-        value={identifier}
-        onChangeText={setIdentifier}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        textContentType="username"
-        error={errors.identifier}
-        iconName="mail-outline"
-      />
-
-      <Input
-        label="Password"
-        placeholder="Enter your password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        showPasswordToggle
-        autoComplete="password"
-        textContentType="password"
-        error={errors.password}
-        iconName="lock-closed-outline"
-      />
-
-      <TouchableOpacity style={styles.forgotPassword} activeOpacity={0.7}>
-        <Text style={styles.forgotPasswordText}>Forgot password?</Text>
-      </TouchableOpacity>
-
-      <Button
-        title="Sign in"
-        onPress={handleLogin}
-        loading={isLoading}
-        fullWidth
-        size="lg"
-      />
-
-      <SocialAuthButtons
-        onSuccess={handleSocialSuccess}
-        onError={handleSocialError}
-      />
-    </AuthLayout>
+      <BottomSheet visible={!!challenge} onClose={() => setChallenge(null)}>
+        <Text style={styles.codeTitle}>Enter your sign-in code</Text>
+        <Text style={styles.codeSub}>
+          We emailed a 6-digit code to {challenge?.email_hint}. It works for 10 minutes.
+        </Text>
+        <CodeBoxes value={code} onChange={setCode} onComplete={submitCode} />
+        <View style={styles.codeButton}>
+          <AuthButton label="Log in" onPress={() => submitCode()} disabled={code.length !== 6} busy={isLoading && !!challenge} />
+        </View>
+      </BottomSheet>
+    </AuthShell>
   );
 };
 
-const createStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    interfaceBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-      alignSelf: 'center',
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.md,
-      borderRadius: borderRadius.full,
-      backgroundColor: colors.primary + '14',
-      borderWidth: 1,
-      borderColor: colors.primary + '33',
-      marginBottom: spacing.md,
-    },
-    interfaceBadgeText: {
-      color: colors.primary,
-      fontSize: fonts.sizes.sm,
-      fontWeight: '700',
-    },
-    featureRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      marginBottom: spacing.lg,
-    },
-    featurePill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: borderRadius.full,
-      backgroundColor: colors.primary + '14',
-      borderWidth: 1,
-      borderColor: colors.primary + '33',
-    },
-    featureText: {
-      color: colors.textSecondary,
-      fontSize: fonts.sizes.xs,
-      fontWeight: '600',
-    },
-    forgotPassword: {
-      alignSelf: 'flex-end',
-      marginBottom: spacing.lg,
-      marginTop: -spacing.sm,
-    },
-    forgotPasswordText: {
-      color: colors.primary,
-      fontSize: fonts.sizes.sm,
-      fontWeight: '600',
-    },
-    switchInterface: {
-      marginTop: spacing.md,
-    },
-    switchInterfaceText: {
-      color: colors.textMuted,
-      fontSize: fonts.sizes.sm,
-      textAlign: 'center',
-      textDecorationLine: 'underline',
-    },
-    errorContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      backgroundColor: colors.error + '15',
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      marginTop: spacing.md,
-      borderWidth: 1,
-      borderColor: colors.error + '33',
-    },
-    errorText: {
-      flex: 1,
-      color: colors.error,
-      fontSize: fonts.sizes.sm,
-    },
-  });
+const styles = StyleSheet.create({
+  wordmark: { width: 170, height: 37, resizeMode: 'contain', alignSelf: 'center', marginTop: 4, marginBottom: 28 },
+  forgot: { alignSelf: 'flex-end', marginTop: -4, marginBottom: 24 },
+  or: { color: A.muted, fontSize: 13, fontFamily: fonts.regular, textAlign: 'center', marginVertical: 16 },
+  newHere: { color: A.muted, fontSize: 14, fontFamily: fonts.regular, textAlign: 'center', marginTop: 20 },
+  newHereLink: { color: A.blue600, fontFamily: fonts.medium },
+  switch: { alignSelf: 'center', marginTop: 16 },
+  codeTitle: { color: A.ink, fontSize: 19, fontFamily: fonts.medium },
+  codeSub: { color: A.muted, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, marginTop: 6, marginBottom: 16 },
+  codeButton: { marginTop: 20 },
+});

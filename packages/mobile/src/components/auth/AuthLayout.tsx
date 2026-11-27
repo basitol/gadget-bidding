@@ -92,7 +92,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
                   >
                     <Text style={styles.logoText}>GB</Text>
                   </LinearGradient>
-                  <Text style={styles.brandName}>GadgetBid</Text>
+                  <Text style={styles.brandName}>Gadgets Bidding</Text>
                   <Text style={styles.brandTagline}>
                     Bid on gadgets, or sell yours
                   </Text>

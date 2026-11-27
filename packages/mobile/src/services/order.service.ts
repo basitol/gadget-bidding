@@ -96,6 +96,16 @@ class OrderService {
     }
   }
 
+  // Email the buyer a receipt (paid orders)
+  async emailReceipt(orderId: string): Promise<{ email: string }> {
+    try {
+      const response = await api.post(`/orders/${orderId}/receipt`);
+      return response.data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
   // Open a dispute for an order
   async createDispute(
     orderId: string,
@@ -133,7 +143,8 @@ class OrderService {
   // Initialize Paystack payment for order
   async initializePayment(
     orderId: string,
-    callbackUrl?: string
+    callbackUrl?: string,
+    channel?: 'card' | 'bank_transfer' | 'ussd'
   ): Promise<
     ApiResponse<{
       authorization_url: string;
@@ -144,6 +155,7 @@ class OrderService {
     try {
       const response = await api.post(`/orders/${orderId}/payment/initialize`, {
         callback_url: callbackUrl,
+        channel,
       });
       return response.data;
     } catch (error) {

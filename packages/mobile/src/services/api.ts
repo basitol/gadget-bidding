@@ -26,6 +26,8 @@ const isPublicAuthRequest = (url?: string): boolean => {
     '/auth/resend-otp',
     '/auth/refresh-token',
     '/auth/social',
+    '/auth/signup',
+    '/auth/username-available',
   ].some(path => url.includes(path));
 };
 

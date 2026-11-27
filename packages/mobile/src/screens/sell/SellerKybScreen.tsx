@@ -84,7 +84,6 @@ export const SellerKybScreen: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     refreshStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = async () => {
@@ -136,7 +135,7 @@ export const SellerKybScreen: React.FC<Props> = ({ navigation }) => {
           />
           <Text style={styles.title}>You're verified</Text>
           <Text style={styles.subtitle}>
-            {businessName} is approved to sell on GadgetBid.
+            {businessName} is approved to sell on Gadgets Bidding.
           </Text>
           <Button
             title="Start listing"

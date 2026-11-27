@@ -25,7 +25,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
         <Text style={styles.badgeText}>GB</Text>
       </LinearGradient>
       <View>
-        <Text style={styles.name}>GadgetBid</Text>
+        <Text style={styles.name}>Gadgets Bidding</Text>
         {showTagline && (
           <Text style={styles.tagline}>Auction. Escrow. Yours.</Text>
         )}

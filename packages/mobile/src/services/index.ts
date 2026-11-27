@@ -15,3 +15,5 @@ export { notificationService } from './notification.service';
 export { socketService } from './socket.service';
 export { supportService } from './support.service';
 export type { SupportThread, SupportMessage } from './support.service';
+export { meService } from './me.service';
+export type { AuctionCard, MyBidRow, ProfileSummary, SavedSearch, SavedCard, WatchFilter, BidTab } from './me.service';

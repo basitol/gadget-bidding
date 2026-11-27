@@ -172,7 +172,7 @@ export const SupportChatScreen: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: colors.text }]}>
-            Chat with GadgetBid
+            Chat with Gadgets Bidding
           </Text>
           <Text style={[styles.sub, { color: colors.textSecondary }]}>
             Support team · live chat

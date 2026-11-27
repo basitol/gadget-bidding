@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   View,
   Text,
   StyleSheet,
@@ -8,12 +9,11 @@ import {
   TouchableOpacity,
   Dimensions,
   Alert,
-  Modal,
   TextInput,
   FlatList,
-  KeyboardAvoidingView, // ← add this
-  Platform, // ← add this
+  Switch,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -27,7 +27,18 @@ import {
   shadows,
   MIN_BID_INCREMENT,
 } from '../../constants';
-import { Button, CountdownTimer, LoadingScreen } from '../../components';
+import {
+  AnimatedNumber,
+  BottomSheet,
+  Button,
+  Confetti,
+  CountdownTimer,
+  DrawCheck,
+  Flash,
+  LoadingScreen,
+  PopIn,
+  useShake,
+} from '../../components';
 import { useTheme } from '../../hooks';
 import { useAuctionStore, useWalletStore, useAuthStore } from '../../store';
 import { socketService } from '../../services';
@@ -48,6 +59,8 @@ import {
 import { mediaUrls } from '../../utils/images';
 import { Bid } from '../../types';
 import { useToastStore } from '../../store/toastStore';
+import { useWatchStore } from '../../store/watchStore';
+import { meService } from '../../services/me.service';
 
 const { width } = Dimensions.get('window');
 
@@ -80,8 +93,29 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
   const [showBidModal, setShowBidModal] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
   const [isBidding, setIsBidding] = useState(false);
+  /** Bid sheet step: enter an amount, then the success screen. */
+  const [bidStep, setBidStep] = useState<'amount' | 'drawing' | 'done'>('amount');
+  const [placedAmount, setPlacedAmount] = useState(0);
+  const [celebrate, setCelebrate] = useState(false);
+  const { shakeStyle, shake } = useShake();
+  const [outbidFlash, setOutbidFlash] = useState(0);
 
   const { user } = useAuthStore();
+  const watching = useWatchStore(s => s.ids.has(auctionId));
+  const toggleWatch = useWatchStore(s => s.toggle);
+  // Auto-bid: bid for me, one step at a time, up to the amount I enter.
+  const [autoMode, setAutoMode] = useState(false);
+  const [autoBid, setAutoBid] = useState<{ max_amount: number; is_active: boolean } | null>(null);
+  const [placedAuto, setPlacedAuto] = useState(false);
+  useEffect(() => {
+    meService.getAutoBid(auctionId).then(setAutoBid).catch(() => {});
+    useWatchStore.getState().load();
+  }, [auctionId]);
+
+  // Opened from a notification button: go straight to the bid sheet.
+  const openBid = (route.params as any)?.openBid as 'bid' | 'auto' | undefined;
+  const presetAmount = (route.params as any)?.amount as number | undefined;
+  const openedFromAlert = useRef(false);
   const { wallet, fetchWallet } = useWalletStore();
   const {
     currentAuction,
@@ -137,8 +171,21 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
 
   const handleOpenBidModal = () => {
     setBidAmount(Math.floor(getMinBidAmount()).toString());
+    setBidStep('amount');
     setShowBidModal(true);
   };
+
+  // Once the auction has loaded, honour a "Bid ₦X" / "Change max" tap from Notifications.
+  useEffect(() => {
+    if (!openBid || openedFromAlert.current || currentAuction?.id !== auctionId) return;
+    if (currentAuction.status !== 'active') return;
+    openedFromAlert.current = true;
+    const min = Math.floor(getMinBidAmount());
+    setAutoMode(openBid === 'auto');
+    setBidAmount(String(Math.max(min, Math.floor(presetAmount ?? 0))));
+    setBidStep('amount');
+    setShowBidModal(true);
+  }, [openBid, currentAuction?.id, currentAuction?.status]);
 
   const handlePlaceBid = async () => {
     const amount = parseInt(bidAmount, 10);
@@ -167,15 +214,23 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
 
     setIsBidding(true);
     try {
-      await placeBid(auctionId, amount);
-      setShowBidModal(false);
-      useToastStore.getState().show(
-        `Bid of ${formatCurrency(amount)} placed. ${formatCurrency(BID_COMMITMENT_AMOUNT)} is held only while you are the highest bidder.`,
-        'success',
-        { duration: 6000 }
-      );
+      if (autoMode) {
+        const res = await meService.setAutoBid(auctionId, amount);
+        setAutoBid(res);
+        setPlacedAuto(true);
+        // The server may already have bid for us; refresh price and bids.
+        useAuctionStore.getState().fetchAuction(auctionId);
+        useAuctionStore.getState().fetchAuctionBids(auctionId);
+      } else {
+        await placeBid(auctionId, amount);
+        setPlacedAuto(false);
+      }
+      setPlacedAmount(amount);
+      setBidStep('drawing');
     } catch (err) {
-      useToastStore.getState().show(error || 'Failed to place bid. Please try again.', 'error');
+      useToastStore
+        .getState()
+        .show((autoMode && err instanceof Error ? err.message : error) || 'Failed to place bid. Please try again.', 'error');
     } finally {
       setIsBidding(false);
     }
@@ -223,6 +278,44 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
       ]
     );
   };
+
+  // Are you leading? Highest bid by amount decides it.
+  const myStatus = useMemo<'winning' | 'outbid' | null>(() => {
+    if (!user || currentBids.length === 0) return null;
+    const mine = currentBids.some(b => b.bidder_id === user.id);
+    if (!mine) return null;
+    const top = currentBids.reduce((a, b) => (Number(b.amount) > Number(a.amount) ? b : a));
+    return top.bidder_id === user.id ? 'winning' : 'outbid';
+  }, [currentBids, user]);
+
+  // Winning → outbid: short shake + orange flash
+  const prevStatus = useRef(myStatus);
+  useEffect(() => {
+    if (prevStatus.current === 'winning' && myStatus === 'outbid') {
+      shake();
+      setOutbidFlash(n => n + 1);
+    }
+    prevStatus.current = myStatus;
+  }, [myStatus, shake]);
+
+  // "You won!" — celebrate once per auction
+  const didWin =
+    !!currentAuction &&
+    !!user &&
+    currentAuction.winner_id === user.id &&
+    currentAuction.status !== 'active';
+  useEffect(() => {
+    if (!didWin) return;
+    const key = `celebrated-win:${auctionId}`;
+    AsyncStorage.getItem(key).then(seen => {
+      if (!seen) {
+        setCelebrate(true);
+        AsyncStorage.setItem(key, '1');
+      }
+    });
+  }, [didWin, auctionId]);
+
+  const closeBidSheet = () => setShowBidModal(false);
 
   const renderBidItem = ({ item }: { item: Bid }) => {
     const isCurrentUser = item.bidder_id === user?.id;
@@ -324,6 +417,17 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
             <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
 
+          {/* Watch (heart) */}
+          <TouchableOpacity
+            style={[styles.backButton, styles.watchButton]}
+            onPress={() => toggleWatch(auctionId)}
+            accessibilityRole="button"
+            accessibilityLabel={watching ? 'Remove from watchlist' : 'Add to watchlist'}
+            accessibilityState={{ selected: watching }}
+          >
+            <Ionicons name={watching ? 'heart' : 'heart-outline'} size={22} color={watching ? '#F0456B' : '#FFFFFF'} />
+          </TouchableOpacity>
+
           {/* Image Indicators */}
           {images.length > 1 && (
             <View style={styles.imageIndicators}>
@@ -392,14 +496,82 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
             )}
           </View>
 
+          {/* You won! */}
+          {didWin && (
+            <View style={styles.wonWrap}>
+              {celebrate ? (
+                <PopIn style={styles.wonCard}>
+                  <Text style={styles.wonTitle}>You won!</Text>
+                  <Text style={styles.wonSub}>
+                    Pay within {BID_PAYMENT_DEADLINE_HOURS} hours to secure it.
+                  </Text>
+                </PopIn>
+              ) : (
+                <View style={styles.wonCard}>
+                  <Text style={styles.wonTitle}>You won!</Text>
+                  <Text style={styles.wonSub}>
+                    Pay within {BID_PAYMENT_DEADLINE_HOURS} hours to secure it.
+                  </Text>
+                </View>
+              )}
+              {celebrate && (
+                <Confetti
+                  colors={[colors.primary, colors.success, colors.warning, colors.accentLight]}
+                  onDone={() => setCelebrate(false)}
+                />
+              )}
+            </View>
+          )}
+
+          {/* Winning / Outbid */}
+          {isActive && myStatus && (
+            <Animated.View
+              accessibilityLiveRegion="polite"
+              style={[
+                styles.statusBanner,
+                myStatus === 'winning' ? styles.statusWinning : styles.statusOutbid,
+                shakeStyle,
+              ]}
+            >
+              <Flash
+                trigger={outbidFlash}
+                color={colors.warning}
+                intensity={0.35}
+                borderRadius={borderRadius.lg}
+              />
+              <Ionicons
+                name={myStatus === 'winning' ? 'trophy' : 'alert-circle'}
+                size={18}
+                color={myStatus === 'winning' ? colors.success : colors.warning}
+              />
+              <Text
+                style={[
+                  styles.statusBannerText,
+                  { color: myStatus === 'winning' ? colors.success : colors.warning },
+                ]}
+              >
+                {myStatus === 'winning'
+                  ? "You're winning"
+                  : 'Outbid. Bid again to take the lead.'}
+              </Text>
+            </Animated.View>
+          )}
+
           {/* Price Section */}
           <View style={styles.priceSection}>
+            <Flash
+              trigger={currentAuction.current_price}
+              color={colors.success}
+              borderRadius={borderRadius.lg}
+            />
             <View style={styles.priceRow}>
               <View>
                 <Text style={styles.priceLabel}>Current Bid</Text>
-                <Text style={styles.currentPrice}>
-                  {formatCurrency(currentAuction.current_price)}
-                </Text>
+                <AnimatedNumber
+                  style={styles.currentPrice}
+                  value={Math.floor(Number(currentAuction.current_price) || 0)}
+                  format={formatCurrency}
+                />
               </View>
               <View style={styles.bidCountBox}>
                 <Text style={styles.bidCountNumber}>
@@ -538,103 +710,147 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
         </View>
       )}
 
-      {/* Bid Modal */}
-      <Modal
-        visible={showBidModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowBidModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <TouchableOpacity
-            style={styles.modalDismissArea}
-            activeOpacity={1}
-            onPress={() => setShowBidModal(false)}
-          />
-          <View style={styles.modalContent}>
-            <View style={styles.grabHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Place Your Bid</Text>
-              <TouchableOpacity onPress={() => setShowBidModal(false)}>
-                <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.modalLabel}>Current Price</Text>
-              <Text style={styles.modalCurrentPrice}>
-                {formatCurrency(currentAuction.current_price)}
-              </Text>
-
-              <Text style={styles.modalLabel}>Your Bid (₦)</Text>
-              <TextInput
-                style={styles.bidInput}
-                value={bidAmount}
-                onChangeText={setBidAmount}
-                keyboardType="number-pad"
-                placeholder={Math.floor(getMinBidAmount()).toString()}
-                placeholderTextColor={colors.textMuted}
-              />
-
-              <View style={styles.quickBids}>
-                {[0, 1000, 2000, 5000].map(increment => (
-                  <TouchableOpacity
-                    key={increment}
-                    style={styles.quickBidButton}
-                    onPress={() =>
-                      setBidAmount(
-                        Math.floor(getMinBidAmount() + increment).toString()
-                      )
-                    }
-                  >
-                    <Text style={styles.quickBidText}>
-                      {increment === 0
-                        ? 'Min'
-                        : `+₦${increment.toLocaleString()}`}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.balanceInfo}>
-                <Text style={styles.balanceLabel}>
-                  Required Wallet Balance:
-                </Text>
-                <Text style={styles.balanceAmount}>
-                  {formatCurrency(BID_COMMITMENT_AMOUNT)}
-                </Text>
-              </View>
-
-              <View style={styles.bidPolicyBox}>
-                <Ionicons
-                  name="shield-checkmark-outline"
-                  size={18}
-                  color={colors.primary}
-                />
-                <Text style={styles.bidPolicyText}>
-                  If you win, pay within {BID_PAYMENT_DEADLINE_HOURS} hours.
-                  Missing payment forfeits the{' '}
-                  {formatCurrency(BID_COMMITMENT_AMOUNT)} hold, suspends your
-                  account, and requires a{' '}
-                  {formatCurrency(BID_DEFAULT_PENALTY_AMOUNT)} reactivation
-                  penalty.
-                </Text>
-              </View>
-
-              <Button
-                title="Confirm Bid"
-                onPress={handlePlaceBid}
-                loading={isBidding}
-                fullWidth
-                size="lg"
-              />
-            </View>
+      {/* Bid sheet */}
+      <BottomSheet visible={showBidModal} onClose={closeBidSheet} style={styles.modalContent}>
+        <View style={styles.grabHandle} />
+        {bidStep === 'amount' ? (
+          <>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Place Your Bid</Text>
+            <TouchableOpacity onPress={closeBidSheet} accessibilityLabel="Close">
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+
+          <View style={styles.modalBody}>
+            <Text style={styles.modalLabel}>Current Price</Text>
+            <Text style={styles.modalCurrentPrice}>
+              {formatCurrency(currentAuction.current_price)}
+            </Text>
+
+            {autoBid?.is_active ? (
+              <View style={styles.autoActive}>
+                <Ionicons name="flash" size={16} color={colors.primary} />
+                <Text style={styles.autoActiveText}>
+                  Auto-bid is on, up to {formatCurrency(autoBid.max_amount)}
+                </Text>
+                <TouchableOpacity
+                  onPress={async () => {
+                    await meService.cancelAutoBid(auctionId).catch(() => {});
+                    setAutoBid({ ...autoBid, is_active: false });
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.autoActiveOff}>Turn off</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <View style={styles.autoRow}>
+              <View style={styles.autoRowText}>
+                <Text style={styles.autoTitle}>Auto-bid</Text>
+                <Text style={styles.autoSub}>
+                  We bid for you, one step at a time, only when someone outbids you, up to your maximum.
+                </Text>
+              </View>
+              <Switch
+                value={autoMode}
+                onValueChange={setAutoMode}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFFFFF"
+                accessibilityLabel="Auto-bid"
+              />
+            </View>
+
+            <Text style={styles.modalLabel}>{autoMode ? 'Your maximum (₦)' : 'Your Bid (₦)'}</Text>
+            <TextInput
+              style={styles.bidInput}
+              value={bidAmount}
+              onChangeText={setBidAmount}
+              keyboardType="number-pad"
+              placeholder={Math.floor(getMinBidAmount()).toString()}
+              placeholderTextColor={colors.textMuted}
+            />
+
+            <View style={styles.quickBids}>
+              {[0, 1000, 2000, 5000].map(increment => (
+                <TouchableOpacity
+                  key={increment}
+                  style={styles.quickBidButton}
+                  onPress={() =>
+                    setBidAmount(
+                      Math.floor(getMinBidAmount() + increment).toString()
+                    )
+                  }
+                >
+                  <Text style={styles.quickBidText}>
+                    {increment === 0
+                      ? 'Min'
+                      : `+₦${increment.toLocaleString()}`}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.balanceInfo}>
+              <Text style={styles.balanceLabel}>
+                Required Wallet Balance:
+              </Text>
+              <Text style={styles.balanceAmount}>
+                {formatCurrency(BID_COMMITMENT_AMOUNT)}
+              </Text>
+            </View>
+
+            <View style={styles.bidPolicyBox}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={colors.primary}
+              />
+              <Text style={styles.bidPolicyText}>
+                If you win, pay within {BID_PAYMENT_DEADLINE_HOURS} hours.
+                Missing payment forfeits the{' '}
+                {formatCurrency(BID_COMMITMENT_AMOUNT)} hold, suspends your
+                account, and requires a{' '}
+                {formatCurrency(BID_DEFAULT_PENALTY_AMOUNT)} reactivation
+                penalty.
+              </Text>
+            </View>
+
+            <Button
+              title={autoMode ? 'Turn on auto-bid' : 'Confirm Bid'}
+              onPress={handlePlaceBid}
+              loading={isBidding}
+              fullWidth
+              size="lg"
+            />
+          </View>
+          </>
+        ) : (
+          <View style={styles.successBody}>
+            <DrawCheck
+              size={76}
+              color="#FFFFFF"
+              background={colors.success}
+              onDone={() => setBidStep('done')}
+            />
+            {bidStep === 'done' && (
+              <PopIn from="right" style={styles.successText}>
+                <Text style={styles.successTitle}>{placedAuto ? 'Auto-bid is on' : 'Bid placed'}</Text>
+                <Text style={styles.successAmount}>
+                  {placedAuto ? `Up to ${formatCurrency(placedAmount)}` : formatCurrency(placedAmount)}
+                </Text>
+                <Text style={styles.successNote}>
+                  {placedAuto
+                    ? `We'll bid for you only when someone outbids you, one step at a time, and never past your maximum. ${formatCurrency(BID_COMMITMENT_AMOUNT)} is held while you're bidding.`
+                    : `You're the highest bidder. ${formatCurrency(BID_COMMITMENT_AMOUNT)} is held only while you stay on top, and we'll alert you if someone outbids you.`}
+                </Text>
+                <Button title="Keep watching" onPress={closeBidSheet} fullWidth size="lg" />
+              </PopIn>
+            )}
+          </View>
+        )}
+      </BottomSheet>
     </SafeAreaView>
   );
 };
@@ -684,6 +900,52 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: 'rgba(0,0,0,0.5)',
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    watchButton: {
+      left: undefined,
+      right: spacing.md,
+      top: spacing.md + 52, // below the status badge
+    },
+    autoActive: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.primary + '14',
+      borderRadius: borderRadius.lg,
+      padding: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    autoActiveText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
+    },
+    autoActiveOff: {
+      color: colors.primary,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.medium,
+    },
+    autoRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      marginBottom: spacing.md,
+    },
+    autoRowText: {
+      flex: 1,
+    },
+    autoTitle: {
+      color: colors.text,
+      fontSize: fonts.sizes.md,
+      fontFamily: fonts.medium,
+    },
+    autoSub: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.xs,
+      fontFamily: fonts.regular,
+      marginTop: 2,
+      lineHeight: 16,
     },
     imageIndicators: {
       position: 'absolute',
@@ -748,7 +1010,82 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: fonts.sizes.sm,
       fontFamily: fonts.semiBold,
     },
+    wonWrap: {
+      marginBottom: spacing.lg,
+    },
+    wonCard: {
+      alignItems: 'center',
+      backgroundColor: colors.success + '18',
+      borderWidth: 1,
+      borderColor: colors.success + '55',
+      borderRadius: borderRadius.lg,
+      padding: spacing.lg,
+    },
+    wonTitle: {
+      color: colors.success,
+      fontSize: fonts.sizes.xxl,
+      fontFamily: fonts.bold,
+    },
+    wonSub: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      marginTop: spacing.xs,
+    },
+    statusBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      overflow: 'hidden',
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      marginBottom: spacing.md,
+    },
+    statusWinning: {
+      backgroundColor: colors.success + '14',
+      borderColor: colors.success + '44',
+    },
+    statusOutbid: {
+      backgroundColor: colors.warning + '14',
+      borderColor: colors.warning + '55',
+    },
+    statusBannerText: {
+      flex: 1,
+      fontSize: fonts.sizes.sm,
+      fontFamily: fonts.semiBold,
+    },
+    successBody: {
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+      minHeight: 340,
+    },
+    successText: {
+      alignSelf: 'stretch',
+      alignItems: 'center',
+      marginTop: spacing.lg,
+    },
+    successTitle: {
+      color: colors.text,
+      fontSize: fonts.sizes.xl,
+      fontFamily: fonts.bold,
+    },
+    successAmount: {
+      color: colors.success,
+      fontSize: fonts.sizes.xxl,
+      fontFamily: fonts.bold,
+      marginTop: spacing.xs,
+    },
+    successNote: {
+      color: colors.textSecondary,
+      fontSize: fonts.sizes.sm,
+      lineHeight: 20,
+      textAlign: 'center',
+      marginVertical: spacing.lg,
+    },
     priceSection: {
+      overflow: 'hidden',
       backgroundColor: colors.surface,
       borderRadius: borderRadius.lg,
       padding: spacing.lg,
@@ -973,14 +1310,6 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: fonts.sizes.sm,
       fontFamily: fonts.medium,
       opacity: 0.9,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.7)',
-      justifyContent: 'flex-end',
-    },
-    modalDismissArea: {
-      flex: 1,
     },
     modalContent: {
       backgroundColor: colors.surface,

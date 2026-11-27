@@ -8,13 +8,17 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  message?: string;
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return {
+      hasError: true,
+      message: error?.message || 'An unexpected error occurred. Please try again.',
+    };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
@@ -24,11 +28,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
   }
 
-  reset = () => this.setState({ hasError: false });
+  reset = () => this.setState({ hasError: false, message: undefined });
 
   render() {
     if (this.state.hasError) {
-      return <ErrorFallback onRetry={this.reset} />;
+      return (
+        <ErrorFallback
+          onRetry={this.reset}
+          message={this.state.message}
+        />
+      );
     }
     return this.props.children;
   }

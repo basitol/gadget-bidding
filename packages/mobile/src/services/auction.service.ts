@@ -71,6 +71,12 @@ export interface SubmitSellerKybData {
   cac_number?: string;
 }
 
+/** The API calls it total_bids; screens read bid_count. */
+const withBidCount = <T extends Record<string, any>>(a: T): T => ({
+  ...a,
+  bid_count: a.bid_count ?? a.total_bids ?? 0,
+});
+
 class AuctionService {
   // ============ GADGETS ============
 
@@ -233,7 +239,9 @@ class AuctionService {
       const response = await api.get('/auctions', {
         params: { ...filters, page, limit },
       });
-      return response.data;
+      const body = response.data;
+      if (Array.isArray(body?.data)) body.data = body.data.map(withBidCount);
+      return body;
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }
@@ -253,7 +261,9 @@ class AuctionService {
   ): Promise<ApiResponse<Auction & { gadget: Gadget }>> {
     try {
       const response = await api.get(`/auctions/${id}`);
-      return response.data;
+      const body = response.data;
+      if (body?.data) body.data = withBidCount(body.data);
+      return body;
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }

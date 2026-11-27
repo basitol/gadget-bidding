@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
+  Animated,
   View,
   Text,
   StyleSheet,
@@ -12,7 +13,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Button } from '../../components';
+import { Button, useShake } from '../../components';
 import { AuthLayout } from '../../components/auth';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { useTheme } from '../../hooks';
@@ -44,6 +45,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
   const [isResending, setIsResending] = useState(false);
 
   const inputRefs = useRef<(TextInput | null)[]>([]);
+  const { shakeStyle, shake } = useShake(10);
   const { verifyOtp, isLoading, error, clearError } = useAuthStore();
 
   useEffect(() => {
@@ -118,6 +120,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         err instanceof Error ? err.message : 'Invalid code. Please try again.',
         'error'
       );
+      shake();
       setOtp(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
     }
@@ -161,7 +164,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
         <Text style={styles.phoneNumber}>{email || phone_number}</Text>
       </View>
 
-      <View style={styles.otpContainer}>
+      <Animated.View style={[styles.otpContainer, shakeStyle]}>
         {otp.map((digit, index) => (
           <TextInput
             key={index}
@@ -184,7 +187,7 @@ export const OtpVerificationScreen: React.FC<OtpVerificationScreenProps> = ({
             selectTextOnFocus
           />
         ))}
-      </View>
+      </Animated.View>
 
       {error && (
         <View style={styles.errorContainer}>

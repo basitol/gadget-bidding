@@ -22,6 +22,7 @@
     "expo": "~54.0.33",
     "expo-apple-authentication": "~8.0.8",
     "expo-auth-session": "~7.0.11",
+    "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "^18.0.13",
     "expo-crypto": "~15.0.9",
@@ -45,6 +46,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@sentry/cli": "2.55.0",
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
   },

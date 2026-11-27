@@ -106,7 +106,7 @@ if (__DEV__) {
 }
 
 // App Configuration
-export const APP_NAME = 'GadgetBid';
+export const APP_NAME = 'Gadgets Bidding';
 export const CURRENCY = '₦';
 export const CURRENCY_CODE = 'NGN';
 

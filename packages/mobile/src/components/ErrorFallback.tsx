@@ -6,9 +6,13 @@ import { EmptyState } from './EmptyState';
 
 interface ErrorFallbackProps {
   onRetry: () => void;
+  message?: string;
 }
 
-export const ErrorFallback: React.FC<ErrorFallbackProps> = ({ onRetry }) => {
+export const ErrorFallback: React.FC<ErrorFallbackProps> = ({
+  onRetry,
+  message,
+}) => {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -17,7 +21,9 @@ export const ErrorFallback: React.FC<ErrorFallbackProps> = ({ onRetry }) => {
       <EmptyState
         icon="alert-circle-outline"
         title="Something went wrong"
-        message="An unexpected error occurred. Please try again."
+        message={
+          message || 'An unexpected error occurred. Please try again.'
+        }
         actionLabel="Try Again"
         onAction={onRetry}
       />

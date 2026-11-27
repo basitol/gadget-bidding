@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import * as Notifications from 'expo-notifications';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import {
   NavigationContainer,
+  createNavigationContainerRef,
   type LinkingOptions,
 } from '@react-navigation/native';
+import { registerForPush, routeForNotification } from '../services/pushNotifications';
 import { AuthNavigator } from './AuthNavigator';
 import { BuyerNavigator } from './BuyerNavigator';
 import { SellerNavigator } from './SellerNavigator';
@@ -21,9 +24,47 @@ const linking: LinkingOptions<Record<string, object | undefined>> = {
   },
 };
 
+export const navigationRef = createNavigationContainerRef<Record<string, object | undefined>>();
+
+type PendingRoute = { name: string; params?: Record<string, unknown> };
+
 export const RootNavigator: React.FC = () => {
   const { isAuthenticated, interfaceType, user, checkAuth } = useAuthStore();
   const [initialCheckDone, setInitialCheckDone] = useState(false);
+  // A tapped alert may arrive before we're signed in or the navigator is mounted.
+  const pendingRoute = useRef<PendingRoute | null>(null);
+
+  const openPending = useCallback(() => {
+    const route = pendingRoute.current;
+    if (!route || !useAuthStore.getState().isAuthenticated || !navigationRef.isReady()) return;
+    pendingRoute.current = null;
+    navigationRef.navigate(route.name, route.params as object | undefined);
+  }, []);
+
+  const handleResponse = useCallback(
+    (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      pendingRoute.current = routeForNotification(
+        response.notification.request.content.data as Record<string, unknown>
+      );
+      openPending();
+    },
+    [openPending]
+  );
+
+  // Alert tapped while the app is running, and the one that launched it from closed.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    Notifications.getLastNotificationResponseAsync().then(handleResponse).catch(() => {});
+    return () => sub.remove();
+  }, [handleResponse]);
+
+  // Signed in: refresh this device's push token (it can change), without prompting.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    registerForPush({ ask: false });
+    openPending();
+  }, [isAuthenticated, openPending]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -49,7 +90,7 @@ export const RootNavigator: React.FC = () => {
     interfaceType ?? (user && isSellerRole(user.role) ? 'seller' : 'buyer');
 
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer ref={navigationRef} linking={linking} onReady={openPending}>
       {isAuthenticated ? (
         resolvedInterface === 'seller' ? (
           <SellerNavigator />

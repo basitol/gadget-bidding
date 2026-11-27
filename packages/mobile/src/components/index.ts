@@ -14,3 +14,4 @@ export { FadeInView } from './FadeInView';
 export { Toast } from './Toast';
 export * from './home';
 export * from './auth';
+export * from './motion';

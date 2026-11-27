@@ -6,9 +6,11 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
+  Image,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
@@ -23,7 +25,14 @@ import {
 // types cannot be used with a browser-based auth flow — Google rejects that
 // with "invalid_request" — so this must go through the native Credential
 // Manager / Google Sign-In SDK instead, which is what this library wraps.
-GoogleSignin.configure({
+//
+// Expo Go doesn't ship that native module, and loading it there crashes the app at launch, so it is
+// only loaded in development and store builds.
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const GoogleSignin: typeof import('@react-native-google-signin/google-signin').GoogleSignin | null =
+  isExpoGo ? null : require('@react-native-google-signin/google-signin').GoogleSignin;
+
+GoogleSignin?.configure({
   webClientId: GOOGLE_CLIENT_ID,
   iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
 });
@@ -45,12 +54,16 @@ interface SocialAuthButtonsProps {
    * to reject them at the end.
    */
   canProceed?: () => boolean;
+  /** 'row' = two small buttons under an "or continue with" divider (forms).
+   *  'stacked' = full-width "Continue with …" buttons (sign-up chooser). */
+  layout?: 'row' | 'stacked';
 }
 
 export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   onSuccess,
   onError,
   canProceed,
+  layout = 'row',
 }) => {
   const { colors } = useTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
@@ -58,6 +71,10 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
 
   const handleGoogle = async () => {
     if (canProceed && !canProceed()) {
+      return;
+    }
+    if (!GoogleSignin) {
+      onError("Google sign-in isn't available in Expo Go. Use your email to log in.");
       return;
     }
     if (!GOOGLE_CLIENT_ID) {
@@ -144,6 +161,51 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
       onError('Sign in with Apple failed.');
     }
   };
+
+  if (layout === 'stacked') {
+    const stacked = (
+      key: 'google' | 'apple',
+      label: string,
+      logo: React.ReactNode,
+      onPress: () => void
+    ) => (
+      <Pressable
+        key={key}
+        onPress={onPress}
+        disabled={busy !== null}
+        style={({ pressed }) => [stackedStyles.button, pressed && stackedStyles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
+        {busy === key ? (
+          <ActivityIndicator size="small" color="#1C1F2A" />
+        ) : (
+          <>
+            {logo}
+            <Text style={stackedStyles.label}>{label}</Text>
+          </>
+        )}
+      </Pressable>
+    );
+    return (
+      <View style={stackedStyles.container}>
+        {stacked(
+          'google',
+          'Continue with Google',
+          <Image source={require('../../../assets/icons/google-g.png')} style={stackedStyles.logo} />,
+          handleGoogle
+        )}
+        {Platform.OS === 'ios'
+          ? stacked(
+              'apple',
+              'Continue with Apple',
+              <Image source={require('../../../assets/icons/apple-logo.png')} style={stackedStyles.logo} />,
+              handleApple
+            )
+          : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -239,3 +301,37 @@ const createStyles = (colors: ThemeColors) =>
       fontWeight: '600',
     },
   });
+
+const stackedStyles = StyleSheet.create({
+  container: {
+    gap: 12,
+  },
+  button: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    shadowColor: '#141C3C',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
+  },
+  logo: {
+    width: 20,
+    height: 20,
+    resizeMode: 'contain',
+  },
+  label: {
+    color: '#1C1F2A',
+    fontSize: 16,
+    fontFamily: fonts.medium,
+  },
+});
