@@ -120,11 +120,16 @@ export const validateAuctionFilters: ValidationChain[] = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage('Maximum price must be a non-negative number'),
+  query('brand').optional().isString().isLength({ max: 50 }),
+  query('condition')
+    .optional()
+    .matches(/^(new|like_new|excellent|good|fair|for_parts)(,(new|like_new|excellent|good|fair|for_parts))*$/)
+    .withMessage('Condition must be a list like excellent,good'),
   query('sort_by')
     .optional()
-    .isIn(['newest', 'price_asc', 'price_desc', 'ending_soon'])
+    .isIn(['newest', 'price_asc', 'price_desc', 'ending_soon', 'bid_count'])
     .withMessage(
-      'Sort by must be one of: newest, price_asc, price_desc, ending_soon'
+      'Sort by must be one of: newest, price_asc, price_desc, ending_soon, bid_count'
     ),
   query('page')
     .optional()

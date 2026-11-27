@@ -6,9 +6,12 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import logger from '../../utils/logger';
 import * as gadgetService from '../../services/gadget/gadget.service';
 import * as orderService from '../../services/order/order.service';
+import * as buyerAlerts from '../../services/notification/buyerAlerts';
 import * as auctionService from '../../services/auction/auction.service';
 import * as supportService from '../../services/support/support.service';
 import * as riskService from '../../services/risk/risk.service';
+import * as overviewService from '../../services/admin/overview.service';
+import * as auditService from '../../services/audit/audit.service';
 
 const toNumber = (value: unknown): number => {
   if (value == null) return 0;
@@ -48,6 +51,14 @@ const audit = async (
 /**
  * GET /api/v1/admin/stats
  */
+/** Payment counts for the dashboard, leaving out ₦50 "Add a card" checks (refunded straight away). */
+const countPayments = async (status: string): Promise<number> => {
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT COUNT(*)::bigint AS n FROM payment_transactions
+    WHERE status = ${status} AND COALESCE(metadata->>'purpose', '') <> 'card_verification'`;
+  return Number(rows[0]?.n ?? 0);
+};
+
 export const getAdminStats = async (_req: Request, res: Response) => {
   try {
     const sevenDaysAgo = new Date();
@@ -106,8 +117,8 @@ export const getAdminStats = async (_req: Request, res: Response) => {
         },
       }),
       prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
-      prisma.paymentTransaction.count({ where: { status: 'success' } }),
-      prisma.paymentTransaction.count({ where: { status: 'pending' } }),
+      countPayments('success'),
+      countPayments('pending'),
     ]);
 
     sendSuccess(res, {
@@ -317,8 +328,11 @@ export const getGadgets = async (req: Request, res: Response) => {
           seller: {
             select: { id: true, fullName: true, phoneNumber: true },
           },
-          auction: {
+          // Latest run (a gadget can be relisted after a run that didn't sell).
+          auctions: {
             select: { id: true, status: true, currentPrice: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -350,11 +364,11 @@ export const getGadgets = async (req: Request, res: Response) => {
               phone_number: g.seller.phoneNumber,
             }
           : null,
-        auction: g.auction
+        auction: g.auctions[0]
           ? {
-              id: g.auction.id,
-              status: g.auction.status,
-              current_price: toNumber(g.auction.currentPrice),
+              id: g.auctions[0].id,
+              status: g.auctions[0].status,
+              current_price: toNumber(g.auctions[0].currentPrice),
             }
           : null,
       })),
@@ -602,8 +616,11 @@ export const getAllOrders = async (req: Request, res: Response) => {
         payout_reference: o.payoutReference,
         payment_status: o.paymentStatus,
         fulfillment_status: o.fulfillmentStatus,
+        delivery_method: o.deliveryMethod,
         shipping_address: o.shippingAddress,
         tracking_number: o.trackingNumber,
+        /** Hub check (admin only: includes who did it). */
+        inspection: o.inspection ?? null,
         created_at: o.createdAt?.toISOString(),
         updated_at: o.updatedAt?.toISOString(),
         gadget_title: o.auction?.gadget?.title,
@@ -671,6 +688,8 @@ export const updateOrder = async (req: Request, res: Response) => {
       payout_reference,
     });
 
+    if (fulfillment_status) void buyerAlerts.notifyBuyerFulfillment(id, fulfillment_status);
+
     await audit(req, 'order_update', 'order', id, {
       payment_status,
       fulfillment_status,
@@ -683,6 +702,67 @@ export const updateOrder = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Admin update order error:', error);
     sendError(res, error.message || 'Failed to update order', 400);
+  }
+};
+
+/**
+ * GET /api/v1/admin/inspection-checks
+ * The hub's checklist, in order.
+ */
+export const getInspectionChecks = (_req: Request, res: Response) => {
+  sendSuccess(res, orderService.HUB_INSPECTION_CHECKS);
+};
+
+/**
+ * POST /api/v1/admin/orders/:id/inspection
+ * Record the hub check for an order at the hub:
+ * { checks: { imei_match: true, ... } | [{ key, passed }], note? } (note required if any check fails).
+ */
+export const recordInspection = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const staff = await prisma.user.findUnique({
+      where: { id: req.user!.user_id },
+      select: { fullName: true },
+    });
+    const result = await orderService.recordInspection(
+      id,
+      { id: req.user!.user_id, name: staff?.fullName ?? null },
+      req.body ?? {}
+    );
+
+    auditService.recordAuditEventSafe({
+      req,
+      action: 'order_inspection',
+      resourceType: 'order',
+      resourceId: id,
+      changes: {
+        order_number: result.order_number,
+        passed: result.inspection.passed,
+        total: result.inspection.total,
+        failed: result.inspection.checks.filter(c => !c.passed).map(c => c.key),
+        note: result.inspection.note,
+      },
+    });
+
+    if (result.all_passed) {
+      void buyerAlerts.notifyBuyerInspectionPassed(id, result.inspection.passed, result.inspection.total);
+    }
+
+    sendSuccess(
+      res,
+      result,
+      result.all_passed
+        ? 'Passed the hub check. It can leave the hub now.'
+        : "Saved. It stays at the hub until every check passes."
+    );
+  } catch (error: any) {
+    logger.error('Admin record inspection error:', error);
+    sendError(
+      res,
+      error.message || "Couldn't save the inspection",
+      error.message === 'Order not found' ? 404 : 400
+    );
   }
 };
 
@@ -723,6 +803,8 @@ export const getUsers = async (req: Request, res: Response) => {
     if (role && role !== 'all') where.role = role;
     if (active === 'true') where.isActive = true;
     if (active === 'false') where.isActive = false;
+    const kyb = req.query.kyb as string | undefined;
+    if (kyb && ['pending', 'approved', 'rejected'].includes(kyb)) where.sellerKybStatus = kyb;
     if (search) {
       where.OR = [
         { fullName: { contains: search, mode: 'insensitive' } },
@@ -956,6 +1038,8 @@ export const getSellerProfile = async (req: Request, res: Response) => {
         where: { order: { sellerId: id } },
         select: {
           id: true,
+          caseNumber: true,
+          outcome: true,
           disputeType: true,
           description: true,
           status: true,
@@ -1063,6 +1147,8 @@ export const getSellerProfile = async (req: Request, res: Response) => {
       })),
       latest_disputes: latestDisputes.map(d => ({
         id: d.id,
+        case_number: `D-${d.caseNumber}`,
+        outcome: d.outcome,
         dispute_type: d.disputeType,
         description: d.description,
         status: d.status,
@@ -1376,6 +1462,8 @@ export const getDisputes = async (req: Request, res: Response) => {
       res,
       disputes.map(d => ({
         id: d.id,
+        case_number: `D-${d.caseNumber}`,
+        outcome: d.outcome,
         dispute_type: d.disputeType,
         description: d.description,
         status: d.status,
@@ -1640,9 +1728,11 @@ export const getSupportThreads = async (req: Request, res: Response) => {
   try {
     const { page, limit } = parsePage(req);
     const status = req.query.status as string | undefined;
+    const role = req.query.role as string | undefined;
     const search = (req.query.search as string | undefined)?.trim();
     const result = await supportService.listThreadsForAdmin({
       status,
+      role,
       page,
       limit,
       search,
@@ -1754,7 +1844,22 @@ export const getPendingSellerKyb = async (req: Request, res: Response) => {
       }),
     ]);
 
-    sendPaginated(res, sellers, page, limit, total);
+    sendPaginated(
+      res,
+      sellers.map(s => ({
+        id: s.id,
+        full_name: s.fullName,
+        phone_number: s.phoneNumber,
+        email: s.email,
+        business_name: s.businessName,
+        cac_number: s.cacNumber,
+        seller_kyb_submitted_at: s.sellerKybSubmittedAt?.toISOString() ?? null,
+        created_at: s.createdAt?.toISOString() ?? null,
+      })),
+      page,
+      limit,
+      total
+    );
   } catch (error: any) {
     logger.error('Get pending seller KYB error:', error);
     sendError(res, error.message || 'Failed to get pending seller KYB', 500);
@@ -1767,22 +1872,13 @@ export const getPendingSellerKyb = async (req: Request, res: Response) => {
 export const approveSellerKyb = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        sellerKybStatus: 'approved',
-        sellerKybReviewedAt: new Date(),
-        sellerKybRejectionReason: null,
-      },
-      select: { id: true, fullName: true, businessName: true },
-    });
-
-    await audit(req, 'seller_kyb_approve', 'user', id, {
-      business_name: user.businessName,
-    });
-
-    sendSuccess(res, user, 'Seller verification approved');
+    const applications = await import('../../services/seller/sellerApplication.service');
+    const applicationId = await applications.applicationIdForUser(id as string);
+    if (!applicationId) return sendError(res, "This seller hasn't sent an application yet.", 400);
+    // Same rules as the review screen: number matched and all three documents accepted.
+    const result = await applications.approveApplication(req.user!.user_id, applicationId);
+    await audit(req, 'seller_kyb_approve', 'user', id, { business_name: result.business_name });
+    sendSuccess(res, result, 'Seller verification approved');
   } catch (error: any) {
     logger.error('Approve seller KYB error:', error);
     sendError(res, error.message || 'Failed to approve seller KYB', 400);
@@ -1795,24 +1891,121 @@ export const approveSellerKyb = async (req: Request, res: Response) => {
 export const rejectSellerKyb = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const reason =
-      (req.body?.reason as string) || 'Business details could not be verified';
-
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        sellerKybStatus: 'rejected',
-        sellerKybReviewedAt: new Date(),
-        sellerKybRejectionReason: reason,
-      },
-      select: { id: true, fullName: true, businessName: true },
-    });
-
+    const reason = (req.body?.reason as string) || 'Business details could not be verified';
+    const applications = await import('../../services/seller/sellerApplication.service');
+    const applicationId = await applications.applicationIdForUser(id as string);
+    if (!applicationId) return sendError(res, "This seller hasn't sent an application yet.", 400);
+    const result = await applications.rejectApplication(req.user!.user_id, applicationId, reason);
     await audit(req, 'seller_kyb_reject', 'user', id, { reason });
-
-    sendSuccess(res, user, 'Seller verification rejected');
+    sendSuccess(res, result, 'Seller verification rejected');
   } catch (error: any) {
     logger.error('Reject seller KYB error:', error);
     sendError(res, error.message || 'Failed to reject seller KYB', 400);
+  }
+};
+
+/* ---------------- Cases (disputes) for our team ---------------- */
+
+const caseAction =
+  (fn: (req: Request) => Promise<unknown>, auditAction?: string, message?: string) =>
+  async (req: Request, res: Response) => {
+    try {
+      const result = await fn(req);
+      if (auditAction) await audit(req, auditAction, 'dispute', req.params.id, req.body ?? {});
+      sendSuccess(res, result, message);
+    } catch (error: any) {
+      logger.error(`Admin case action failed (${req.path}):`, error);
+      sendError(res, error.message || 'Failed to update the case', 400);
+    }
+  };
+
+/** GET /api/v1/admin/disputes/:id — the full case: report, thread, decision, return */
+export const getDisputeCase = caseAction(async req => {
+  const { getCaseForTeam } = await import('../../services/buyer/case.service');
+  return getCaseForTeam(req.params.id);
+});
+
+/** POST /api/v1/admin/disputes/:id/messages { body } — reply as Gadgets Bidding team */
+export const postDisputeMessage = caseAction(
+  async req => {
+    const { postTeamMessage } = await import('../../services/buyer/case.service');
+    return postTeamMessage(req.user!.user_id, req.params.id, String(req.body?.body ?? ''));
+  },
+  'dispute_message',
+  'Message sent'
+);
+
+/** PUT /api/v1/admin/disputes/:id/next-step { text } — the "what happens next" line the buyer sees */
+export const setDisputeNextStep = caseAction(
+  async req => {
+    const { setNextStep } = await import('../../services/buyer/case.service');
+    return setNextStep(req.params.id as string, String(req.body?.text ?? ''));
+  },
+  'dispute_next_step',
+  'Next step updated'
+);
+
+/** POST /api/v1/admin/disputes/:id/decision { outcome: 'refund'|'not_upheld', findings } */
+export const decideDispute = caseAction(
+  async req => {
+    const { decide } = await import('../../services/buyer/case.service');
+    return decide(req.user!.user_id, req.params.id, req.body?.outcome, String(req.body?.findings ?? ''));
+  },
+  'dispute_decision',
+  'Decision sent to the buyer'
+);
+
+/** POST /api/v1/admin/disputes/:id/return-received — item is back at the hub: refund the buyer */
+export const markDisputeReturnReceived = caseAction(
+  async req => {
+    const { markReturnReceived } = await import('../../services/buyer/case.service');
+    return markReturnReceived(req.params.id);
+  },
+  'dispute_return_received',
+  'Refund started'
+);
+
+
+/* ---------------- Overview (admin home) ---------------- */
+
+/** GET /admin/overview — headline numbers, queues, 30-day series and what needs attention */
+export const getOverview = async (req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getOverview(req.user?.user_id));
+  } catch (error: any) {
+    logger.error('Admin overview error:', error);
+    sendError(res, error.message || 'Failed to load the overview', 500);
+  }
+};
+
+/** GET /admin/queues — counts for the sidebar and rail */
+export const getQueues = async (req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getQueueCounts(req.user?.user_id));
+  } catch (error: any) {
+    sendError(res, error.message || 'Failed to load queues', 500);
+  }
+};
+
+/** GET /admin/tasks — everything waiting on the team, soonest due first */
+export const getTasks = async (_req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getAttention(200));
+  } catch (error: any) {
+    sendError(res, error.message || 'Failed to load tasks', 500);
+  }
+};
+
+/** GET /admin/rules — fees and rules the apps run on (read-only) */
+export const getRules = async (_req: Request, res: Response) => {
+  sendSuccess(res, overviewService.getRules());
+};
+
+/** GET /admin/launch-checklist — launch readiness (yes/no only, never secrets) */
+export const getLaunchChecklist = async (_req: Request, res: Response) => {
+  try {
+    sendSuccess(res, await overviewService.getLaunchChecklist());
+  } catch (error: any) {
+    sendError(res, error.message || 'Failed to load the checklist', 500);
   }
 };

@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 import { User } from '../types';
 import { authService } from '../services';
+import { unregisterPush } from '../services/pushNotifications';
+import { useWatchStore } from './watchStore';
 import { AppInterfaceType, validateInterfaceAccess } from '../utils/roles';
+import type { TwoFactorMethod } from '../services/auth.service';
+
+/** Password accepted; the account asks for a code. email_hint / phone_hint say where it went. */
+export interface TwoFactorChallenge {
+  verification_id: string;
+  method: TwoFactorMethod;
+  email_hint?: string;
+  phone_hint?: string;
+}
 
 interface AuthState {
   user: User | null;
@@ -12,9 +23,15 @@ interface AuthState {
 
   setUser: (user: User | null) => void;
   setInterfaceType: (interfaceType: AppInterfaceType | null) => void;
+  /** Resolves with a challenge when the account has 2-step sign-in on. */
   login: (
     identifier: string,
     password: string,
+    interfaceType: AppInterfaceType
+  ) => Promise<TwoFactorChallenge | void>;
+  completeTwoFactor: (
+    verificationId: string,
+    otp: string,
     interfaceType: AppInterfaceType
   ) => Promise<void>;
   socialLogin: (
@@ -62,6 +79,17 @@ export const useAuthStore = create<AuthState>(set => ({
         password,
         account_type: interfaceType,
       });
+      const challenge = response.data as unknown as Partial<TwoFactorChallenge> & { two_factor_required?: boolean };
+      if (challenge?.two_factor_required && challenge.verification_id) {
+        set({ isLoading: false });
+        return {
+          verification_id: challenge.verification_id,
+          // Servers from before methods existed only emailed the code.
+          method: challenge.method ?? 'email',
+          email_hint: challenge.email_hint,
+          phone_hint: challenge.phone_hint,
+        };
+      }
       const accessError = validateInterfaceAccess(
         interfaceType,
         response.data.user.role
@@ -81,6 +109,22 @@ export const useAuthStore = create<AuthState>(set => ({
         error: error instanceof Error ? error.message : 'Login failed',
         isLoading: false,
       });
+      throw error;
+    }
+  },
+
+  completeTwoFactor: async (verificationId, otp, interfaceType) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await authService.loginTwoFactor(verificationId, otp, interfaceType);
+      const accessError = validateInterfaceAccess(interfaceType, response.data.user.role);
+      if (accessError) {
+        await authService.logout();
+        throw new Error(accessError);
+      }
+      set({ user: response.data.user, interfaceType, isAuthenticated: true, isLoading: false });
+    } catch (error) {
+      set({ isLoading: false });
       throw error;
     }
   },
@@ -167,6 +211,9 @@ export const useAuthStore = create<AuthState>(set => ({
   logout: async () => {
     set({ isLoading: true });
     try {
+      // While still signed in, so the backend accepts it: stop alerts to this phone.
+      await unregisterPush();
+      useWatchStore.getState().clear();
       await authService.logout();
     } finally {
       set({

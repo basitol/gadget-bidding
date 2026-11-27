@@ -151,7 +151,9 @@ function tokenExpiresSoon(token: string, bufferSeconds = 90) {
 
 function isAuthPath(path: string) {
   return (
-    path.startsWith('/auth/login') || path.startsWith('/auth/refresh-token')
+    path.startsWith('/auth/login') ||
+    path.startsWith('/auth/refresh-token') ||
+    path.startsWith('/auth/password/')
   );
 }
 
@@ -310,24 +312,334 @@ function qs(params: Record<string, string | number | boolean | undefined>) {
   return s ? `?${s}` : '';
 }
 
-export async function login(identifier: string, password: string) {
-  const json = await request<{
-    success: boolean;
-    data: { user: AdminUser; access_token: string; refresh_token?: string };
-  }>('/auth/login', {
+type SignInResult =
+  | { done: true; user: AdminUser }
+  | { done: false; verification_id: string; email_hint: string };
+
+function finishSignIn(data: {
+  user: AdminUser;
+  access_token: string;
+  refresh_token?: string;
+}): SignInResult {
+  if (data.user.role !== 'admin') {
+    throw new Error("This account isn't on the Gadgets Bidding team. Use your work email.");
+  }
+  setSession(data.access_token, data.user, data.refresh_token);
+  return { done: true, user: data.user };
+}
+
+/** Password sign-in. With 2-step sign-in on, it asks for the emailed code next. */
+export async function login(identifier: string, password: string): Promise<SignInResult> {
+  const json = await request<{ success: boolean; data: any }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ identifier, password }),
   });
-
-  if (json.data.user.role !== 'admin') {
-    throw new Error('This account is not an admin');
+  if (json.data?.two_factor_required) {
+    return { done: false, verification_id: json.data.verification_id, email_hint: json.data.email_hint };
   }
-
-  setSession(json.data.access_token, json.data.user, json.data.refresh_token);
-  return json.data.user;
+  return finishSignIn(json.data);
 }
 
+export async function loginWithCode(verification_id: string, otp: string): Promise<SignInResult> {
+  const json = await request<{ success: boolean; data: any }>('/auth/login/2fa', {
+    method: 'POST',
+    body: JSON.stringify({ verification_id, otp }),
+  });
+  return finishSignIn(json.data);
+}
+
+/** Password reset by emailed code (same endpoints as the apps). */
+export const passwordReset = {
+  start: (email: string) =>
+    request<{ data: { verification_id: string; expires_in: number } }>('/auth/password/forgot', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  verify: (verification_id: string, otp: string) =>
+    request<{ data: { verification_id: string } }>('/auth/password/verify', {
+      method: 'POST',
+      body: JSON.stringify({ verification_id, otp }),
+    }),
+  resend: (verification_id: string) =>
+    request<any>('/auth/password/resend', {
+      method: 'POST',
+      body: JSON.stringify({ verification_id }),
+    }),
+  finish: (verification_id: string, password: string) =>
+    request<{ data: { email: string } }>('/auth/password/reset', {
+      method: 'POST',
+      body: JSON.stringify({ verification_id, password }),
+    }),
+};
+
+export type QueueCounts = {
+  kyb: number;
+  listing_review: number;
+  inspection_hub: number;
+  disputes: number;
+  live_auctions: number;
+  payouts_ready: number;
+  unread_notifications: number;
+  /** Listings buyers reported that nobody has looked at yet. */
+  listing_reports: number;
+};
+
+export type ListingReport = {
+  id: string;
+  reason: 'stolen' | 'fake' | 'wrong_details' | 'other';
+  reason_label: string;
+  details: string | null;
+  status: 'open' | 'actioned' | 'dismissed';
+  resolution_note: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  reports_on_listing: number;
+  reporter: { id: string; name: string | null; email: string | null };
+  auction: {
+    id: string;
+    status: string;
+    title: string;
+    image: string | null;
+    current_price: number;
+    end_time: string;
+    seller: { id: string | null; name: string | null; code: string | null };
+  } | null;
+};
+
+/** Listings buyers reported (stolen, fake, wrong details). */
+export const reportsApi = {
+  list: (status: 'open' | 'actioned' | 'dismissed' | 'all' = 'open') =>
+    request<PageResult<ListingReport>>(`/admin/listing-reports?status=${status}`),
+  resolve: (id: string, status: 'actioned' | 'dismissed', note: string) =>
+    request<{ data: unknown }>(`/admin/listing-reports/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ status, note }),
+    }),
+};
+
+export type SellerApplicationStatus = 'draft' | 'in_review' | 'needs_info' | 'approved' | 'rejected';
+/** "all" means everything that was sent (drafts are left out). */
+export type SellerApplicationFilter = SellerApplicationStatus | 'all';
+export type NumberCheck = 'pending' | 'matched' | 'not_matched';
+export type SellerDocumentKind = 'cac_certificate' | 'owner_id' | 'shop_address';
+export type SellerDocumentStatus = 'submitted' | 'accepted' | 'needs_fix';
+
+/** One row in the verification team's queue. */
+export type SellerApplicationRow = {
+  id: string;
+  user_id: string;
+  seller_code: string;
+  status: SellerApplicationStatus;
+  business_name: string | null;
+  owner_name: string | null;
+  email: string | null;
+  /** "RC 1234567" */
+  registration: string | null;
+  number_check: NumberCheck;
+  documents: { uploaded: number; accepted: number; needs_fix: number };
+  submitted_at: string | null;
+  resubmitted_at: string | null;
+  second_review: boolean;
+  decided_at: string | null;
+};
+
+export type SellerApplicationCounts = Record<SellerApplicationStatus, number>;
+
+export type SellerApplicationDocument = {
+  kind: SellerDocumentKind;
+  label: string;
+  uploaded: boolean;
+  name: string | null;
+  mime: string | null;
+  size: number | null;
+  uploaded_at: string | null;
+  status: SellerDocumentStatus | null;
+  /** What we asked the seller to fix (kept next to the new file after they upload it). */
+  note: string | null;
+  reviewed_at: string | null;
+  is_pdf: boolean;
+  /** Signed links that stop working 10 minutes after the application was loaded. */
+  url: string | null;
+  /** Page 1 of a PDF, or a HEIC photo, as a JPG. */
+  preview_url: string | null;
+};
+
+/** The full application, as our verification team sees it. */
+export type SellerApplication = {
+  id: string;
+  user_id: string;
+  seller_code: string;
+  status: SellerApplicationStatus;
+  email: string | null;
+  account_created_at: string | null;
+  account_active: boolean;
+  business_name: string | null;
+  owner_name: string | null;
+  plaza: string | null;
+  shop_number: string | null;
+  business_phone: string | null;
+  area: string | null;
+  categories: string[];
+  registration_type: 'rc' | 'bn' | null;
+  registration_number: string | null;
+  registration: string | null;
+  number_check: NumberCheck;
+  number_checked_at: string | null;
+  documents: SellerApplicationDocument[];
+  rules_accepted_at: string | null;
+  submitted_at: string | null;
+  resubmitted_at: string | null;
+  decided_at: string | null;
+  reviewed_by: string | null;
+  team_note: string | null;
+  reject_reason: string | null;
+  second_review_requested_at: string | null;
+};
+
+type ApplicationResult = { success: boolean; data: SellerApplication; message?: string };
+
+/** Seller applications: business details, the RC/BN number and three private documents. */
+export const sellerApplicationsApi = {
+  list: (params: { status: SellerApplicationFilter; search?: string; page?: number }) => {
+    const sp = new URLSearchParams({ status: params.status });
+    if (params.search?.trim()) sp.set('search', params.search.trim());
+    if (params.page && params.page > 1) sp.set('page', String(params.page));
+    return request<PageResult<SellerApplicationRow> & { counts: SellerApplicationCounts }>(
+      `/admin/seller-applications?${sp}`
+    );
+  },
+  get: (id: string) => request<ApplicationResult>(`/admin/seller-applications/${id}`),
+  numberCheck: (id: string, result: 'matched' | 'not_matched') =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/number-check`, {
+      method: 'POST',
+      body: JSON.stringify({ result }),
+    }),
+  reviewDocument: (id: string, kind: SellerDocumentKind, status: 'accepted' | 'needs_fix', note?: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/documents/${kind}`, {
+      method: 'POST',
+      body: JSON.stringify({ status, note: note?.trim() || undefined }),
+    }),
+  approve: (id: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/approve`, { method: 'POST' }),
+  needsInfo: (id: string, note: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/needs-info`, {
+      method: 'POST',
+      body: JSON.stringify({ note: note.trim() }),
+    }),
+  reject: (id: string, reason: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason.trim() }),
+    }),
+};
+
+export type AttentionItem = {
+  id: string;
+  kind: 'kyb' | 'listing' | 'dispute' | 'hub' | 'payouts';
+  queue: string;
+  title: string;
+  sub: string;
+  due_at: string | null;
+  route: string;
+};
+
+export type Overview = {
+  generated_at: string;
+  stats: {
+    gross_sales_30d: number;
+    paid_orders_30d: number;
+    live_auctions: number;
+    ending_next_hour: number;
+    bids_today: number;
+    held_in_escrow: number;
+    escrow_orders: number;
+    kyb_queue: number;
+    at_hub: number;
+  };
+  queues: QueueCounts;
+  series: { date: string; gmv: number; bids: number; users: number }[];
+  attention: { total: number; items: AttentionItem[] };
+};
+
+export type RuleRow = { key: string; label: string; value: string; note?: string };
+
+/** One line of the hub's 7-point check. */
+export type InspectionCheck = { key: string; label: string };
+/** What the hub recorded for an order (admin only: includes who checked it). */
+export type OrderInspection = {
+  checks: (InspectionCheck & { passed: boolean })[];
+  passed: number;
+  total: number;
+  note: string | null;
+  by: { id: string; name: string | null };
+  at: string;
+};
+export type ChecklistItem = { key: string; label: string; done: boolean; hint: string };
+
+export type ReleaseSettings = {
+  min_version: string;
+  latest_version: string;
+  store_urls: { ios: string | null; android: string | null };
+  whats_new: string[];
+  updated_at: string | null;
+};
+
+export type ReleaseInput = {
+  min_version: string;
+  latest_version: string;
+  ios_store_url: string | null;
+  android_store_url: string | null;
+  whats_new: string[];
+};
+
+export type MaintenanceWindow = {
+  id: string;
+  started_at: string;
+  back_by: string | null;
+  ended_at: string | null;
+  message: string | null;
+  reason: string | null;
+  paused_seconds: number | null;
+  auctions_extended: number | null;
+};
+
+export type MaintenanceEnded = {
+  id: string;
+  started_at: string;
+  ended_at: string;
+  paused_seconds: number;
+  auctions_extended: number;
+};
+
+export type AppConfigAdmin = {
+  release: ReleaseSettings;
+  maintenance: {
+    active: boolean;
+    id: string | null;
+    started_at: string | null;
+    back_by: string | null;
+    message: string | null;
+    /** Auctions that would get time added back if it ended now. */
+    affected_auctions: number;
+  };
+  history: MaintenanceWindow[];
+};
+
 export const adminApi = {
+  overview: () => request<{ data: Overview }>('/admin/overview'),
+  queues: () => request<{ data: QueueCounts }>('/admin/queues'),
+  tasks: () => request<{ data: { total: number; items: AttentionItem[] } }>('/admin/tasks'),
+  rules: () =>
+    request<{ data: { fees: RuleRow[]; rules: RuleRow[]; review_targets: RuleRow[] } }>('/admin/rules'),
+  launchChecklist: () =>
+    request<{ data: { done: number; total: number; items: ChecklistItem[] } }>('/admin/launch-checklist'),
+  me: () => request<{ data: AdminUser & { two_factor_enabled?: boolean; email?: string } }>('/auth/me'),
+  setTwoFactor: (enabled: boolean, password: string) =>
+    request<{ data: { two_factor_enabled: boolean } }>('/auth/2fa', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled, password }),
+    }),
   stats: () =>
     request<{ success: boolean; data: Record<string, number> }>('/admin/stats'),
 
@@ -372,6 +684,16 @@ export const adminApi = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+
+  /** The hub's checklist, in order. */
+  inspectionChecks: () => request<{ data: InspectionCheck[] }>('/admin/inspection-checks'),
+
+  /** Record the hub check for an order at the hub. A note is required when any check fails. */
+  recordInspection: (id: string, body: { checks: Record<string, boolean>; note?: string }) =>
+    request<{ data: { inspection: OrderInspection; all_passed: boolean }; message?: string }>(
+      `/admin/orders/${id}/inspection`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
 
   createSecondPlaceOffer: (id: string) =>
     request(`/admin/orders/${id}/second-place-offer`, {
@@ -430,11 +752,57 @@ export const adminApi = {
       body: JSON.stringify(body),
     }),
 
+  disputeCase: (id: string) => request<any>(`/admin/disputes/${id}`),
+
+  disputeMessage: (id: string, body: string) =>
+    request<any>(`/admin/disputes/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+
+  /** The "what happens next" line the buyer sees under Team review. Empty clears it. */
+  disputeNextStep: (id: string, text: string) =>
+    request<any>(`/admin/disputes/${id}/next-step`, {
+      method: 'PUT',
+      body: JSON.stringify({ text }),
+    }),
+
+  decideDispute: (id: string, outcome: 'refund' | 'not_upheld', findings: string) =>
+    request<any>(`/admin/disputes/${id}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ outcome, findings }),
+    }),
+
+  disputeReturnReceived: (id: string) =>
+    request<any>(`/admin/disputes/${id}/return-received`, { method: 'POST' }),
+
   payments: (params: Record<string, any> = {}) =>
     request<PageResult<any>>(`/admin/payments${qs(params)}`),
 
   auditLogs: (params: Record<string, any> = {}) =>
     request<PageResult<any>>(`/admin/audit-logs${qs(params)}`),
+
+  /** App versions (forced update) and maintenance mode. */
+  appConfig: () => request<{ data: AppConfigAdmin }>('/admin/app-config'),
+  saveRelease: (body: ReleaseInput) =>
+    request<{ data: AppConfigAdmin }>('/admin/app-config/release', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  startMaintenance: (body: { back_by: string; reason: string; message?: string }) =>
+    request<{ data: AppConfigAdmin }>('/admin/app-config/maintenance/start', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateMaintenance: (body: { back_by?: string; message?: string | null }) =>
+    request<{ data: AppConfigAdmin }>('/admin/app-config/maintenance', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  endMaintenance: () =>
+    request<{ data: AppConfigAdmin & { ended: MaintenanceEnded } }>('/admin/app-config/maintenance/end', {
+      method: 'POST',
+    }),
 
   supportThreads: (params: Record<string, any> = {}) =>
     request<PageResult<any>>(`/admin/support/threads${qs(params)}`),

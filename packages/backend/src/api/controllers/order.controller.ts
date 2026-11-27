@@ -4,6 +4,8 @@ import * as orderService from '../../services/order/order.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as auditService from '../../services/audit/audit.service';
 import logger from '../../utils/logger';
+import prisma from '../../config/prisma';
+import { sellerCode } from '../../services/buyer/sellerSummary.service';
 
 const hideBuyerAddress = <T extends { shipping_address?: unknown }>(
   order: T
@@ -11,6 +13,19 @@ const hideBuyerAddress = <T extends { shipping_address?: unknown }>(
   ...order,
   shipping_address: undefined,
 });
+
+/** Sellers stay anonymous to buyers ("Verified seller CV-1042"): no name or phone. */
+const maskSellerForBuyer = (o: any) =>
+  o.seller ? { ...o, seller: { id: o.seller.id, full_name: sellerCode(o.seller.id) } } : o;
+
+/** Buyers stay anonymous to sellers: only the order number, no name, phone or address. */
+const maskBuyerForSeller = (o: any) => ({ ...hideBuyerAddress(o), buyer: undefined });
+
+/** Mask whichever side the viewer isn't, for any order-shaped response. */
+const forViewer = (o: any, userId: string) => {
+  if (!o || typeof o !== 'object') return o;
+  return o.seller_id === userId ? maskBuyerForSeller(o) : maskSellerForBuyer(o);
+};
 
 /**
  * Get order by ID
@@ -37,10 +52,20 @@ export const getOrderById = async (req: Request, res: Response) => {
       return sendError(res, 'Unauthorized to view this order', 403);
     }
 
-    sendSuccess(
-      res,
-      order.seller_id === req.user.user_id ? hideBuyerAddress(order) : order
-    );
+    if (order.seller_id === req.user.user_id) {
+      return sendSuccess(res, maskBuyerForSeller(order));
+    }
+    const paidWith =
+      order.payment_status === 'paid'
+        ? await orderService.paymentMethodLabel(order.id, order.order_number)
+        : null;
+    sendSuccess(res, {
+      ...maskSellerForBuyer(order),
+      paid_with: paidWith,
+      address_editable:
+        order.delivery_method !== 'pickup' &&
+        orderService.ADDRESS_EDITABLE_STATUSES.includes(order.fulfillment_status),
+    });
   } catch (error: any) {
     logger.error('Get order error:', error);
     sendError(res, error.message || 'Failed to get order', 500);
@@ -74,7 +99,9 @@ export const getOrderByNumber = async (req: Request, res: Response) => {
 
     sendSuccess(
       res,
-      order.seller_id === req.user.user_id ? hideBuyerAddress(order) : order
+      order.seller_id === req.user.user_id
+        ? maskBuyerForSeller(order)
+        : maskSellerForBuyer(order)
     );
   } catch (error: any) {
     logger.error('Get order by number error:', error);
@@ -103,7 +130,7 @@ export const getMyPurchases = async (req: Request, res: Response) => {
       status
     );
 
-    sendPaginated(res, orders, page, limit, total);
+    sendPaginated(res, orders.map(maskSellerForBuyer), page, limit, total);
   } catch (error: any) {
     logger.error('Get my purchases error:', error);
     sendError(res, error.message || 'Failed to get purchases', 500);
@@ -131,7 +158,7 @@ export const getMySales = async (req: Request, res: Response) => {
       status
     );
 
-    sendPaginated(res, orders.map(hideBuyerAddress), page, limit, total);
+    sendPaginated(res, orders.map(maskBuyerForSeller), page, limit, total);
   } catch (error: any) {
     logger.error('Get my sales error:', error);
     sendError(res, error.message || 'Failed to get sales', 500);
@@ -149,7 +176,21 @@ export const updateShippingAddress = async (req: Request, res: Response) => {
     }
 
     const { orderId } = req.params;
-    const address = req.body;
+    // Only the address fields go on the order (it's stored as JSON).
+    const b = req.body ?? {};
+    const address = {
+      // The saved address's name ("Home", "Work"), when the buyer picked one.
+      label: typeof b.label === 'string' && b.label.trim() ? b.label.trim().slice(0, 80) : undefined,
+      full_name: b.full_name,
+      phone_number: b.phone_number,
+      address_line1: b.address_line1,
+      address_line2: b.address_line2 || undefined,
+      city: b.city,
+      state: b.state,
+      postal_code: b.postal_code || undefined,
+      country: b.country || 'Nigeria',
+      delivery_note: b.delivery_note || undefined,
+    };
 
     const order = await orderService.updateShippingAddress(
       orderId,
@@ -157,7 +198,7 @@ export const updateShippingAddress = async (req: Request, res: Response) => {
       address
     );
 
-    sendSuccess(res, order, 'Shipping address updated successfully');
+    sendSuccess(res, forViewer(order, req.user.user_id), 'Shipping address updated successfully');
   } catch (error: any) {
     logger.error('Update shipping address error:', error);
     sendError(res, error.message || 'Failed to update shipping address', 400);
@@ -188,7 +229,7 @@ export const confirmPayment = async (req: Request, res: Response) => {
 
     const order = await orderService.confirmPayment(orderId);
 
-    sendSuccess(res, order, 'Payment confirmed successfully');
+    sendSuccess(res, forViewer(order, req.user!.user_id), 'Payment confirmed successfully');
   } catch (error: any) {
     logger.error('Confirm payment error:', error);
     sendError(res, error.message || 'Failed to confirm payment', 400);
@@ -215,7 +256,7 @@ export const updateFulfillmentStatus = async (req: Request, res: Response) => {
       tracking_number
     );
 
-    sendSuccess(res, order, `Order status updated to ${status}`);
+    sendSuccess(res, forViewer(order, req.user!.user_id), `Order status updated to ${status}`);
   } catch (error: any) {
     logger.error('Update fulfillment status error:', error);
     sendError(res, error.message || 'Failed to update fulfillment status', 400);
@@ -236,7 +277,7 @@ export const confirmDelivery = async (req: Request, res: Response) => {
 
     const order = await orderService.confirmDelivery(orderId, req.user.user_id);
 
-    sendSuccess(res, order, 'Delivery confirmed successfully');
+    sendSuccess(res, forViewer(order, req.user!.user_id), 'Delivery confirmed successfully');
   } catch (error: any) {
     logger.error('Confirm delivery error:', error);
     sendError(res, error.message || 'Failed to confirm delivery', 400);
@@ -259,11 +300,13 @@ export const createDispute = async (req: Request, res: Response) => {
       description: string;
     };
 
+    const evidence = Array.isArray(req.body.evidence) ? (req.body.evidence as string[]) : undefined;
     const dispute = await orderService.createDispute(
       orderId,
       req.user.user_id,
       dispute_type,
-      description
+      description,
+      evidence
     );
 
     sendSuccess(res, dispute, 'Dispute opened successfully', 201);
@@ -303,17 +346,23 @@ export const initializePayment = async (req: Request, res: Response) => {
     }
 
     const { orderId } = req.params;
-    const { callback_url } = req.body;
+    const { callback_url, channel } = req.body;
+    const allowed = ['card', 'bank_transfer', 'ussd'];
 
-    // Get user email (or use phone as fallback)
+    // Paystack needs the buyer's real email (receipts, saved cards). The token doesn't carry it.
+    const account = await prisma.user.findUnique({
+      where: { id: req.user.user_id },
+      select: { email: true, phoneNumber: true },
+    });
     const email =
-      (req.user as any).email || `${req.user.phone_number}@gadgetbid.ng`;
+      account?.email || `${(account?.phoneNumber || req.user.phone_number).replace(/\D/g, '')}@gadgetbid.ng`;
 
     const paymentData = await orderService.initializeOrderPayment(
       orderId,
       req.user.user_id,
       email,
-      callback_url
+      callback_url,
+      allowed.includes(channel) ? channel : undefined
     );
 
     sendSuccess(res, paymentData, 'Payment initialized successfully');
@@ -346,7 +395,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
       reference
     );
 
-    sendSuccess(res, order, 'Payment verified successfully');
+    sendSuccess(res, forViewer(order, req.user!.user_id), 'Payment verified successfully');
   } catch (error: any) {
     logger.error('Verify order payment error:', error);
     auditService.recordPaymentVerificationFailed(
@@ -368,3 +417,86 @@ export const verifyPayment = async (req: Request, res: Response) => {
     sendError(res, error.message || 'Failed to verify payment', 400);
   }
 };
+
+/**
+ * Choose delivery or hub pickup (before paying)
+ * PUT /api/v1/orders/:orderId/delivery-method  { method: 'delivery' | 'pickup' }
+ */
+export const setDeliveryMethod = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    const method = req.body.method === 'pickup' ? 'pickup' : 'delivery';
+    const order = await orderService.setDeliveryMethod(req.params.orderId as string, req.user.user_id, method);
+    sendSuccess(res, forViewer(order, req.user!.user_id), method === 'pickup' ? "You'll collect it at the hub" : "We'll deliver it to you");
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not update delivery', 400);
+  }
+};
+
+/**
+ * Email the buyer a receipt
+ * POST /api/v1/orders/:orderId/receipt
+ */
+export const emailReceipt = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+    const result = await orderService.emailReceipt(req.params.orderId, req.user.user_id);
+    sendSuccess(res, result, `Receipt sent to ${result.email}`);
+  } catch (error: any) {
+    logger.error('Email receipt error:', error);
+    sendError(res, error.message || "Couldn't send the receipt", 400);
+  }
+};
+
+/** Buyer's email for Paystack (receipts, card saving). The token doesn't carry it. */
+const buyerEmail = async (userId: string, fallbackPhone?: string) => {
+  const account = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, phoneNumber: true },
+  });
+  return account?.email || `${(account?.phoneNumber || fallbackPhone || userId).replace(/\D/g, '')}@gadgetbid.ng`;
+};
+
+const run =
+  (fn: (req: Request) => Promise<unknown>, message?: string) =>
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.user) return sendError(res, 'User not authenticated', 401);
+      sendSuccess(res, forViewer(await fn(req), req.user.user_id), message);
+    } catch (error: any) {
+      logger.error(`Order action failed (${req.path}):`, error);
+      sendError(res, error.message || 'Something went wrong. Try again.', 400);
+    }
+  };
+
+/** POST /orders/:orderId/payment/bank-transfer — one-time account number */
+export const startBankTransfer = run(async req =>
+  orderService.startBankTransfer(
+    req.params.orderId,
+    req.user!.user_id,
+    await buyerEmail(req.user!.user_id, req.user!.phone_number)
+  )
+);
+
+/** POST /orders/:orderId/payment/ussd { bank } — USSD code to dial */
+export const startUssd = run(async req =>
+  orderService.startUssd(
+    req.params.orderId,
+    req.user!.user_id,
+    await buyerEmail(req.user!.user_id, req.user!.phone_number),
+    String(req.body.bank) as any
+  )
+);
+
+/** GET /orders/:orderId/payment/status?reference= — paid, pending or failed */
+export const paymentStatus = run(req =>
+  orderService.checkPayment(req.params.orderId, req.user!.user_id, String(req.query.reference || ''))
+);
+
+/** POST /orders/:orderId/offer/accept — take a second-chance offer */
+export const acceptOffer = run(req => orderService.acceptSecondChance(req.params.orderId, req.user!.user_id), 'Offer accepted');
+
+/** POST /orders/:orderId/offer/decline — pass on a second-chance offer (free) */
+export const declineOffer = run(req => orderService.declineSecondChance(req.params.orderId, req.user!.user_id), 'No problem');

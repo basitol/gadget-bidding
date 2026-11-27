@@ -102,7 +102,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
           if (!next) close(state?.kind === 'confirm' ? false : null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="duration-200 ease-out sm:max-w-md data-open:zoom-in-90 data-open:slide-in-from-bottom-2 data-closed:duration-150 data-closed:ease-in">
           {state ? (
             <>
               <DialogHeader>

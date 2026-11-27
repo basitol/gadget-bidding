@@ -1,0 +1,204 @@
+---
+import { feed, hero } from '../data/landing';
+import { heroAuction } from '../data/heroAuction';
+---
+
+<header style="border-bottom: 1px solid #E6EAF2">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 80px 24px 88px; display: flex; flex-wrap: wrap; align-items: center; gap: 56px">
+    <div style="flex: 1 1 460px; display: flex; flex-direction: column; gap: 26px">
+      <span class="gb-rise" style="--d: 0ms; align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; height: 32px; padding: 0 12px 0 6px; border-radius: 999px; border: 1px solid #E6EAF2; font-size: 13px; color: #4A5878">
+        <span style="height: 22px; padding: 0 8px; border-radius: 999px; background: #EEF3FF; color: #1F4FE6; font: 500 11px 'JetBrains Mono', monospace; display: inline-flex; align-items: center; letter-spacing: 0.06em">NEW</span>Now live for Computer Village sellers →</span>
+      <h1 class="gb-rise" style="--d: 80ms; margin: 0; font-family: 'Sora', sans-serif; font-size: clamp(2.6rem, 5vw, 4rem); line-height: 1.04; letter-spacing: -0.04em; font-weight: 500">Bid on the gadgets you want,<br /><span style="color: #3366FF">at the price you set.</span></h1>
+      <p class="gb-rise" style="--d: 160ms; margin: 0; font-size: 18px; line-height: 1.6; color: #4A5878; max-width: 500px">Live auctions for phones, laptops, consoles and audio from verified Computer Village businesses. Every gadget is inspected before it reaches you.</p>
+      <div class="gb-rise" style="--d: 240ms; display: flex; flex-wrap: wrap; gap: 10px">
+        <a href="#live" style="height: 50px; padding: 0 22px; border-radius: 10px; background: #3366FF; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-flex; align-items: center">Start bidding</a>
+        <a href="#sell" style="height: 50px; padding: 0 22px; border-radius: 10px; border: 1px solid #E6EAF2; color: #0B1220; text-decoration: none; font-weight: 600; font-size: 16px; display: inline-flex; align-items: center; gap: 8px">Sell on Gadgets Bidding <span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+
+    <div
+      data-hero-auction
+      data-price={heroAuction.price}
+      data-step={heroAuction.step}
+      data-count={heroAuction.count}
+      data-clock={heroAuction.clock}
+      class="gb-float-in"
+      style="--d: 200ms; flex: 1 1 460px; position: relative; min-height: 560px; border-radius: 24px; overflow: hidden; background: #EEF3FF"
+    >
+      <img src="/img/hero.webp" alt="Two friends smiling at a phone while bidding" fetchpriority="high" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%" />
+      <div style="position: absolute; top: 18px; right: 18px; width: 250px; background: rgba(255,255,255,0.96); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px">
+        <span style="display: flex; justify-content: space-between; font: 500 11px 'JetBrains Mono', monospace; letter-spacing: 0.1em; color: #5E6B8C"><span>LIVE BIDS</span><span><span data-count>{hero.bidCount}</span> TOTAL</span></span>
+        <div data-feed style="display: contents">
+          {
+            feed.map((f) => (
+              <div class={f.cls} style="display: flex; align-items: center; gap: 10px; font-size: 13px">
+                <span style={f.av}>{f.init}</span>
+                <span style="flex: 1; color: #4A5878">{f.who}</span>
+                <span style="font-weight: 700; font-variant-numeric: tabular-nums">{f.amt}</span>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+      <div data-product-card style="position: absolute; left: 18px; bottom: 18px; width: 360px; max-width: calc(100% - 36px); background: #FFFFFF; border-radius: 18px; overflow: hidden; display: flex">
+        <div data-thumb style="width: 116px; flex-shrink: 0; background: #E8EEFF; display: flex; align-items: center; justify-content: center; position: relative">
+          <img src="/img/devices/phone.svg" alt="" width="110" height="110" />
+          <span data-clock style="position: absolute; top: 8px; left: 8px; height: 22px; padding: 0 7px; border-radius: 999px; background: #FF7A1A; color: #170A02; font: 700 11px Manrope, sans-serif; display: inline-flex; align-items: center; font-variant-numeric: tabular-nums">{hero.heroClock}</span>
+        </div>
+        <div style="flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 5px">
+          <span style="font: 500 10px 'JetBrains Mono', monospace; letter-spacing: 0.1em; color: #5E6B8C">LIVE · INSPECTED</span>
+          <span style="font-family: 'Sora', sans-serif; font-size: 15px; font-weight: 500">iPhone 15 Pro · 256 GB</span>
+          <span data-price style="font-family: 'Sora', sans-serif; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums">{hero.heroPrice}</span>
+          <a href="#get-app" style="height: 38px; border-radius: 10px; background: #3366FF; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 13px; display: flex; align-items: center; justify-content: center">Bid <span data-next style="margin-left: 4px">{hero.heroNext}</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<script>
+  import { formatCountdown } from '../data/auctions';
+  import { naira } from '../data/heroAuction';
+  import { avStyle, initials } from '../data/landing';
+
+  const handles = ['kemi.n', 'fola.a', 'tk_gadgets', 'jide_o', 'ade.lo', 'uche_b', 'zainab.k', 'seun.dev', 'ife_o'];
+
+  document.querySelectorAll<HTMLElement>('[data-hero-auction]').forEach((root) => {
+    const startPrice = Number(root.dataset.price);
+    const step = Number(root.dataset.step);
+    const startCount = Number(root.dataset.count);
+    const startClock = Number(root.dataset.clock);
+    let price = startPrice;
+    let count = startCount;
+    let clock = startClock;
+    let last = 'tk_gadgets';
+    let extensions = 0;
+
+    const $ = (sel: string) => root.querySelector<HTMLElement>(sel)!;
+    const feed = $('[data-feed]');
+    const clockEl = $('[data-clock]');
+    const priceEl = $('[data-price]');
+    const nextEl = $('[data-next]');
+    const countEl = $('[data-count]');
+    const syncedClocks = document.querySelectorAll<HTMLElement>('[data-sync-clock]');
+    const syncedPrices = document.querySelectorAll<HTMLElement>('[data-sync-price]');
+
+    const card = $('[data-product-card]');
+    const thumb = $('[data-thumb]');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let shownPrice = price;
+    let tick = 0;
+
+    const restart = (el: HTMLElement, cls: string) => {
+      el.classList.remove(cls);
+      void el.offsetWidth; // restart the CSS animation
+      el.classList.add(cls);
+    };
+
+    // New price ticks up from the old one (400ms).
+    const tickPrice = (to: number) => {
+      cancelAnimationFrame(tick);
+      const from = shownPrice;
+      if (reduced || from === to) {
+        shownPrice = to;
+        priceEl.textContent = naira(to);
+        syncedPrices.forEach(el => (el.textContent = naira(to)));
+        return;
+      }
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / 400);
+        const eased = 1 - Math.pow(1 - t, 3);
+        shownPrice = Math.round((from + (to - from) * eased) / 1000) * 1000;
+        if (t === 1) shownPrice = to;
+        priceEl.textContent = naira(shownPrice);
+        syncedPrices.forEach(el => (el.textContent = naira(shownPrice)));
+        if (t < 1) tick = requestAnimationFrame(step);
+      };
+      tick = requestAnimationFrame(step);
+    };
+
+    const bump = (label: string) => {
+      const chip = document.createElement('span');
+      chip.className = 'gb-bump';
+      chip.textContent = label;
+      thumb.appendChild(chip);
+      chip.addEventListener('animationend', () => chip.remove());
+    };
+
+    const render = () => {
+      const c = formatCountdown(clock);
+      clockEl.textContent = c;
+      nextEl.textContent = naira(price + step);
+      countEl.textContent = String(count);
+      syncedClocks.forEach((el) => (el.textContent = c));
+      // Gentle pulse in the last 10 seconds
+      const critical = clock <= 10;
+      clockEl.classList.toggle('gb-pulse', critical);
+      syncedClocks.forEach(el => el.classList.toggle('gb-pulse', critical));
+      // Other views (the 3D phone) mirror this auction.
+      const bids = Array.from(feed.children).map((r) => ({
+        who: r.children[1]?.textContent ?? '',
+        amt: r.children[2]?.textContent ?? '',
+      }));
+      window.dispatchEvent(new CustomEvent('gb:auction', { detail: { price, clock: c, critical, count, bids } }));
+    };
+
+    const newBid = () => {
+      let who = handles[Math.floor(Math.random() * handles.length)];
+      if (who === last) who = handles[(handles.indexOf(who) + 1) % handles.length];
+      last = who;
+      price += step;
+      count += 1;
+      // Bids in the final minute add time, so nobody gets sniped.
+      if (clock < 60) {
+        clock += 60;
+        extensions += 1;
+        bump('+1 min');
+      }
+
+      const prevTop = feed.firstElementChild?.firstElementChild as HTMLElement | null;
+      if (prevTop) prevTop.setAttribute('style', avStyle(false));
+
+      const row = document.createElement('div');
+      row.className = 'gv-in';
+      row.setAttribute('style', 'display: flex; align-items: center; gap: 10px; font-size: 13px');
+      const av = document.createElement('span');
+      av.setAttribute('style', avStyle(true));
+      av.textContent = initials(who);
+      const name = document.createElement('span');
+      name.setAttribute('style', 'flex: 1; color: #4A5878');
+      name.textContent = who;
+      const amt = document.createElement('span');
+      amt.setAttribute('style', 'font-weight: 700; font-variant-numeric: tabular-nums');
+      amt.textContent = naira(price);
+      row.append(av, name, amt);
+      feed.prepend(row);
+      while (feed.children.length > 3) feed.lastElementChild!.remove();
+      render();
+      tickPrice(price);
+      restart(priceEl, 'gb-price-flash');
+      restart(card, 'gb-card-flash');
+    };
+
+    setInterval(() => {
+      clock -= 1;
+      if (clock <= 0) {
+        price = startPrice;
+        count = startCount;
+        clock = startClock;
+        extensions = 0;
+        tickPrice(price);
+      }
+      render();
+    }, 1000);
+
+    const scheduleBid = () =>
+      setTimeout(() => {
+        // After one late extension the room goes quiet and the clock runs out.
+        if (!(clock < 60 && extensions >= 1)) newBid();
+        scheduleBid();
+      }, 2500 + Math.random() * 6500);
+    scheduleBid();
+  });
+</script>

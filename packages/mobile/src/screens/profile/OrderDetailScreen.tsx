@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Animated,
   View,
   Text,
   StyleSheet,
@@ -13,8 +14,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
-import { Button, EmptyState, LoadingScreen } from '../../components';
+import { Button, EmptyState, LoadingScreen, useSequentialFill } from '../../components';
 import { addressService, orderService } from '../../services';
+import { meService, SavedCard } from '../../services/me.service';
 import {
   formatCurrency,
   formatDateTime,
@@ -72,6 +74,49 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
 
   const isBuyer = order?.buyer_id === user?.id;
   const isSeller = order?.seller_id === user?.id;
+
+  // Saved card for one-tap payment, and the buyer's rating once delivered.
+  const [card, setCard] = useState<SavedCard | null>(null);
+  const [myRating, setMyRating] = useState<{ score: number; comment: string | null } | null>(null);
+  const [stars, setStars] = useState(0);
+  const [ratingNote, setRatingNote] = useState('');
+  const [rating, setRating] = useState(false);
+
+  useEffect(() => {
+    meService
+      .cards()
+      .then(cards => setCard(cards.find(c => c.is_default) ?? cards[0] ?? null))
+      .catch(() => {});
+    meService.myRating(orderId).then(setMyRating).catch(() => {});
+  }, [orderId]);
+
+  const submitRating = async () => {
+    if (!stars) return;
+    setRating(true);
+    try {
+      await meService.rate(orderId, stars, ratingNote.trim() || undefined);
+      setMyRating({ score: stars, comment: ratingNote.trim() || null });
+      useToastStore.getState().show('Thanks for rating', 'success');
+    } catch (e) {
+      useToastStore.getState().show(e instanceof Error ? e.message : "Couldn't save your rating", 'error');
+    } finally {
+      setRating(false);
+    }
+  };
+
+  const payWithSavedCard = async () => {
+    if (!order || !card) return;
+    setIsProcessing(true);
+    try {
+      await meService.payWithCard(order.id, card.id);
+      useToastStore.getState().show(`Paid with ${card.label}`, 'success');
+      loadOrder();
+    } catch (e) {
+      useToastStore.getState().show(e instanceof Error ? e.message : 'Card payment failed', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const loadOrder = async () => {
     try {
@@ -201,8 +246,9 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     // Show payment options
     Alert.alert('Payment options', 'How would you like to pay?', [
       { text: 'Cancel', style: 'cancel' },
+      ...(card ? [{ text: `Pay with ${card.label}`, onPress: payWithSavedCard }] : []),
       {
-        text: 'Pay with Paystack',
+        text: card ? 'Pay with another card' : 'Pay with Paystack',
         onPress: handlePayNow,
       },
       {
@@ -546,44 +592,7 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           </Text>
         </View>
 
-        <View style={styles.progressCard}>
-          {progressSteps.map((step, index) => (
-            <View key={step.key} style={styles.progressStep}>
-              <View
-                style={[
-                  styles.progressIcon,
-                  step.done ? styles.progressIconDone : undefined,
-                ]}
-              >
-                <Ionicons
-                  name={step.done ? 'checkmark' : 'ellipse-outline'}
-                  size={16}
-                  color={step.done ? '#FFFFFF' : colors.textMuted}
-                />
-              </View>
-              {index < progressSteps.length - 1 ? (
-                <View
-                  style={[
-                    styles.progressLine,
-                    step.done ? styles.progressLineDone : undefined,
-                  ]}
-                />
-              ) : null}
-              <Text
-                style={[
-                  styles.progressTitle,
-                  step.done ? styles.progressTitleDone : undefined,
-                ]}
-                numberOfLines={1}
-              >
-                {step.title}
-              </Text>
-              <Text style={styles.progressDetail} numberOfLines={2}>
-                {step.detail}
-              </Text>
-            </View>
-          ))}
-        </View>
+        <OrderProgress steps={progressSteps} />
 
         {/* Item Card */}
         <View style={styles.card}>
@@ -945,6 +954,46 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
           )}
         </View>
 
+        {/* Rate the seller (buyer, after delivery) */}
+        {isBuyer && displayStatus === 'delivered' ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{myRating ? 'Your rating' : 'Rate the seller'}</Text>
+            <View style={styles.stars} accessibilityRole="adjustable" accessibilityLabel={`${myRating?.score ?? stars} of 5 stars`}>
+              {[1, 2, 3, 4, 5].map(n => (
+                <TouchableOpacity
+                  key={n}
+                  disabled={!!myRating}
+                  onPress={() => setStars(n)}
+                  hitSlop={6}
+                  accessibilityLabel={`${n} star${n > 1 ? 's' : ''}`}
+                >
+                  <Ionicons
+                    name={(myRating?.score ?? stars) >= n ? 'star' : 'star-outline'}
+                    size={30}
+                    color={(myRating?.score ?? stars) >= n ? '#F5A524' : colors.textMuted}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+            {myRating ? (
+              myRating.comment ? <Text style={styles.shipHelp}>“{myRating.comment}”</Text> : null
+            ) : (
+              <>
+                <TextInput
+                  value={ratingNote}
+                  onChangeText={setRatingNote}
+                  placeholder="Anything other buyers should know? (optional)"
+                  placeholderTextColor={colors.textMuted}
+                  maxLength={500}
+                  multiline
+                  style={styles.disputeInput}
+                />
+                <Button title="Submit rating" onPress={submitRating} loading={rating} disabled={!stars} fullWidth />
+              </>
+            )}
+          </View>
+        ) : null}
+
         {/* Timeline Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Order Timeline</Text>
@@ -1042,6 +1091,11 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
 };
 
 const styles = StyleSheet.create({
+  stars: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginVertical: spacing.md,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1529,3 +1583,70 @@ const styles = StyleSheet.create({
 });
 
 export default OrderDetailScreen;
+
+/** Order steps that fill in one after another: dot pops in, then the line to the next step. */
+const OrderProgress: React.FC<{
+  steps: { key: string; title: string; detail: string; done: boolean }[];
+}> = ({ steps }) => {
+  const fills = useSequentialFill(steps.map(st => st.done));
+
+  return (
+    <View style={styles.progressCard}>
+      {steps.map((step, index) => (
+        <View key={step.key} style={styles.progressStep}>
+          <View style={styles.progressIcon}>
+            <Ionicons name="ellipse-outline" size={16} color={colors.textMuted} />
+            {step.done ? (
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.progressIcon,
+                  styles.progressIconDone,
+                  {
+                    marginBottom: 0,
+                    opacity: fills[index].dot,
+                    transform: [
+                      {
+                        scale: fills[index].dot.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.5, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+              </Animated.View>
+            ) : null}
+          </View>
+          {index < steps.length - 1 ? (
+            <View style={styles.progressLine}>
+              {step.done ? (
+                <Animated.View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    styles.progressLineDone,
+                    {
+                      transformOrigin: 'left center',
+                      transform: [{ scaleX: fills[index].line }],
+                    },
+                  ]}
+                />
+              ) : null}
+            </View>
+          ) : null}
+          <Text
+            style={[styles.progressTitle, step.done ? styles.progressTitleDone : undefined]}
+            numberOfLines={1}
+          >
+            {step.title}
+          </Text>
+          <Text style={styles.progressDetail} numberOfLines={2}>
+            {step.detail}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+};

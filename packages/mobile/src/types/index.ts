@@ -9,8 +9,10 @@ export interface User {
   is_verified: boolean;
   business_name?: string;
   cac_number?: string;
-  seller_kyb_status?: 'not_started' | 'pending' | 'approved' | 'rejected';
+  seller_kyb_status?: 'not_started' | 'pending' | 'needs_info' | 'approved' | 'rejected';
   seller_kyb_rejection_reason?: string;
+  two_factor_enabled?: boolean;
+  two_factor_method?: 'email' | 'totp' | 'sms' | null;
   created_at: string;
 }
 
@@ -172,12 +174,23 @@ export interface Order {
   paid_at?: string;
   shipped_at?: string;
   delivered_at?: string;
+  /** Paid, not at the hub yet: the seller drops it off by this time (6 pm Lagos, next hub working day). */
+  dropoff_due_at?: string | null;
+  /** Hub check score ("7 of 7 checks") once recorded. */
+  inspection?: OrderInspectionSummary | null;
   created_at: string;
   updated_at: string;
   auction?: Auction;
   gadget?: Gadget;
   buyer?: User;
   seller?: User;
+}
+
+/** What the hub checked before it left: how many of the checks passed, and when. */
+export interface OrderInspectionSummary {
+  passed: number;
+  total: number;
+  at: string;
 }
 
 export type DisputeType =
@@ -204,11 +217,16 @@ export interface ShippingAddress {
   full_name: string;
   phone_number: string;
   address_line1: string;
+  /** Nearest landmark ("Opposite Ikeja City Mall"). */
   address_line2?: string;
   city: string;
   state: string;
   postal_code?: string;
   country: string;
+  /** Optional note for the rider ("Call when you get to the gate"). */
+  delivery_note?: string;
+  /** On an order: the saved address's name ("Home", "Work") picked at checkout. */
+  label?: string;
 }
 
 export interface UserAddress extends ShippingAddress {
@@ -280,7 +298,10 @@ export interface AuctionFilters {
   category?: string;
   min_price?: number;
   max_price?: number;
+  /** One condition or a comma list: "excellent", "new,like_new". */
   condition?: string;
+  /** Gadget brand, exact: "Apple". */
+  brand?: string;
   search?: string;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';

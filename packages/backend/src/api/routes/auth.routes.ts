@@ -9,7 +9,22 @@ import {
   otpRateLimiter,
 } from '../middlewares/security.middleware';
 
+import { getSignInPanel } from '../../services/admin/overview.service';
+
 const router: Router = Router();
+
+/**
+ * @route   GET /api/v1/auth/sign-in-panel
+ * @desc    Live activity and escrow figure for the admin sign-in page (public-safe, cached 1 min)
+ * @access  Public
+ */
+router.get('/sign-in-panel', async (_req, res) => {
+  try {
+    res.json({ success: true, data: await getSignInPanel() });
+  } catch {
+    res.status(500).json({ success: false, error: "Couldn't load right now" });
+  }
+});
 
 /**
  * @route   POST /api/v1/auth/register
@@ -101,6 +116,109 @@ router.post(
   handleValidationErrors,
   authController.resendOTP
 );
+
+/**
+ * Email-first buyer sign-up:
+ *   POST /signup/email → POST /signup/verify → POST /signup/complete
+ * @access Public
+ */
+router.post(
+  '/signup/email',
+  otpRateLimiter,
+  authValidator.validateSignupStart,
+  handleValidationErrors,
+  authController.signupStart
+);
+router.post(
+  '/signup/verify',
+  otpRateLimiter,
+  authValidator.validateSignupVerify,
+  handleValidationErrors,
+  authController.signupVerify
+);
+router.post(
+  '/signup/resend',
+  otpRateLimiter,
+  authValidator.validateSignupResend,
+  handleValidationErrors,
+  authController.signupResend
+);
+router.post(
+  '/signup/complete',
+  authRateLimiter,
+  authValidator.validateSignupComplete,
+  handleValidationErrors,
+  authController.signupComplete
+);
+router.get('/username-available', authRateLimiter, authController.usernameAvailable);
+
+/**
+ * Password reset:
+ *   POST /password/forgot → POST /password/verify → POST /password/reset
+ * @access Public
+ */
+router.post(
+  '/password/forgot',
+  otpRateLimiter,
+  authValidator.validatePasswordForgot,
+  handleValidationErrors,
+  authController.passwordForgot
+);
+router.post(
+  '/password/verify',
+  otpRateLimiter,
+  authValidator.validatePasswordVerify,
+  handleValidationErrors,
+  authController.passwordVerify
+);
+router.post(
+  '/password/resend',
+  otpRateLimiter,
+  authValidator.validatePasswordResend,
+  handleValidationErrors,
+  authController.passwordResend
+);
+router.post(
+  '/password/reset',
+  authRateLimiter,
+  authValidator.validatePasswordReset,
+  handleValidationErrors,
+  authController.passwordReset
+);
+
+/**
+ * 2-step sign-in
+ *   POST /login/2fa      — finish a sign-in with the code (email, text or authenticator app)
+ *   GET  /2fa            — { enabled, method, email_hint, sms_phone_hint }
+ *   POST /2fa/setup      — { method: totp | sms } → { secret, otpauth_uri } | { verification_id, phone_hint }
+ *   POST /2fa/confirm    — { method, code, verification_id? } → the updated user
+ *   PUT  /2fa            — { enabled, password }: the emailed code on/off (off clears every method)
+ */
+router.post(
+  '/login/2fa',
+  otpRateLimiter,
+  authValidator.validateLoginTwoFactor,
+  handleValidationErrors,
+  authController.loginTwoFactor
+);
+router.get('/2fa', authenticate, authController.getTwoFactor);
+router.post(
+  '/2fa/setup',
+  otpRateLimiter,
+  authenticate,
+  authValidator.validateTwoFactorSetup,
+  handleValidationErrors,
+  authController.setupTwoFactor
+);
+router.post(
+  '/2fa/confirm',
+  otpRateLimiter,
+  authenticate,
+  authValidator.validateTwoFactorConfirm,
+  handleValidationErrors,
+  authController.confirmTwoFactor
+);
+router.put('/2fa', authRateLimiter, authenticate, authController.setTwoFactor);
 
 /**
  * @route   GET /api/v1/auth/me

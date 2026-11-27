@@ -1,5 +1,5 @@
-import React from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,8 +10,13 @@ import { tabBarStyles as styles } from './tabStyles';
 import {
   SellScreen,
   CreateGadgetScreen,
-  SellerKybScreen,
+  TwoStepSetupScreen,
+  PayoutAccountScreen,
 } from '../screens/sell';
+import { SellerSignUpScreen } from '../screens/sell/onboarding/SellerSignUpScreen';
+import { SellerStatusScreen } from '../screens/sell/onboarding/SellerStatusScreen';
+import { sellerApplicationService } from '../services/sellerApplication.service';
+import { useAuthStore } from '../store';
 import {
   ProfileScreen,
   OrdersScreen,
@@ -130,18 +135,70 @@ const SellerTabs: React.FC = () => {
   );
 };
 
+/**
+ * Where a seller lands: their application until it's sent, then where it stands
+ * (Under review, Needs more info, Not approved, or "You're approved!" once), then the seller home.
+ */
+const useInitialRoute = () => {
+  const { user, setUser } = useAuthStore();
+  const [initial, setInitial] = useState<string | null>(user?.role === 'admin' ? 'MainTabs' : null);
+  useEffect(() => {
+    if (initial) return;
+    let alive = true;
+    (async () => {
+      try {
+        const [app, fresh] = await Promise.all([
+          sellerApplicationService.get(),
+          sellerApplicationService.account().catch(() => null),
+        ]);
+        if (fresh) setUser(fresh);
+        if (!alive) return;
+        setInitial(
+          app.status === 'draft'
+            ? 'SellerApply'
+            : app.status === 'approved' && app.approval_seen
+              ? 'MainTabs'
+              : 'SellerStatus'
+        );
+      } catch {
+        // Offline: go by what this phone last knew.
+        const s = user?.seller_kyb_status;
+        if (alive) setInitial(s === 'approved' ? 'MainTabs' : s === 'not_started' ? 'SellerApply' : 'SellerStatus');
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return initial;
+};
+
 /** Secondary screens sit above tabs so they are full-screen (no tab bar). */
 export const SellerNavigator: React.FC = () => {
+  const initial = useInitialRoute();
+  if (!initial) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2FB' }}>
+        <ActivityIndicator color="#4F7BFF" />
+      </View>
+    );
+  }
   return (
-    <RootStack.Navigator screenOptions={stackScreenOptions}>
+    <RootStack.Navigator screenOptions={stackScreenOptions} initialRouteName={initial}>
       <RootStack.Screen name="MainTabs" component={SellerTabs as any} />
+      <RootStack.Screen
+        name="SellerApply"
+        component={SellerSignUpScreen as any}
+        initialParams={{ resume: true }}
+        options={{ gestureEnabled: false }}
+      />
+      <RootStack.Screen name="SellerStatus" component={SellerStatusScreen as any} options={{ gestureEnabled: false }} />
+      <RootStack.Screen name="TwoStepSetup" component={TwoStepSetupScreen as any} />
+      <RootStack.Screen name="PayoutAccount" component={PayoutAccountScreen as any} />
       <RootStack.Screen
         name="CreateGadget"
         component={CreateGadgetScreen as any}
-      />
-      <RootStack.Screen
-        name="SellerKyb"
-        component={SellerKybScreen as any}
       />
       <RootStack.Screen
         name="AuctionDetail"

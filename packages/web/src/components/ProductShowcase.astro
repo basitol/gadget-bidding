@@ -1,0 +1,63 @@
+---
+import { deviceSrc, hero, webCards } from '../data/landing';
+---
+
+<section aria-label="The app" style="border-bottom: 1px solid #E6EAF2">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 88px 24px; display: flex; flex-direction: column; gap: 36px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20px">
+      <div data-reveal style="display: flex; flex-direction: column; gap: 14px">
+        <span style="font: 500 12px 'JetBrains Mono', monospace; letter-spacing: 0.14em; color: #5E6B8C">THE PRODUCT</span>
+        <h2 style="margin: 0; font-family: 'Sora', sans-serif; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.08; letter-spacing: -0.035em; font-weight: 500">On your phone<br /><span style="color: #9AA6C0">and on the web.</span></h2>
+      </div>
+      <p data-reveal="right" style="--i: 1; margin: 0; max-width: 380px; font-size: 16px; line-height: 1.6; color: #4A5878">Bid from the app with live alerts and auto-bid, or browse every auction on the web. Your bids, wins and orders stay in sync.</p>
+    </div>
+    <div data-reveal="zoom" style="border-radius: 28px; background: #EEF3FF; padding: 40px 32px 0; display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-end; justify-content: center; overflow: hidden">
+      <div data-reveal="lid" style="--i: 1; flex: 1 1 560px; min-width: 0; max-width: 760px; border-radius: 16px 16px 0 0; border: 1px solid #E2E8F3; border-bottom: 0; background: #FFFFFF; overflow: hidden">
+        <div style="height: 40px; border-bottom: 1px solid #E6EAF2; display: flex; align-items: center; gap: 8px; padding: 0 14px">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #E2E8F3"></span><span style="width: 10px; height: 10px; border-radius: 50%; background: #E2E8F3"></span><span style="width: 10px; height: 10px; border-radius: 50%; background: #E2E8F3"></span>
+          <span style="flex: 1; margin: 0 40px; height: 24px; border-radius: 8px; background: #F7F8FB; font: 500 11px 'JetBrains Mono', monospace; color: #5E6B8C; display: flex; align-items: center; justify-content: center">gadgetsbidding · live auctions</span>
+        </div>
+        <div style="display: flex">
+          <div style="width: 150px; flex-shrink: 0; border-right: 1px solid #E6EAF2; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px">
+            <span style="height: 32px; border-radius: 8px; background: #EEF3FF; color: #1F4FE6; font-weight: 700; display: flex; align-items: center; padding: 0 10px">All live</span>
+            <span style="height: 32px; display: flex; align-items: center; padding: 0 10px; color: #4A5878">Phones</span>
+            <span style="height: 32px; display: flex; align-items: center; padding: 0 10px; color: #4A5878">Laptops</span>
+            <span style="height: 32px; display: flex; align-items: center; padding: 0 10px; color: #4A5878">Audio</span>
+            <span style="height: 32px; display: flex; align-items: center; padding: 0 10px; color: #4A5878">Gaming</span>
+          </div>
+          <div style="flex: 1; min-width: 0; padding: 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+            {
+              webCards.map((w) => (
+                <div style="border: 1px solid #E2E8F3; border-radius: 12px; overflow: hidden">
+                  <div style="height: 86px; background: #E8EEFF; display: flex; align-items: center; justify-content: center"><img src={deviceSrc(w.kind)} alt="" width="80" height="80" loading="lazy" /></div>
+                  <div style="padding: 8px 10px; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{w.t}</span><span style="font: 600 13px Sora, sans-serif">{w.p}</span></div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+      <div data-reveal="phone3d" style="--i: 2; margin-bottom: -60px">
+        <div style="width: 250px; height: 520px; flex-shrink: 0; box-sizing: border-box; border-radius: 40px; border: 8px solid #0B1220; background: #050A18; overflow: hidden; position: relative; display: flex; flex-direction: column">
+          <span style="position: absolute; top: 8px; left: 50%; margin-left: -36px; width: 72px; height: 20px; border-radius: 999px; background: #0B1220"></span>
+          <div style="padding: 38px 14px 12px; display: flex; flex-direction: column; gap: 10px; color: #F2F5FF; font-family: Manrope, sans-serif">
+            <span style="font-size: 10px; color: #7E8DB5">Good evening</span>
+            <span style="font: 600 15px Sora, sans-serif; margin-top: -6px">Find your next gadget</span>
+            <span style="height: 30px; border-radius: 10px; background: #111C3A; font-size: 10px; color: #7E8DB5; display: flex; align-items: center; padding: 0 10px">Search phones, laptops…</span>
+            <div style="border-radius: 14px; background: #0A1226; border: 1px solid #2A3B6E; overflow: hidden">
+              <div style="height: 104px; background: #0D1733; display: flex; align-items: center; justify-content: center; position: relative"><img src="/img/devices/phone.svg" alt="" width="100" height="100" loading="lazy" /><span data-sync-clock style="position: absolute; top: 8px; right: 8px; height: 18px; padding: 0 6px; border-radius: 999px; background: #FF7A1A; color: #170A02; font-size: 9px; font-weight: 700; display: inline-flex; align-items: center">{hero.heroClock}</span></div>
+              <div style="padding: 8px 10px; display: flex; justify-content: space-between; align-items: center"><span style="display: flex; flex-direction: column"><span style="font-size: 10px; font-weight: 700">iPhone 15 Pro</span><span data-sync-price style="font: 600 13px Sora, sans-serif">{hero.heroPrice}</span></span><span style="height: 26px; padding: 0 10px; border-radius: 999px; background: #3366FF; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center">Bid</span></div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+              <div style="border-radius: 12px; background: #0A1226; border: 1px solid #1C2A52; padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 2px"><img src="/img/devices/laptop.svg" alt="" width="60" height="60" loading="lazy" /><span style="font-size: 9px; font-weight: 700">MacBook Air</span><span style="font: 600 11px Sora, sans-serif">₦910,000</span></div>
+              <div style="border-radius: 12px; background: #0A1226; border: 1px solid #1C2A52; padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 2px"><img src="/img/devices/gamepad.svg" alt="" width="60" height="60" loading="lazy" /><span style="font-size: 9px; font-weight: 700">PS5 Slim</span><span style="font: 600 11px Sora, sans-serif">₦520,000</span></div>
+            </div>
+          </div>
+          <div style="margin: auto 10px 10px; height: 40px; border-radius: 20px; background: #111C3A; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; padding: 3px; box-sizing: border-box">
+            <span style="height: 34px; border-radius: 17px; background: #1C2A52"></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

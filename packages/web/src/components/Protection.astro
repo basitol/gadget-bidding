@@ -1,0 +1,26 @@
+---
+import { track } from '../data/landing';
+---
+
+<section id="protection" style="border-bottom: 1px solid #E6EAF2">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 88px 24px; display: flex; flex-wrap: wrap; gap: 56px; align-items: center">
+    <div data-reveal="left" style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 16px">
+      <span style="font: 500 12px 'JetBrains Mono', monospace; letter-spacing: 0.14em; color: #5E6B8C">03 · BUYER PROTECTION</span>
+      <h2 style="margin: 0; font-family: 'Sora', sans-serif; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.08; letter-spacing: -0.035em; font-weight: 500">Your money waits<br /><span style="color: #3366FF">until your gadget checks out.</span></h2>
+      <p style="margin: 0; font-size: 17px; line-height: 1.65; color: #4A5878; max-width: 480px">Pay with Paystack and the money sits in escrow. The seller is only paid after the gadget passes inspection and you confirm delivery. If it fails, you get your money back.</p>
+    </div>
+    <div data-reveal="right" style="--i: 1; flex: 1 1 420px; border-radius: 24px; background: #EEF3FF; padding: 24px">
+      <div style="background: #FFFFFF; border: 1px solid #E2E8F3; border-radius: 18px; padding: 20px; display: flex; flex-direction: column">
+        <span style="font: 500 11px 'JetBrains Mono', monospace; letter-spacing: 0.1em; color: #5E6B8C; margin-bottom: 14px">ORDER #GV-20972 · ₦845,000</span>
+        {
+          track.map((t, i) => (
+            <div style="display: flex; gap: 14px">
+              <div style="display: flex; flex-direction: column; align-items: center"><span class="gb-tl-dot" style={`--d: ${400 + i * 320}ms; ${t.dot}`}></span><span class="gb-tl-line" style={`--d: ${560 + i * 320}ms; ${t.line}`}></span></div>
+              <div style="display: flex; flex-direction: column; gap: 2px; padding-bottom: 14px"><span style={t.titleStyle}>{t.title}</span><span style="font-size: 13px; color: #5E6B8C">{t.sub}</span></div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+</section>

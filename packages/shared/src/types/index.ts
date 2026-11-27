@@ -6,7 +6,9 @@ export type UserRole = 'bidder' | 'seller' | 'admin';
 
 export type AccountType = 'buyer' | 'seller';
 
-export type SellerKybStatus = 'not_started' | 'pending' | 'approved' | 'rejected';
+export type SellerKybStatus = 'not_started' | 'pending' | 'needs_info' | 'approved' | 'rejected';
+
+export type TwoFactorMethod = 'email' | 'totp' | 'sms';
 
 export interface User {
   id: string;
@@ -21,6 +23,8 @@ export interface User {
   cac_number?: string;
   seller_kyb_status?: SellerKybStatus;
   seller_kyb_rejection_reason?: string;
+  two_factor_enabled?: boolean;
+  two_factor_method?: TwoFactorMethod | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -212,6 +216,8 @@ export interface CreateGadgetRequest {
 export type AuctionStatus = 'scheduled' | 'active' | 'ended' | 'cancelled';
 
 export interface Auction {
+  /** Flat delivery charge (₦) a winner pays on top of the bid. */
+  delivery_fee?: number;
   id: string;
   gadget_id: string;
   seller_id: string;
@@ -306,11 +312,16 @@ export interface ShippingAddress {
   full_name: string;
   phone_number: string;
   address_line1: string;
+  /** Nearest landmark ("Opposite Ikeja City Mall"). */
   address_line2?: string;
   city: string;
   state: string;
   postal_code?: string;
   country: string;
+  /** Optional note for the rider ("Call when you get to the gate"). */
+  delivery_note?: string;
+  /** On an order: the saved address's name ("Home", "Work") the buyer picked at checkout. */
+  label?: string;
 }
 
 export interface UserAddress extends ShippingAddress {
@@ -323,6 +334,11 @@ export interface UserAddress extends ShippingAddress {
 }
 
 export interface Order {
+  /** Included in total_amount. */
+  delivery_fee?: number;
+  delivery_method?: 'delivery' | 'pickup';
+  /** total_amount minus delivery_fee. */
+  item_amount?: number;
   id: string;
   auction_id: string;
   buyer_id: string;
@@ -340,8 +356,34 @@ export interface Order {
   tracking_number?: string;
   disputes?: Dispute[];
   open_dispute?: boolean;
+  /** A refund was decided; the order is on hold until the item is back and refunded. */
+  refund_pending?: boolean;
+  /** Each payment/fulfillment status change, oldest first (buyer tracking timeline). */
+  events?: OrderEvent[];
+  /** Unpaid orders: when the payment window closes. */
+  payment_due_at?: string;
+  /** Buyer view: "Visa ending 4242", "Bank transfer", "Wallet". */
+  paid_with?: string | null;
+  /** Buyer view: the delivery address can still change (item hasn't left the hub). */
+  address_editable?: boolean;
+  /** Second-chance offer: accept or decline before this time. */
+  offer_expires_at?: string | null;
+  /** When the buyer confirmed it arrived okay (or we did after 48 hours). */
+  buyer_confirmed_at?: string | null;
+  /** Delivered, not yet confirmed: we confirm for the buyer at this time. */
+  confirm_by?: string | null;
+  /** Paid, not at the hub yet: the seller drops it off by this time (6 pm Lagos, next hub working day). */
+  dropoff_due_at?: string | null;
+  /** Hub check score ("7 of 7 checks") once recorded. Never says who checked it. */
+  inspection?: { passed: number; total: number; at: string } | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface OrderEvent {
+  kind: 'payment' | 'fulfillment';
+  status: string;
+  at: string;
 }
 
 export interface OrderWithDetails extends Order {
@@ -360,6 +402,9 @@ export type NotificationType =
   | 'outbid'
   | 'auction_won'
   | 'auction_lost'
+  | 'auction_no_sale'
+  | 'auction_relisted'
+  | 'listing_reported'
   | 'auction_created'
   | 'auction_ending_soon'
   | 'bid_defaulted'
@@ -370,9 +415,14 @@ export type NotificationType =
   | 'fulfillment_updated'
   | 'delivery_confirmed_admin'
   | 'dispute_opened'
+  | 'dispute_updated'
   | 'support_message'
   | 'payment_received'
   | 'payment_failed'
+  | 'payment_reminder'
+  | 'saved_search_match'
+  | 'store_new_listing'
+  | 'seller_application'
   | 'payment_initiated'
   | 'order_created'
   | 'order_shipped'
@@ -402,6 +452,9 @@ export type DisputeType =
   | 'item_not_received'
   | 'item_damaged'
   | 'item_not_as_described'
+  | 'not_working'
+  | 'missing_parts'
+  | 'wrong_item'
   | 'fraud'
   | 'other';
 

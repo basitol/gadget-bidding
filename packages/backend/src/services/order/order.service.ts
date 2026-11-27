@@ -12,7 +12,10 @@ import {
   PaystackInitializeResponse,
 } from '@gadget-bidding/shared';
 import * as paystackService from '../payment/paystack.service';
+import config from '../../config';
+import * as buyerAlerts from '../notification/buyerAlerts';
 import * as notificationService from '../notification/notification.service';
+import * as emailService from '../notification/email.service';
 import * as riskService from '../risk/risk.service';
 import { applyBalanceDelta } from '../../utils/wallet-balance';
 import logger from '../../utils/logger';
@@ -32,12 +35,188 @@ const generateOrderNumber = (): string => {
   return `GB-${timestamp}-${random}`;
 };
 
-const ORDER_PAYMENT_EXPIRY_HOURS = Number(
+export const ORDER_PAYMENT_EXPIRY_HOURS = Number(
   process.env.ORDER_PAYMENT_EXPIRY_HOURS || BID_PAYMENT_DEADLINE_HOURS
 );
+/** After delivery the buyer has this long to confirm or report a problem; then we confirm for them. */
+export const CONFIRM_WINDOW_HOURS = Number(process.env.CONFIRM_WINDOW_HOURS || 48);
+/** A second-chance offer stays open this long. */
+export const OFFER_WINDOW_HOURS = Number(process.env.SECOND_CHANCE_OFFER_HOURS || 12);
+/** Missed payments: after this many within the lookback, bidding pauses. */
+export const MISSED_PAYMENT_LIMIT = 3;
+export const MISSED_PAYMENT_LOOKBACK_DAYS = 90;
+export const BIDDING_PAUSE_DAYS = 30;
+/** One-time transfer accounts stay open this long. */
+export const TRANSFER_ACCOUNT_MINUTES = 30;
+
+const HOUR = 3_600_000;
+
+/** When an unpaid order must be paid by. */
+export const paymentDueOf = (order: { paymentDueAt?: Date | null; createdAt?: Date | null }): Date | null =>
+  order.paymentDueAt ??
+  (order.createdAt ? new Date(order.createdAt.getTime() + ORDER_PAYMENT_EXPIRY_HOURS * HOUR) : null);
+
+/** When the order was marked delivered (latest event), if it was. */
+const deliveredAtOf = (order: any): Date | null => {
+  const hits = (order.events ?? []).filter((e: any) => e.kind === 'fulfillment' && e.status === 'delivered');
+  return hits.length ? hits[hits.length - 1].createdAt : order.fulfillmentStatus === 'delivered' ? order.updatedAt : null;
+};
+
+/* ---------------- Hub: seller drop-off deadline ---------------- */
+
+/** Lagos is UTC+1 all year (WAT has no daylight saving). */
+const LAGOS_UTC_OFFSET_HOURS = 1;
+/** After the buyer pays, the seller drops the item at the Computer Village hub by this hour (Lagos)... */
+export const DROPOFF_CUTOFF_HOUR = 18;
+/** ...on the next day the hub is open. It's open Monday to Saturday (0 = Sunday). */
+export const HUB_CLOSED_WEEKDAYS: number[] = [0];
+/** "6 pm" */
+const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? 'am' : 'pm'}`;
+export const DROPOFF_RULE = `By ${hourLabel(DROPOFF_CUTOFF_HOUR)} the next working day after payment`;
+
+/** The drop-off deadline for an order paid at `paidAt`: 6:00 pm Lagos on the next hub working day. */
+export const dropoffDueAt = (paidAt: Date): Date => {
+  const lagos = new Date(paidAt.getTime() + LAGOS_UTC_OFFSET_HOURS * HOUR);
+  const day = new Date(Date.UTC(lagos.getUTCFullYear(), lagos.getUTCMonth(), lagos.getUTCDate() + 1));
+  while (HUB_CLOSED_WEEKDAYS.includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate() + 1);
+  return new Date(day.getTime() + (DROPOFF_CUTOFF_HOUR - LAGOS_UTC_OFFSET_HOURS) * HOUR);
+};
+
+/** Paid, but the seller hasn't sent it to the hub yet. */
+const BEFORE_HUB_STATUSES = ['pending', 'processing'];
+
+/** When the order was paid (latest 'paid' payment event), if it was. */
+const paidAtOf = (order: any): Date | null => {
+  const hits = (order.events ?? []).filter((e: any) => e.kind === 'payment' && e.status === 'paid');
+  return hits.length ? hits[hits.length - 1].createdAt : null;
+};
+
+/** Drop-off deadline while the item hasn't reached the hub yet; null otherwise. */
+export const dropoffDueOf = (order: any): Date | null => {
+  if (order.paymentStatus !== 'paid' || !BEFORE_HUB_STATUSES.includes(order.fulfillmentStatus ?? 'pending')) return null;
+  const paidAt = paidAtOf(order);
+  return paidAt ? dropoffDueAt(paidAt) : null;
+};
+
+/* ---------------- Hub: inspection checklist ---------------- */
+
+/** What the hub checks on every device before it leaves, in this order. */
+export const HUB_INSPECTION_CHECKS = [
+  { key: 'imei_match', label: 'IMEI or serial matches the listing' },
+  { key: 'not_stolen', label: 'Not reported lost or stolen' },
+  { key: 'account_removed', label: 'iCloud or Google account removed' },
+  { key: 'screen', label: 'Screen and touch work' },
+  { key: 'battery', label: 'Battery health as listed' },
+  { key: 'cameras_audio', label: 'Cameras, speakers and mics work' },
+  { key: 'body_grade', label: 'Body and grade match the photos' },
+] as const;
+
+export type InspectionRecord = {
+  checks: { key: string; label: string; passed: boolean }[];
+  /** How many checks passed. */
+  passed: number;
+  total: number;
+  note: string | null;
+  /** Staff member who did the check (admin views only, never shown to buyers or sellers). */
+  by: { id: string; name: string | null };
+  at: string;
+};
+
+/** Statuses where the item is with us at the hub. */
+const AT_HUB_STATUSES = ['sent_to_backoffice', 'received_by_backoffice'];
+
+const readInspection = (value: unknown): InspectionRecord | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const v = value as InspectionRecord;
+  return Array.isArray(v.checks) && typeof v.total === 'number' ? v : null;
+};
+
+/** Every one of the hub's checks was recorded and passed. */
+export const inspectionPassed = (value: unknown): boolean => {
+  const i = readInspection(value);
+  if (!i) return false;
+  const passedKeys = new Set(i.checks.filter(c => c.passed === true).map(c => c.key));
+  return HUB_INSPECTION_CHECKS.every(c => passedKeys.has(c.key));
+};
+
+/** What buyers and sellers see: the score and when, never who checked it. */
+const inspectionSummary = (value: unknown) => {
+  const i = readInspection(value);
+  return i ? { passed: i.passed, total: i.total, at: i.at } : null;
+};
+
+/** Accepts `{ imei_match: true, ... }` or `[{ key: 'imei_match', passed: true }, ...]`. */
+const normalizeChecks = (input: unknown): Map<string, boolean> => {
+  const out = new Map<string, boolean>();
+  const known = new Set<string>(HUB_INSPECTION_CHECKS.map(c => c.key));
+  const add = (key: unknown, passed: unknown) => {
+    if (typeof key !== 'string' || !known.has(key)) throw new Error(`"${String(key)}" isn't one of the hub checks.`);
+    if (typeof passed !== 'boolean') throw new Error('Mark each check as passed or not.');
+    out.set(key, passed);
+  };
+  if (Array.isArray(input)) input.forEach(c => add(c?.key, c?.passed));
+  else if (input && typeof input === 'object') Object.entries(input).forEach(([k, v]) => add(k, v));
+  else throw new Error('Send the result of each hub check.');
+  const missing = HUB_INSPECTION_CHECKS.filter(c => !out.has(c.key));
+  if (missing.length) throw new Error(`Every check needs an answer. Missing: ${missing.map(c => c.label).join(', ')}.`);
+  return out;
+};
+
+/**
+ * Hub staff record what they checked on an order at the hub. Any failed check needs a note.
+ * Recording again replaces the earlier result (every save is in the audit log).
+ */
+export const recordInspection = async (
+  orderId: string,
+  staff: { id: string; name: string | null },
+  input: { checks?: unknown; note?: unknown }
+): Promise<{ order_id: string; order_number: string; inspection: InspectionRecord; all_passed: boolean }> => {
+  const results = normalizeChecks(input.checks);
+  const note = typeof input.note === 'string' ? input.note.trim() : '';
+  if (note.length > 500) throw new Error('Keep the note under 500 characters.');
+  const checks = HUB_INSPECTION_CHECKS.map(c => ({ key: c.key, label: c.label, passed: results.get(c.key)! }));
+  const passed = checks.filter(c => c.passed).length;
+  if (passed < checks.length && !note) throw new Error("Add a note saying what didn't pass.");
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, orderNumber: true, paymentStatus: true, fulfillmentStatus: true },
+  });
+  if (!order) throw new Error('Order not found');
+  if (order.paymentStatus !== 'paid') throw new Error('Only paid orders are checked at the hub.');
+  if (order.fulfillmentStatus !== 'received_by_backoffice') {
+    throw new Error(
+      order.fulfillmentStatus === 'sent_to_backoffice'
+        ? 'Mark it received at the hub first, then record the check.'
+        : ['shipped', 'delivered'].includes(order.fulfillmentStatus ?? '')
+          ? 'This order has already left the hub.'
+          : "This order isn't at the hub."
+    );
+  }
+
+  const inspection: InspectionRecord = {
+    checks,
+    passed,
+    total: checks.length,
+    note: note || null,
+    by: staff,
+    at: new Date().toISOString(),
+  };
+  // Only while it's still at the hub, in case someone moved it on meanwhile.
+  const saved = await prisma.order.updateMany({
+    where: { id: orderId, fulfillmentStatus: 'received_by_backoffice' },
+    data: { inspection: inspection as unknown as Prisma.InputJsonValue, updatedAt: new Date() },
+  });
+  if (saved.count === 0) throw new Error('This order just moved on from the hub. Refresh and try again.');
+
+  logger.info(`Hub inspection for ${order.orderNumber}: ${passed} of ${checks.length} passed`);
+  return { order_id: order.id, order_number: order.orderNumber, inspection, all_passed: passed === checks.length };
+};
 
 const formatDispute = (dispute: any) => ({
   id: dispute.id,
+  case_number: dispute.caseNumber ? `D-${dispute.caseNumber}` : undefined,
+  outcome: dispute.outcome ?? null,
   order_id: dispute.orderId,
   raised_by: dispute.raisedBy,
   dispute_type: dispute.disputeType,
@@ -80,6 +259,9 @@ const transformOrder = (order: any): Order => ({
   seller_id: order.sellerId,
   order_number: order.orderNumber,
   total_amount: toNumber(order.totalAmount),
+  delivery_fee: toNumber(order.deliveryFee),
+  delivery_method: order.deliveryMethod ?? 'delivery',
+  item_amount: toNumber(order.totalAmount) - toNumber(order.deliveryFee),
   platform_fee: toNumber(order.platformFee),
   seller_payout: toNumber(order.sellerPayout),
   payout_status: order.payoutStatus,
@@ -90,9 +272,9 @@ const transformOrder = (order: any): Order => ({
   shipping_address: order.shippingAddress,
   tracking_number: order.trackingNumber,
   disputes: order.disputes?.map(formatDispute),
-  open_dispute: order.disputes?.some((d: any) =>
-    ['open', 'investigating'].includes(d.status)
-  ),
+  open_dispute: order.disputes?.some((d: any) => ['open', 'investigating'].includes(d.status)),
+  // A refund was decided but the item isn't back yet: the order stays on hold until it is.
+  refund_pending: order.paymentStatus !== 'refunded' && !!order.disputes?.some((d: any) => d.outcome === 'refund'),
   created_at: order.createdAt?.toISOString(),
   updated_at: order.updatedAt?.toISOString(),
 });
@@ -130,14 +312,16 @@ export const createOrderFromAuction = async (
     const platformFee = (finalPrice * PLATFORM_FEE_PERCENTAGE) / 100;
     const sellerPayout = finalPrice - platformFee;
 
-    // Create order
+    // Create order: winning bid + flat delivery (delivery goes to the platform, not the seller)
+    const deliveryFee = config.deliveryFee;
     const order = await tx.order.create({
       data: {
         auctionId,
         buyerId: winnerId,
         sellerId: auction.gadget?.sellerId,
         orderNumber: generateOrderNumber(),
-        totalAmount: finalPrice,
+        totalAmount: finalPrice + deliveryFee,
+        deliveryFee,
         platformFee,
         sellerPayout,
         payoutStatus: 'pending',
@@ -189,6 +373,7 @@ export const getOrderById = async (
       disputes: {
         orderBy: { createdAt: 'desc' },
       },
+      events: { orderBy: { createdAt: 'asc' } },
     },
   });
 
@@ -230,6 +415,7 @@ export const getOrderByNumber = async (
       disputes: {
         orderBy: { createdAt: 'desc' },
       },
+      events: { orderBy: { createdAt: 'asc' } },
     },
   });
 
@@ -280,6 +466,7 @@ export const getBuyerOrders = async (
         disputes: {
           orderBy: { createdAt: 'desc' },
         },
+        events: { orderBy: { createdAt: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -334,6 +521,7 @@ export const getSellerOrders = async (
         disputes: {
           orderBy: { createdAt: 'desc' },
         },
+        events: { orderBy: { createdAt: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
@@ -348,7 +536,7 @@ export const getSellerOrders = async (
   };
 };
 
-const hasCompleteShippingAddress = (address: unknown): boolean => {
+export const hasCompleteShippingAddress = (address: unknown): boolean => {
   if (!address || typeof address !== 'object') return false;
   const a = address as Record<string, unknown>;
   return Boolean(
@@ -367,116 +555,81 @@ export type SecondPlaceOfferResult = {
   };
 };
 
-export const offerOrderToSecondPlaceBidder = async (
-  orderId: string
-): Promise<SecondPlaceOfferResult> => {
-  const result = await prisma.$transaction(async tx => {
-    const order = await tx.order.findUnique({
-      where: { id: orderId },
-      include: {
-        auction: {
-          include: { gadget: true },
-        },
-      },
-    });
+/**
+ * Give the order to the next highest bidder as a second-chance offer, inside the caller's
+ * transaction. Bidders whose bids are withdrawn (missed payment, declined) are skipped.
+ * The offer stays open OFFER_WINDOW_HOURS; accepting starts a fresh payment window.
+ */
+const reassignToNextBidder = async (tx: any, orderId: string) => {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    include: { auction: { include: { gadget: true } } },
+  });
+  if (!order) throw new Error('Order not found');
+  if (!order.auctionId || !order.buyerId) throw new Error('Order is missing auction or buyer details');
+  if (order.paymentStatus === 'paid') throw new Error('Paid orders cannot be reassigned');
 
-    if (!order) {
-      throw new Error('Order not found');
-    }
+  const nextBid = await tx.bid.findFirst({
+    where: { auctionId: order.auctionId, bidderId: { not: order.buyerId }, status: { not: 'withdrawn' } },
+    include: { bidder: { select: { id: true, fullName: true, phoneNumber: true, email: true } } },
+    orderBy: [{ amount: 'desc' }, { bidTime: 'asc' }],
+  });
+  if (!nextBid?.bidderId || !nextBid.bidder) throw new Error('No second-place bidder is available');
 
-    if (!order.auctionId || !order.buyerId) {
-      throw new Error('Order is missing auction or buyer details');
-    }
+  const amount = toNumber(nextBid.amount);
+  const platformFee = (amount * PLATFORM_FEE_PERCENTAGE) / 100;
 
-    if (order.paymentStatus === 'paid') {
-      throw new Error('Paid orders cannot be reassigned');
-    }
+  // Void the previous buyer's pending payment references so they can never settle this order.
+  await tx.paymentTransaction.updateMany({
+    where: { metadata: { path: ['order_id'], equals: orderId }, status: 'pending' },
+    data: { status: 'failed', updatedAt: new Date() },
+  });
+  await tx.bid.updateMany({ where: { auctionId: order.auctionId }, data: { isWinning: false } });
+  await tx.bid.update({ where: { id: nextBid.id }, data: { status: 'won', isWinning: true } });
+  await tx.auction.update({ where: { id: order.auctionId }, data: { winnerId: nextBid.bidderId } });
 
-    const secondBid = await tx.bid.findFirst({
-      where: {
-        auctionId: order.auctionId,
-        bidderId: { not: order.buyerId },
-      },
-      include: {
-        bidder: {
-          select: {
-            id: true,
-            fullName: true,
-            phoneNumber: true,
-            email: true,
-          },
-        },
-      },
-      orderBy: [{ amount: 'desc' }, { bidTime: 'asc' }],
-    });
-
-    if (!secondBid?.bidderId || !secondBid.bidder) {
-      throw new Error('No second-place bidder is available');
-    }
-
-    const secondAmount = toNumber(secondBid.amount);
-    const platformFee = (secondAmount * PLATFORM_FEE_PERCENTAGE) / 100;
-    const sellerPayout = secondAmount - platformFee;
-
-    // Void the displaced buyer's pending payment references for this order so
-    // a stale reference can never settle the reassigned order via webhook or
-    // the client verify endpoint.
-    await tx.paymentTransaction.updateMany({
-      where: {
-        metadata: { path: ['order_id'], equals: orderId },
-        status: 'pending',
-      },
-      data: { status: 'failed', updatedAt: new Date() },
-    });
-
-    await tx.bid.updateMany({
-      where: { auctionId: order.auctionId },
-      data: { isWinning: false },
-    });
-
-    await tx.bid.update({
-      where: { id: secondBid.id },
-      data: { status: 'won', isWinning: true },
-    });
-
-    await tx.auction.update({
-      where: { id: order.auctionId },
-      data: { winnerId: secondBid.bidderId },
-    });
-
-    const reassignedOrder = await tx.order.update({
-      where: { id: orderId },
-      data: {
-        buyerId: secondBid.bidderId,
-        totalAmount: secondAmount,
-        platformFee,
-        sellerPayout,
-        paymentStatus: 'pending',
-        fulfillmentStatus: 'pending',
-        shippingAddress: Prisma.JsonNull,
-        updatedAt: new Date(),
-      },
-    });
-
-    return {
-      order: transformOrder(reassignedOrder),
-      bidder: {
-        id: secondBid.bidder.id,
-        fullName: secondBid.bidder.fullName,
-        phoneNumber: secondBid.bidder.phoneNumber,
-        email: secondBid.bidder.email,
-        amount: secondAmount,
-      },
-      gadgetTitle: order.auction?.gadget?.title || 'Item',
-    };
+  const offerExpiresAt = new Date(Date.now() + OFFER_WINDOW_HOURS * HOUR);
+  const reassigned = await tx.order.update({
+    where: { id: orderId },
+    data: {
+      buyerId: nextBid.bidderId,
+      totalAmount: amount + config.deliveryFee,
+      deliveryMethod: 'delivery',
+      deliveryFee: config.deliveryFee,
+      platformFee,
+      sellerPayout: amount - platformFee,
+      paymentStatus: 'pending',
+      fulfillmentStatus: 'pending',
+      shippingAddress: Prisma.JsonNull,
+      paymentDueAt: null,
+      offerExpiresAt,
+      updatedAt: new Date(),
+    },
   });
 
+  return {
+    order: transformOrder(reassigned),
+    bidder: {
+      id: nextBid.bidder.id,
+      fullName: nextBid.bidder.fullName,
+      phoneNumber: nextBid.bidder.phoneNumber,
+      email: nextBid.bidder.email,
+      amount,
+    },
+    gadgetTitle: order.auction?.gadget?.title || 'Item',
+  };
+};
+
+type NextBidderOffer = Awaited<ReturnType<typeof reassignToNextBidder>>;
+
+const notifySecondChance = async (result: NextBidderOffer) => {
   await notificationService.createNotification(
     result.bidder.id,
     'auction_won',
-    'Second chance to buy',
-    `The winning bidder missed payment for "${result.gadgetTitle}". You are next in line at ₦${result.bidder.amount.toLocaleString()}. Complete payment within ${BID_PAYMENT_DEADLINE_HOURS} hours to secure it.`,
+    'It can still be yours',
+    `The winner didn't pay. You can buy the ${result.gadgetTitle} at your last bid of ₦${result.bidder.amount.toLocaleString()}. The offer ends in ${OFFER_WINDOW_HOURS} hours.`,
     {
+      secondChance: true,
       orderId: result.order.id,
       orderNumber: result.order.order_number,
       auctionId: result.order.auction_id,
@@ -484,11 +637,10 @@ export const offerOrderToSecondPlaceBidder = async (
     },
     ['push', 'sms', 'email']
   );
-
   await notificationService.notifyAdmins(
     'bid_defaulted',
     'Second-place offer sent',
-    `${result.bidder.fullName || 'Second-place bidder'} was offered order #${result.order.order_number} at ₦${result.bidder.amount.toLocaleString()}.`,
+    `${result.bidder.fullName || 'Next bidder'} was offered order #${result.order.order_number} at ₦${result.bidder.amount.toLocaleString()}.`,
     {
       orderId: result.order.id,
       orderNumber: result.order.order_number,
@@ -497,33 +649,56 @@ export const offerOrderToSecondPlaceBidder = async (
       secondPlaceBidder: result.bidder,
     }
   );
+};
 
+export const offerOrderToSecondPlaceBidder = async (orderId: string): Promise<SecondPlaceOfferResult> => {
+  const result = await prisma.$transaction(tx => reassignToNextBidder(tx, orderId));
+  await notifySecondChance(result);
   return { order: result.order, bidder: result.bidder };
 };
 
-/**
- * Update shipping address
- */
+/** Fulfillment steps before the item leaves the hub; the delivery address can still change. */
+export const ADDRESS_EDITABLE_STATUSES: FulfillmentStatus[] = [
+  'pending',
+  'processing',
+  'sent_to_backoffice',
+  'received_by_backoffice',
+];
+
 export const updateShippingAddress = async (
   orderId: string,
   buyerId: string,
   address: ShippingAddress
 ): Promise<Order> => {
+  // Before paying (checkout), or after paying until the item leaves the hub.
   const order = await prisma.order.updateMany({
     where: {
       id: orderId,
       buyerId,
-      paymentStatus: 'pending',
-      fulfillmentStatus: 'pending',
+      OR: [
+        { paymentStatus: 'pending', fulfillmentStatus: 'pending' },
+        {
+          paymentStatus: 'paid',
+          deliveryMethod: 'delivery',
+          fulfillmentStatus: { in: ADDRESS_EDITABLE_STATUSES },
+        },
+      ],
     },
     data: {
       shippingAddress: address as any,
+      updatedAt: new Date(),
     },
   });
 
   if (order.count === 0) {
+    const exists = await prisma.order.findFirst({
+      where: { id: orderId, buyerId },
+      select: { id: true },
+    });
     throw new Error(
-      'Order not found, unauthorized, or payment already started'
+      exists
+        ? "This order has left the hub, so its address can't change now. Contact support if you need help."
+        : 'Order not found or unauthorized'
     );
   }
 
@@ -554,7 +729,7 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
       throw new Error('Order already paid');
     }
 
-    if (!hasCompleteShippingAddress(order.shippingAddress)) {
+    if (order.deliveryMethod !== 'pickup' && !hasCompleteShippingAddress(order.shippingAddress)) {
       throw new Error(
         'Please add a shipping address before paying for this order'
       );
@@ -728,6 +903,8 @@ export const updateFulfillmentStatus = async (
     return transformOrder(updatedOrder);
   });
 
+  void buyerAlerts.notifyBuyerFulfillment(updated.id, status);
+
   if (status === 'sent_to_backoffice') {
     notificationService
       .notifyBackofficeIntake(updated.id, updated.order_number)
@@ -815,6 +992,17 @@ export const adminUpdateOrder = async (
       nextFulfillment = 'processing';
     }
 
+    // Nothing leaves the hub (shipped, or collected for pickup) until every hub check passed.
+    if (
+      ['shipped', 'delivered'].includes(nextFulfillment) &&
+      AT_HUB_STATUSES.includes(prevFulfillment) &&
+      !inspectionPassed(order.inspection)
+    ) {
+      throw new Error(
+        `This order hasn't passed the hub check yet. Record the inspection with all ${HUB_INSPECTION_CHECKS.length} checks passed, then it can leave the hub.`
+      );
+    }
+
     if (
       nextPayout === 'paid' &&
       (nextPayment !== 'paid' || nextFulfillment !== 'delivered')
@@ -893,12 +1081,14 @@ export const adminUpdateOrder = async (
       }
     }
 
-    // Move delivered paid orders into the payout queue unless admin overrides it
+    // Delivered: the buyer now has CONFIRM_WINDOW_HOURS to confirm or report a problem.
+    // The payout waits for that (or for the auto-confirm job) unless the buyer already confirmed.
     if (
       nextFulfillment === 'delivered' &&
       prevFulfillment !== 'delivered' &&
       (nextPayment === 'paid' || prevPayment === 'paid') &&
-      !updates.payout_status
+      !updates.payout_status &&
+      order.buyerConfirmedAt
     ) {
       await markPayoutReady(tx, order);
     }
@@ -971,14 +1161,25 @@ export const confirmDelivery = async (
       throw new Error('Order not found or unauthorized');
     }
 
-    if (order.fulfillmentStatus !== 'shipped') {
-      throw new Error('Order must be shipped before confirming delivery');
+    const awaitingConfirmation = order.fulfillmentStatus === 'delivered' && !order.buyerConfirmedAt;
+    if (order.fulfillmentStatus !== 'shipped' && !awaitingConfirmation) {
+      throw new Error(
+        order.fulfillmentStatus === 'delivered'
+          ? 'You already confirmed this order.'
+          : "You can confirm once it's on its way to you."
+      );
+    }
+    const openDisputes = await tx.dispute.count({
+      where: { orderId, OR: [{ status: { in: ['open', 'investigating'] } }, { outcome: 'refund' }] },
+    });
+    if (openDisputes > 0) {
+      throw new Error("You've reported a problem with this order. We'll sort that out first.");
     }
 
-    // Update to delivered
+    // Delivered (if the courier hadn't marked it yet) and confirmed by the buyer.
     const updatedOrder = await tx.order.update({
       where: { id: orderId },
-      data: { fulfillmentStatus: 'delivered' },
+      data: { fulfillmentStatus: 'delivered', buyerConfirmedAt: new Date(), updatedAt: new Date() },
     });
 
     // Move payout into the admin payout queue
@@ -1005,7 +1206,8 @@ export const createDispute = async (
   orderId: string,
   userId: string,
   disputeType: string,
-  description: string
+  description: string,
+  evidence?: string[]
 ) => {
   const result = await prisma.$transaction(async tx => {
     const order = await tx.order.findFirst({
@@ -1039,6 +1241,7 @@ export const createDispute = async (
         raisedBy: userId,
         disputeType,
         description,
+        evidence: evidence?.length ? { photos: evidence.slice(0, 4) } : undefined,
         status: 'open',
       },
     });
@@ -1195,7 +1398,8 @@ export const initializeOrderPayment = async (
   orderId: string,
   buyerId: string,
   email: string,
-  callbackUrl?: string
+  callbackUrl?: string,
+  channel?: 'card' | 'bank_transfer' | 'ussd'
 ): Promise<PaystackInitializeResponse> => {
   // Get order
   const order = await prisma.order.findFirst({
@@ -1211,15 +1415,7 @@ export const initializeOrderPayment = async (
     throw new Error('Order not found or unauthorized');
   }
 
-  if (order.paymentStatus === 'paid') {
-    throw new Error('Order already paid');
-  }
-
-  if (!hasCompleteShippingAddress(order.shippingAddress)) {
-    throw new Error(
-      'Please add a shipping address before paying for this order'
-    );
-  }
+  assertPayable(order);
 
   const amount = toNumber(order.totalAmount);
   const gadgetTitle = order.auction?.gadget?.title || 'Gadget';
@@ -1235,7 +1431,8 @@ export const initializeOrderPayment = async (
       order_number: order.orderNumber,
       gadget_title: gadgetTitle,
       callback_url: callbackUrl,
-    }
+    },
+    channel ? [channel] : undefined
   );
 
   // Create payment transaction record
@@ -1292,12 +1489,17 @@ export const verifyOrderPayment = async (
   }
 
   // Process the payment
-  return processOrderPayment(
+  const paid = await processOrderPayment(
     orderId,
     reference,
     verification.amount,
     verification.gatewayResponse
   );
+  // Keep the card for one-tap payments next time (lazy import: savedCard imports this file).
+  import('../buyer/savedCard.service')
+    .then(c => c.saveFromGateway(buyerId, verification.gatewayResponse))
+    .catch(() => {});
+  return paid;
 };
 
 /**
@@ -1462,27 +1664,26 @@ export const processOrderPayment = async (
 };
 
 /**
- * Expire unpaid winner orders after the configured payment window.
- * This prevents stuck pending orders from holding buyer wallet availability forever.
+ * Expire unpaid winner orders after their payment window.
+ * The ₦1,000 bid commitment is kept and the miss is recorded; after
+ * MISSED_PAYMENT_LIMIT misses in a year, bidding pauses for BIDDING_PAUSE_DAYS.
+ * The order then goes to the next highest bidder as a second-chance offer.
  */
 export const expirePendingOrders = async (): Promise<number> => {
-  const expiryDate = new Date(
-    Date.now() - ORDER_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000
-  );
+  const now = new Date();
+  const legacyCutoff = new Date(now.getTime() - ORDER_PAYMENT_EXPIRY_HOURS * HOUR);
 
   const expiredOrders = await prisma.order.findMany({
     where: {
       paymentStatus: 'pending',
       fulfillmentStatus: 'pending',
-      createdAt: { lte: expiryDate },
+      offerExpiresAt: null,
+      OR: [
+        { paymentDueAt: { lte: now } },
+        { paymentDueAt: null, createdAt: { lte: legacyCutoff } },
+      ],
     },
-    select: {
-      id: true,
-      orderNumber: true,
-      auctionId: true,
-      buyerId: true,
-      totalAmount: true,
-    },
+    select: { id: true, orderNumber: true, auctionId: true, buyerId: true, totalAmount: true },
     take: 50,
   });
 
@@ -1492,202 +1693,144 @@ export const expirePendingOrders = async (): Promise<number> => {
     try {
       const result = await prisma.$transaction(async tx => {
         const freshOrder = await tx.order.findFirst({
-          where: {
-            id: order.id,
-            paymentStatus: 'pending',
-            fulfillmentStatus: 'pending',
-          },
+          where: { id: order.id, paymentStatus: 'pending', fulfillmentStatus: 'pending', offerExpiresAt: null },
         });
-
-        if (!freshOrder) return;
+        if (!freshOrder || !order.buyerId) return;
 
         const auction = order.auctionId
-          ? await tx.auction.findUnique({
-              where: { id: order.auctionId },
-              include: { gadget: true },
-            })
+          ? await tx.auction.findUnique({ where: { id: order.auctionId }, include: { gadget: true } })
           : null;
 
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            fulfillmentStatus: 'cancelled',
-            updatedAt: new Date(),
-          },
-        });
-
         let forfeitedAmount = 0;
-        let secondPlaceBidder:
-          | {
-              id: string;
-              fullName: string | null;
-              phoneNumber: string | null;
-              amount: number;
-            }
-          | undefined;
+        let winningAmount = toNumber(freshOrder.totalAmount) - toNumber(freshOrder.deliveryFee);
 
-        if (order.auctionId && order.buyerId) {
+        if (order.auctionId) {
           const winningBid = await tx.bid.findFirst({
-            where: {
-              auctionId: order.auctionId,
-              bidderId: order.buyerId,
-              status: 'won',
-            },
+            where: { auctionId: order.auctionId, bidderId: order.buyerId, status: 'won' },
             include: { bidHold: true },
           });
+          if (winningBid) winningAmount = toNumber(winningBid.amount);
 
+          // Keep the bid commitment (the deterrent the buyer agreed to when bidding).
           if (winningBid?.bidHold?.status === 'held') {
-            const wallet = await tx.wallet.findUnique({
-              where: { id: winningBid.bidHold.walletId! },
-            });
             const heldAmount = toNumber(winningBid.bidHold.amount);
             forfeitedAmount = heldAmount;
-
             await tx.bidHold.update({
               where: { id: winningBid.bidHold.id },
               data: { status: 'charged', releasedAt: new Date() },
             });
-
-            if (wallet) {
-              const { balanceBefore, balanceAfter } = await applyBalanceDelta(
-                tx,
-                wallet.id,
-                -heldAmount
-              );
-
-              await tx.wallet.update({
-                where: { id: wallet.id },
-                data: { isLocked: true },
-              });
-
+            if (winningBid.bidHold.walletId) {
+              const { balanceBefore, balanceAfter } = await applyBalanceDelta(tx, winningBid.bidHold.walletId, -heldAmount);
               await tx.walletTransaction.create({
                 data: {
-                  walletId: wallet.id,
+                  walletId: winningBid.bidHold.walletId,
                   transactionType: 'fee',
                   amount: heldAmount,
                   balanceBefore,
                   balanceAfter,
-                  description: `Forfeited bid commitment for unpaid order ${order.orderNumber}`,
+                  description: `Bid commitment kept for unpaid order ${order.orderNumber}`,
                   status: 'completed',
-                },
-              });
-
-              await tx.walletTransaction.create({
-                data: {
-                  walletId: wallet.id,
-                  transactionType: 'fee',
-                  amount: BID_DEFAULT_PENALTY_AMOUNT,
-                  balanceBefore: balanceAfter,
-                  balanceAfter,
-                  description: `Outstanding reactivation penalty for unpaid order ${order.orderNumber}`,
-                  metadata: {
-                    orderId: order.id,
-                    orderNumber: order.orderNumber,
-                    penaltyReason: 'unpaid_winning_bid',
-                  },
-                  status: 'pending',
                 },
               });
             }
           }
 
-          await tx.user.update({
-            where: { id: order.buyerId },
-            data: { isActive: false },
-          });
-
+          // The buyer is out of this auction; the next bidder gets the offer.
           await tx.bid.updateMany({
-            where: {
-              auctionId: order.auctionId,
-              bidderId: order.buyerId,
-              status: 'won',
-            },
+            where: { auctionId: order.auctionId, bidderId: order.buyerId },
             data: { status: 'withdrawn', isWinning: false },
           });
+        }
 
-          const secondBid = await tx.bid.findFirst({
-            where: {
-              auctionId: order.auctionId,
-              bidderId: { not: order.buyerId },
-            },
-            include: {
-              bidder: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  phoneNumber: true,
-                },
-              },
-            },
-            orderBy: [{ amount: 'desc' }, { bidTime: 'asc' }],
+        const missed = await tx.missedPayment.create({
+          data: {
+            userId: order.buyerId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            auctionId: order.auctionId,
+            categoryId: auction?.gadget?.categoryId ?? null,
+            gadgetTitle: auction?.gadget?.title || 'Item',
+            gadgetImage: auction?.gadget?.images?.[0] ?? null,
+            winningBid: winningAmount,
+            forfeitedAmount,
+            auctionEndedAt: auction?.endTime ?? null,
+          },
+        });
+
+        const since = new Date(now.getTime() - MISSED_PAYMENT_LOOKBACK_DAYS * 24 * HOUR);
+        const strikes = await tx.missedPayment.count({
+          where: { userId: order.buyerId, createdAt: { gte: since } },
+        });
+        let pausedUntil: Date | null = null;
+        if (strikes >= MISSED_PAYMENT_LIMIT) {
+          pausedUntil = new Date(now.getTime() + BIDDING_PAUSE_DAYS * 24 * HOUR);
+          await tx.user.update({ where: { id: order.buyerId }, data: { biddingPausedUntil: pausedUntil } });
+        }
+
+        // Nobody else bid: the order ends here.
+        const nextBid = order.auctionId
+          ? await tx.bid.findFirst({
+              where: { auctionId: order.auctionId, bidderId: { not: order.buyerId }, status: { not: 'withdrawn' } },
+              select: { id: true },
+            })
+          : null;
+        let offer: NextBidderOffer | null = null;
+        if (nextBid) {
+          offer = await reassignToNextBidder(tx, order.id);
+        } else {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { fulfillmentStatus: 'cancelled', updatedAt: new Date() },
           });
-
-          if (secondBid?.bidder) {
-            secondPlaceBidder = {
-              id: secondBid.bidder.id,
-              fullName: secondBid.bidder.fullName,
-              phoneNumber: secondBid.bidder.phoneNumber,
-              amount: toNumber(secondBid.amount),
-            };
-          }
         }
 
         return {
+          missedId: missed.id,
           gadgetTitle: auction?.gadget?.title || 'Item',
-          orderTotal: toNumber(order.totalAmount),
           forfeitedAmount,
-          secondPlaceBidder,
+          strikes,
+          pausedUntil,
+          hasNextBidder: !!nextBid,
+          offer,
         };
       });
+      if (!result) continue;
 
       expiredCount += 1;
-      logger.info(`Expired unpaid order ${order.orderNumber}`);
+      logger.info(`Expired unpaid order ${order.orderNumber} (miss ${result.strikes})`);
 
-      if (order.buyerId) {
-        riskService
-          .recordMissedBidPayment(order.buyerId, order.id, order.orderNumber)
-          .catch(error => {
-            logger.error('Failed to record missed bid payment risk:', error);
-          });
+      riskService.recordMissedBidPayment(order.buyerId, order.id, order.orderNumber).catch(error => {
+        logger.error('Failed to record missed bid payment risk:', error);
+      });
 
-        notificationService
-          .createNotification(
-            order.buyerId,
-            'bid_defaulted',
-            'Winning bid payment missed',
-            `You missed the 24-hour payment window for order #${order.orderNumber}. Your ₦${(result?.forfeitedAmount || 0).toLocaleString()} commitment has been forfeited and your account is suspended. Contact support to pay the ₦${BID_DEFAULT_PENALTY_AMOUNT.toLocaleString()} penalty.`,
-            {
-              orderId: order.id,
-              orderNumber: order.orderNumber,
-              penaltyAmount: BID_DEFAULT_PENALTY_AMOUNT,
-            },
-            ['push']
-          )
-          .catch(error => {
-            logger.error('Failed to notify defaulted buyer:', error);
-          });
-      }
+      const pauseNote = result.pausedUntil
+        ? ` That's ${MISSED_PAYMENT_LIMIT} missed payments, so bidding is paused for ${BIDDING_PAUSE_DAYS} days.`
+        : '';
+      notificationService
+        .createNotification(
+          order.buyerId!,
+          'bid_defaulted',
+          'Your time to pay ran out',
+          `We didn't get payment for the ${result.gadgetTitle}, so it's been offered to the next highest bidder.${pauseNote}`,
+          { missedPaymentId: result.missedId, orderNumber: order.orderNumber },
+          ['push']
+        )
+        .catch(error => logger.error('Failed to notify defaulted buyer:', error));
 
       notificationService
         .notifyAdmins(
           'bid_defaulted',
           'Winning bidder missed payment',
-          `Order #${order.orderNumber} was not paid within 24 hours. The ₦${(result?.forfeitedAmount || 0).toLocaleString()} commitment was forfeited. ${result?.secondPlaceBidder ? 'The second-place offer is being created automatically.' : 'No second-place bidder is available.'}`,
-          {
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            auctionId: order.auctionId,
-            route: '/orders',
-            secondPlaceBidder: result?.secondPlaceBidder,
-          }
+          `Order #${order.orderNumber} wasn't paid in time. ₦${result.forfeitedAmount.toLocaleString()} commitment kept. ${
+            result.hasNextBidder ? 'Offering it to the next bidder.' : 'No other bidder, so the order is cancelled.'
+          }`,
+          { orderId: order.id, orderNumber: order.orderNumber, auctionId: order.auctionId, route: '/orders' }
         )
-        .catch(error => {
-          logger.error('Failed to notify admins about bid default:', error);
-        });
+        .catch(error => logger.error('Failed to notify admins about bid default:', error));
 
-      if (result?.secondPlaceBidder) {
-        offerOrderToSecondPlaceBidder(order.id).catch(error => {
-          logger.error('Failed to create second-place offer:', error);
+      if (result.offer) {
+        notifySecondChance(result.offer).catch(error => {
+          logger.error('Failed to send second-place offer alerts:', error);
         });
       }
     } catch (error) {
@@ -1754,6 +1897,9 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
     seller_id: order.sellerId,
     order_number: order.orderNumber,
     total_amount: toNumber(order.totalAmount),
+    delivery_fee: toNumber(order.deliveryFee),
+    item_amount: toNumber(order.totalAmount) - toNumber(order.deliveryFee),
+    delivery_method: order.deliveryMethod ?? 'delivery',
     platform_fee: toNumber(order.platformFee),
     seller_payout: toNumber(order.sellerPayout),
     payout_status: order.payoutStatus,
@@ -1764,17 +1910,34 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
     shipping_address: order.shippingAddress,
     tracking_number: order.trackingNumber,
     disputes: order.disputes?.map(formatDispute),
-    open_dispute: order.disputes?.some((d: any) =>
-      ['open', 'investigating'].includes(d.status)
-    ),
+    open_dispute: order.disputes?.some((d: any) => ['open', 'investigating'].includes(d.status)),
+    refund_pending: order.paymentStatus !== 'refunded' && !!order.disputes?.some((d: any) => d.outcome === 'refund'),
     created_at: order.createdAt?.toISOString(),
     updated_at: order.updatedAt?.toISOString(),
+    payment_due_at: paymentDueOf(order)?.toISOString(),
+    offer_expires_at: order.offerExpiresAt?.toISOString() ?? null,
+    buyer_confirmed_at: order.buyerConfirmedAt?.toISOString() ?? null,
+    /** Delivered but not confirmed: we confirm for the buyer at this time. */
+    confirm_by:
+      order.fulfillmentStatus === 'delivered' && !order.buyerConfirmedAt && deliveredAtOf(order)
+        ? new Date(deliveredAtOf(order)!.getTime() + CONFIRM_WINDOW_HOURS * HOUR).toISOString()
+        : null,
+    /** Paid, not at the hub yet: the seller drops it off by this time. */
+    dropoff_due_at: dropoffDueOf(order)?.toISOString() ?? null,
+    /** Hub check score ("7 of 7 checks"), never who did it. */
+    inspection: inspectionSummary(order.inspection),
+    events: order.events?.map((e: any) => ({
+      kind: e.kind,
+      status: e.status,
+      at: e.createdAt?.toISOString(),
+    })),
     auction: order.auction
       ? {
           id: order.auction.id,
           starting_price: toNumber(order.auction.startingPrice),
           current_price: toNumber(order.auction.currentPrice),
           end_time: order.auction.endTime?.toISOString(),
+          total_bids: order.auction.totalBids ?? 0,
         }
       : undefined,
     gadget: order.auction?.gadget
@@ -1786,6 +1949,7 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
           model: order.auction.gadget.model,
           condition: order.auction.gadget.condition,
           images: order.auction.gadget.images,
+          category_id: order.auction.gadget.categoryId ?? null,
         }
       : undefined,
     buyer: order.buyer
@@ -1803,4 +1967,330 @@ const formatOrderWithDetails = (order: any): OrderWithDetails => {
         }
       : undefined,
   } as unknown as OrderWithDetails;
+};
+
+/**
+ * Buyer picks home delivery (flat fee) or free pickup at the hub. Only before paying.
+ */
+export const setDeliveryMethod = async (
+  orderId: string,
+  buyerId: string,
+  method: 'delivery' | 'pickup'
+): Promise<Order> => {
+  const order = await prisma.order.findFirst({ where: { id: orderId, buyerId } });
+  if (!order) throw new Error('Order not found or unauthorized');
+  if (order.paymentStatus !== 'pending') throw new Error('This order is already paid');
+  const itemAmount = toNumber(order.totalAmount) - toNumber(order.deliveryFee);
+  const deliveryFee = method === 'pickup' ? 0 : config.deliveryFee;
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      deliveryMethod: method,
+      deliveryFee,
+      totalAmount: itemAmount + deliveryFee,
+      updatedAt: new Date(),
+    },
+  });
+  return transformOrder(updated);
+};
+
+/* ---------------- Buyer order page extras ---------------- */
+
+const titleCase = (s: string) => s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase();
+
+/** How the buyer paid, e.g. "Visa ending 4242", "Bank transfer", "Wallet". Null when unknown. */
+export const paymentMethodLabel = async (
+  orderId: string,
+  orderNumber: string
+): Promise<string | null> => {
+  const tx = await prisma.paymentTransaction.findFirst({
+    where: { status: 'success', metadata: { path: ['order_id'], equals: orderId } },
+    orderBy: { updatedAt: 'desc' },
+  });
+  if (tx) {
+    const raw = (tx.gatewayResponse ?? {}) as Record<string, any>;
+    const gr = (raw.data && typeof raw.data === 'object' ? raw.data : raw) as Record<string, any>;
+    const auth = gr.authorization ?? gr.cardDetails ?? {};
+    const last4 = auth.last4 ?? auth.last_4digits;
+    const brand = auth.card_type ?? auth.cardType ?? auth.brand;
+    const channel = String(gr.channel ?? gr.paymentMethod ?? tx.paymentMethod ?? '').toLowerCase();
+    if (last4) return `${brand ? titleCase(String(brand)) : 'Card'} ending ${last4}`;
+    if (channel.includes('transfer')) return 'Bank transfer';
+    if (channel.includes('ussd')) return 'USSD';
+    if (channel.includes('card')) return 'Card';
+    return null;
+  }
+  const walletPayment = await prisma.walletTransaction.findFirst({
+    where: { reference: `${orderNumber}-BUYER-PAYMENT`, transactionType: 'purchase' },
+    select: { id: true },
+  });
+  return walletPayment ? 'Wallet' : null;
+};
+
+/** Emails the buyer a receipt for a paid order. */
+export const emailReceipt = async (orderId: string, buyerId: string): Promise<{ email: string }> => {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, buyerId },
+    include: {
+      auction: { include: { gadget: { select: { title: true } } } },
+      buyer: { select: { email: true } },
+      events: { where: { kind: 'payment', status: 'paid' }, orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+  });
+  if (!order) throw new Error('Order not found or unauthorized');
+  if (order.paymentStatus !== 'paid') throw new Error("There's no receipt yet. It's ready once you've paid.");
+  const email = order.buyer?.email;
+  if (!email) {
+    throw new Error('Add an email to your account first, then try again.');
+  }
+
+  const sent = await emailService.sendOrderReceiptEmail(email, {
+    orderNumber: order.orderNumber,
+    itemTitle: order.auction?.gadget?.title ?? 'Your gadget',
+    itemAmount: toNumber(order.totalAmount) - toNumber(order.deliveryFee),
+    deliveryFee: toNumber(order.deliveryFee),
+    deliveryMethod: order.deliveryMethod === 'pickup' ? 'pickup' : 'delivery',
+    total: toNumber(order.totalAmount),
+    paidWith: await paymentMethodLabel(order.id, order.orderNumber),
+    paidAt: order.events[0]?.createdAt ?? order.updatedAt ?? null,
+  });
+  if (!sent) throw new Error("We couldn't send the receipt just now. Try again in a minute.");
+  return { email };
+};
+
+/* ---------------- Paying: checks, bank transfer, USSD ---------------- */
+
+/** Throws a plain-words reason when the order can't be paid right now. */
+const assertPayable = (order: any) => {
+  if (order.paymentStatus === 'paid') throw new Error('This order is already paid.');
+  if (order.fulfillmentStatus === 'cancelled') throw new Error('This order was cancelled, so it can\'t be paid.');
+  if (order.offerExpiresAt) throw new Error('Accept the offer first, then pay.');
+  const due = paymentDueOf(order);
+  if (due && due.getTime() <= Date.now()) throw new Error('The time to pay for this order has passed.');
+  if (order.deliveryMethod !== 'pickup' && !hasCompleteShippingAddress(order.shippingAddress)) {
+    throw new Error('Add a delivery address before paying for this order.');
+  }
+};
+
+const loadPayableOrder = async (orderId: string, buyerId: string) => {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, buyerId },
+    include: { auction: { include: { gadget: { select: { title: true } } } } },
+  });
+  if (!order) throw new Error('Order not found or unauthorized');
+  assertPayable(order);
+  return order;
+};
+
+const recordPendingCharge = (buyerId: string, order: any, reference: string, method: string) =>
+  prisma.paymentTransaction.create({
+    data: {
+      userId: buyerId,
+      paymentGateway: 'paystack',
+      gatewayReference: reference,
+      amount: toNumber(order.totalAmount),
+      currency: 'NGN',
+      paymentMethod: method,
+      status: 'pending',
+      metadata: { purpose: 'order_payment', order_id: order.id, order_number: order.orderNumber },
+    },
+  });
+
+const chargeMetadata = (buyerId: string, order: any) => ({
+  user_id: buyerId,
+  purpose: 'order_payment',
+  order_id: order.id,
+  order_number: order.orderNumber,
+  gadget_title: order.auction?.gadget?.title || 'Gadget',
+});
+
+/** A one-time account number to pay this order by bank transfer. */
+export const startBankTransfer = async (orderId: string, buyerId: string, email: string) => {
+  const order = await loadPayableOrder(orderId, buyerId);
+  // The account never outlives the payment window.
+  const due = paymentDueOf(order)!;
+  const expiresAt = new Date(Math.min(Date.now() + TRANSFER_ACCOUNT_MINUTES * 60_000, due.getTime()));
+  const charge = await paystackService.chargeBankTransfer(
+    email,
+    toNumber(order.totalAmount),
+    expiresAt,
+    chargeMetadata(buyerId, order)
+  );
+  await recordPendingCharge(buyerId, order, charge.reference, 'bank_transfer');
+  logger.info(`Bank transfer account issued for ${order.orderNumber}`);
+  return {
+    reference: charge.reference,
+    bank_name: charge.bankName,
+    account_number: charge.accountNumber,
+    account_name: charge.accountName,
+    amount: toNumber(order.totalAmount),
+    expires_at: charge.expiresAt,
+  };
+};
+
+/** A USSD code to pay this order from the buyer's bank. */
+export const startUssd = async (
+  orderId: string,
+  buyerId: string,
+  email: string,
+  bank: paystackService.UssdBankCode
+) => {
+  if (!(bank in paystackService.USSD_BANKS)) throw new Error('Choose GTBank, Zenith Bank or UBA.');
+  const order = await loadPayableOrder(orderId, buyerId);
+  const charge = await paystackService.chargeUssd(email, toNumber(order.totalAmount), bank, chargeMetadata(buyerId, order));
+  await recordPendingCharge(buyerId, order, charge.reference, 'ussd');
+  logger.info(`USSD code issued for ${order.orderNumber} (${bank})`);
+  return {
+    reference: charge.reference,
+    ussd_code: charge.ussdCode,
+    bank: paystackService.USSD_BANKS[bank],
+    amount: toNumber(order.totalAmount),
+  };
+};
+
+/**
+ * Has the money for this reference arrived? Settles the order when it has.
+ * "pending" is normal for transfers and USSD until the bank confirms.
+ */
+export const checkPayment = async (
+  orderId: string,
+  buyerId: string,
+  reference: string
+): Promise<{ state: 'paid' | 'pending' | 'failed' }> => {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, buyerId },
+    select: { id: true, paymentStatus: true },
+  });
+  if (!order) throw new Error('Order not found or unauthorized');
+  if (order.paymentStatus === 'paid') return { state: 'paid' };
+
+  const tx = await prisma.paymentTransaction.findFirst({
+    where: { gatewayReference: reference, userId: buyerId, metadata: { path: ['order_id'], equals: orderId } },
+    select: { id: true },
+  });
+  if (!tx) throw new Error("We couldn't find that payment. Start again.");
+
+  const result = await paystackService.paymentState(reference);
+  if (result.state === 'paid') {
+    await processOrderPayment(orderId, reference, result.amount, result.gatewayResponse);
+    return { state: 'paid' };
+  }
+  return { state: result.state };
+};
+
+/* ---------------- Second-chance offers ---------------- */
+
+/** The next bidder takes the offer: they now have a fresh payment window. */
+export const acceptSecondChance = async (orderId: string, buyerId: string): Promise<Order> => {
+  const updated = await prisma.order.updateMany({
+    where: { id: orderId, buyerId, paymentStatus: 'pending', offerExpiresAt: { gt: new Date() } },
+    data: {
+      offerExpiresAt: null,
+      paymentDueAt: new Date(Date.now() + ORDER_PAYMENT_EXPIRY_HOURS * HOUR),
+      updatedAt: new Date(),
+    },
+  });
+  if (updated.count === 0) throw new Error('This offer has ended.');
+  logger.info(`Second-chance offer accepted for order ${orderId}`);
+  return transformOrder(await prisma.order.findUniqueOrThrow({ where: { id: orderId } }));
+};
+
+/**
+ * The next bidder says no (or lets the offer run out). It's free and doesn't count as a
+ * missed payment; the offer moves on to the bidder after them, or the order is cancelled.
+ */
+const passOnOffer = async (orderId: string, buyerId: string, reason: 'declined' | 'expired') => {
+  const offer = await prisma.$transaction(async tx => {
+    const order = await tx.order.findFirst({
+      where: { id: orderId, buyerId, paymentStatus: 'pending', NOT: { offerExpiresAt: null } },
+    });
+    if (!order) return null;
+    if (order.auctionId) {
+      await tx.bid.updateMany({
+        where: { auctionId: order.auctionId, bidderId: buyerId },
+        data: { status: 'withdrawn', isWinning: false },
+      });
+    }
+    const next = order.auctionId
+      ? await tx.bid.findFirst({
+          where: { auctionId: order.auctionId, bidderId: { not: buyerId }, status: { not: 'withdrawn' } },
+          select: { id: true },
+        })
+      : null;
+    if (next) return reassignToNextBidder(tx, orderId);
+    await tx.order.update({
+      where: { id: orderId },
+      data: { fulfillmentStatus: 'cancelled', offerExpiresAt: null, updatedAt: new Date() },
+    });
+    return 'cancelled' as const;
+  });
+  if (!offer) return false;
+  logger.info(`Second-chance offer ${reason} for order ${orderId}`);
+  if (offer === 'cancelled') {
+    notificationService
+      .notifyAdmins('bid_defaulted', 'No bidder left', `Every remaining bidder passed on order ${orderId}; it was cancelled.`, {
+        orderId,
+        route: '/orders',
+      })
+      .catch(() => {});
+  } else {
+    notifySecondChance(offer).catch(err => logger.error('Failed to send second-place offer alerts:', err));
+  }
+  return true;
+};
+
+export const declineSecondChance = async (orderId: string, buyerId: string) => {
+  if (!(await passOnOffer(orderId, buyerId, 'declined'))) throw new Error('This offer has already ended.');
+  return { declined: true };
+};
+
+/** Offers nobody answered in time move on (job). */
+export const expireSecondChanceOffers = async (): Promise<number> => {
+  const stale = await prisma.order.findMany({
+    where: { paymentStatus: 'pending', offerExpiresAt: { lte: new Date() } },
+    select: { id: true, buyerId: true },
+    take: 50,
+  });
+  let n = 0;
+  for (const o of stale) {
+    if (o.buyerId && (await passOnOffer(o.id, o.buyerId, 'expired').catch(() => false))) n += 1;
+  }
+  return n;
+};
+
+/* ---------------- After delivery: confirm or we confirm for you ---------------- */
+
+/** Delivered orders the buyer hasn't confirmed get confirmed CONFIRM_WINDOW_HOURS after delivery (job). */
+export const autoConfirmDeliveries = async (): Promise<number> => {
+  const cutoff = new Date(Date.now() - CONFIRM_WINDOW_HOURS * HOUR);
+  const due = await prisma.order.findMany({
+    where: {
+      fulfillmentStatus: 'delivered',
+      buyerConfirmedAt: null,
+      // Not while a case is open, nor after a refund was decided (the item is coming back).
+      disputes: { none: { OR: [{ status: { in: ['open', 'investigating'] } }, { outcome: 'refund' }] } },
+      events: { some: { kind: 'fulfillment', status: 'delivered', createdAt: { lte: cutoff } } },
+    },
+    take: 50,
+  });
+  for (const order of due) {
+    await prisma.$transaction(async tx => {
+      await tx.order.update({ where: { id: order.id }, data: { buyerConfirmedAt: new Date(), updatedAt: new Date() } });
+      await markPayoutReady(tx, order);
+    });
+    logger.info(`Auto-confirmed delivery for order ${order.orderNumber}`);
+    if (order.buyerId) {
+      notificationService
+        .createNotification(
+          order.buyerId,
+          'order_delivered',
+          'We confirmed your delivery',
+          `It's been ${CONFIRM_WINDOW_HOURS} hours since order ${order.orderNumber} was delivered, so we've paid the seller. Need help? Contact support.`,
+          { orderId: order.id, orderNumber: order.orderNumber },
+          ['push']
+        )
+        .catch(() => {});
+    }
+  }
+  return due.length;
 };

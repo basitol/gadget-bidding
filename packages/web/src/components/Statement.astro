@@ -1,0 +1,86 @@
+<section data-scene aria-label="Why Gadgets Bidding" style="border-bottom: 1px solid #E6EAF2; position: relative">
+  <div data-scene-pin class="scene-pin">
+    <div class="scene-copy">
+      <span style="font: 500 12px 'JetBrains Mono', monospace; letter-spacing: 0.14em; color: #5E6B8C">WHY GADGETS BIDDING</span>
+      <p data-scene-text style="margin: 0; font-family: 'Sora', sans-serif; font-size: clamp(1.6rem, 2.8vw, 2.25rem); line-height: 1.45; letter-spacing: -0.02em; font-weight: 500; color: #9AA6C0">Gadgets Bidding gives you <span style="color: #0B1220; background: #EEF3FF; border-radius: 10px; padding: 0 10px">verified sellers</span>, <span style="color: #0B1220; background: #EEF3FF; border-radius: 10px; padding: 0 10px">inspected gadgets</span> and <span style="color: #0B1220; background: #FFF1E7; border-radius: 10px; padding: 0 10px">protected payments</span>. No meetups, no guesswork, no paying for a phone you haven't seen checked.</p>
+    </div>
+    <div class="scene-stage" aria-hidden="true">
+      <canvas data-scene-canvas></canvas>
+      <img data-scene-fallback src="/img/devices/phone.svg" alt="" width="280" height="280" />
+    </div>
+  </div>
+</section>
+
+<style>
+  .scene-pin {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 88px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 40px;
+  }
+  .scene-copy {
+    flex: 1 1 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .scene-stage {
+    flex: 1 1 420px;
+    position: relative;
+    height: min(72vh, 620px);
+    min-height: 420px;
+    border-radius: 28px;
+    background: radial-gradient(120% 90% at 50% 40%, #f4f7ff 0%, #eef3ff 55%, #e4ebff 100%);
+    overflow: hidden;
+  }
+  .scene-stage canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .scene-stage img {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    transition: opacity 400ms ease;
+  }
+  [data-scene].is-3d canvas {
+    opacity: 1;
+  }
+  [data-scene].is-3d [data-scene-fallback] {
+    opacity: 0;
+  }
+  /* Pinned on large screens: the scene plays while the section holds still. */
+  @media (min-width: 900px) {
+    .scene-pin {
+      min-height: 100vh;
+      padding-top: 64px;
+      padding-bottom: 64px;
+    }
+  }
+</style>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-scene]');
+  const canvas = root?.querySelector<HTMLCanvasElement>('[data-scene-canvas]');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (root && canvas && !reduced) {
+    // Load three.js only when the section is about to be seen.
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        import('../scripts/scene3d').then(({ startScene }) => startScene(root, canvas)).catch(() => {});
+      },
+      { rootMargin: '600px 0px' }
+    );
+    io.observe(root);
+  }
+</script>

@@ -1,0 +1,20 @@
+---
+import type { Icon3DName } from '../data/icons';
+
+interface Props {
+  name: Icon3DName;
+  /** Rendered size in px. */
+  size?: number;
+}
+
+const { name, size = 44 } = Astro.props;
+---
+
+<img class="icon3d" src={`/img/icons/${name}.png`} width={size} height={size} alt="" loading="lazy" decoding="async" />
+
+<style>
+  .icon3d {
+    flex-shrink: 0;
+    object-fit: contain;
+  }
+</style>

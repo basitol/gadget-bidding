@@ -16,6 +16,7 @@ import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { addressService, orderService } from '../../services';
 import { useAuthStore } from '../../store';
+import { realPhone } from '../../utils';
 import { ShippingAddress, UserAddress } from '../../types';
 import { useToastStore } from '../../store/toastStore';
 
@@ -79,11 +80,12 @@ export const ShippingAddressScreen: React.FC<Props> = ({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuthStore();
+  // Opened from Profile (just the address book) or for an order (also sets that order's address).
   const { orderId, orderNumber, returnToPayment, amount, gadgetTitle } =
-    route.params;
+    route.params ?? ({} as any);
 
   const [fullName, setFullName] = useState(user?.full_name || '');
-  const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '');
+  const [phoneNumber, setPhoneNumber] = useState(realPhone(user));
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
   const [city, setCity] = useState('');
@@ -101,7 +103,7 @@ export const ShippingAddressScreen: React.FC<Props> = ({
 
   const fillAddress = (address: UserAddress | ShippingAddress) => {
     setFullName(address.full_name || user?.full_name || '');
-    setPhoneNumber(address.phone_number || user?.phone_number || '');
+    setPhoneNumber(address.phone_number || realPhone(user));
     setAddressLine1(address.address_line1 || '');
     setAddressLine2(address.address_line2 || '');
     setCity(address.city || '');
@@ -118,7 +120,7 @@ export const ShippingAddressScreen: React.FC<Props> = ({
     setSelectedAddressId(null);
     setLabel('Home');
     setFullName(user?.full_name || '');
-    setPhoneNumber(user?.phone_number || '');
+    setPhoneNumber(realPhone(user));
     setAddressLine1('');
     setAddressLine2('');
     setCity('');
@@ -237,7 +239,7 @@ export const ShippingAddressScreen: React.FC<Props> = ({
         );
       });
 
-      await orderService.updateShippingAddress(orderId, address);
+      if (orderId) await orderService.updateShippingAddress(orderId, address);
 
       if (returnToPayment) {
         navigation.replace('Payment', {

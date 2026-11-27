@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Nigerian gadget auction platform with real-time bidding",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "postinstall": "pnpm --filter @gadget-bidding/shared build",
     "dev:backend": "pnpm --filter backend dev",

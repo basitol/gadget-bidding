@@ -1,15 +1,16 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../constants';
 import { useToastStore } from '../store/toastStore';
 
-const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  error: 'alert-circle',
-  success: 'checkmark-circle',
-  info: 'information-circle',
+/** Toast design: white card, soft shadow, icon on a pale round badge, dark medium text. */
+const TONES: Record<string, { icon: keyof typeof Ionicons.glyphMap; fg: string; bg: string }> = {
+  success: { icon: 'checkmark', fg: '#2E9E5E', bg: '#EEF9F2' },
+  error: { icon: 'alert', fg: '#D9536A', bg: '#FDF0F2' },
+  info: { icon: 'information', fg: '#4F7BFF', bg: '#EEF2FF' },
 };
 
 /**
@@ -40,12 +41,7 @@ export const Toast: React.FC = () => {
     ]).start();
   }, [visible, translateY, opacity]);
 
-  const tone =
-    type === 'success'
-      ? colors.success
-      : type === 'info'
-        ? colors.primary
-        : colors.error;
+  const tone = TONES[type] ?? TONES.info;
 
   return (
     <SafeAreaView
@@ -56,8 +52,6 @@ export const Toast: React.FC = () => {
         style={[
           styles.toast,
           {
-            borderColor: tone + '55',
-            backgroundColor: colors.surface,
             transform: [{ translateY }],
             opacity,
           },
@@ -68,7 +62,9 @@ export const Toast: React.FC = () => {
           activeOpacity={0.8}
           onPress={hide}
         >
-          <Ionicons name={ICONS[type]} size={20} color={tone} />
+          <View style={[styles.badge, { backgroundColor: tone.bg }]}>
+            <Ionicons name={tone.icon} size={16} color={tone.fg} />
+          </View>
           <Text style={styles.text} numberOfLines={3}>
             {message}
           </Text>
@@ -90,26 +86,36 @@ const createStyles = (colors: ThemeColors) =>
     toast: {
       marginHorizontal: spacing.lg,
       marginTop: spacing.sm,
-      borderRadius: borderRadius.lg,
+      borderRadius: 18,
+      backgroundColor: '#FFFFFF',
       borderWidth: 1,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.25,
-      shadowRadius: 10,
+      borderColor: 'rgba(255,255,255,0.9)',
+      shadowColor: '#141C3C',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.1,
+      shadowRadius: 20,
       elevation: 8,
     },
     content: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
+      gap: 12,
+      paddingVertical: 12,
+      paddingLeft: 12,
+      paddingRight: 18,
+    },
+    badge: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     text: {
       flex: 1,
-      color: colors.text,
-      fontSize: fonts.sizes.sm,
+      color: '#1C1F2A',
+      fontSize: 15,
       fontFamily: fonts.medium,
-      lineHeight: 18,
+      lineHeight: 20,
     },
   });

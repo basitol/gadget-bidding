@@ -1,0 +1,119 @@
+---
+import Phone from './Phone.astro';
+import Gadget from './Gadget.astro';
+
+interface Props {
+  class?: string;
+}
+
+const { class: className } = Astro.props;
+---
+
+<Phone class={className}>
+  <span class="title">Order status</span>
+  <div class="won">
+    <span class="art"><Gadget kind="console" size={40} /></span>
+    <span class="col">
+      <span class="label">YOU WON</span>
+      <span class="name">PS5 Slim</span>
+      <span class="price">₦520,000</span>
+    </span>
+  </div>
+  <div class="status">
+    <div class="done"><i></i>Paid with Paystack</div>
+    <div class="done"><i></i>At our hub</div>
+    <div class="now"><i></i>Inspection in progress</div>
+    <div class="todo"><i></i>Delivered to you</div>
+  </div>
+  <span class="keep">Keep browsing</span>
+</Phone>
+
+<style>
+  .title {
+    margin-top: 4px;
+    font: 600 15px var(--display);
+  }
+
+  .won {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border-radius: 14px;
+    background: var(--blue);
+  }
+
+  .art {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 44px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .label {
+    font: 500 9px var(--mono);
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.75);
+  }
+
+  .name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .price {
+    font-size: 14px;
+  }
+
+  .status {
+    padding: 10px;
+    border: 1px solid #1c2a52;
+    border-radius: 14px;
+    background: var(--phone-card);
+  }
+
+  .status div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 10px;
+  }
+
+  .status i {
+    width: 8px;
+    height: 8px;
+    border: 1.5px solid #3a4666;
+    border-radius: 50%;
+  }
+
+  .done i {
+    border-color: var(--green-dot);
+    background: var(--green-dot);
+  }
+
+  .now i {
+    border-color: var(--blue);
+  }
+
+  .todo {
+    color: var(--phone-muted);
+  }
+
+  .keep {
+    display: grid;
+    place-items: center;
+    height: 30px;
+    border-radius: 999px;
+    background: var(--phone-raised);
+    font-size: 10px;
+    font-weight: 700;
+  }
+</style>

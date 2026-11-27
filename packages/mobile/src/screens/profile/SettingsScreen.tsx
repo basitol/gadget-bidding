@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
 import { useAuthStore } from '../../store';
+import { contactLabel, realPhone } from '../../utils';
+import { useFocusEffect } from '@react-navigation/native';
+import {
+  AlertPrefs,
+  PushPermission,
+  getAlertPrefs,
+  getPushPermission,
+  openSystemNotificationSettings,
+  registerForPush,
+  saveAlertPrefs,
+} from '../../services/pushNotifications';
+import { useToastStore } from '../../store/toastStore';
 
 type SettingsScreenProps = {
   navigation: NativeStackNavigationProp<any>;
@@ -190,10 +202,43 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { user, interfaceType, logout } = useAuthStore();
   const isSeller = interfaceType === 'seller';
 
-  // Independent toggles — each has its own state
-  const [bidAlerts, setBidAlerts] = useState(true);
-  const [orderAlerts, setOrderAlerts] = useState(true);
-  const [marketingAlerts, setMarketingAlerts] = useState(true);
+  // Alert switches are saved on the backend, which checks them before sending.
+  const [prefs, setPrefs] = useState<AlertPrefs>({ bids: true, orders: true, marketing: false });
+  const [permission, setPermission] = useState<PushPermission>('undetermined');
+
+  useEffect(() => {
+    getAlertPrefs().then(setPrefs).catch(() => {});
+  }, []);
+
+  // Re-check when returning from the iOS Settings app.
+  useFocusEffect(
+    useCallback(() => {
+      getPushPermission().then(setPermission).catch(() => {});
+    }, [])
+  );
+
+  const togglePref = async (key: keyof AlertPrefs, value: boolean) => {
+    const previous = prefs;
+    setPrefs({ ...prefs, [key]: value });
+    try {
+      setPrefs(await saveAlertPrefs({ [key]: value }));
+    } catch {
+      setPrefs(previous);
+      useToastStore.getState().show("Couldn't save that. Try again.", 'error');
+    }
+  };
+
+  const handlePushRow = async () => {
+    if (permission === 'denied') return openSystemNotificationSettings();
+    setPermission(await registerForPush({ ask: true }));
+  };
+
+  const pushSubtitle =
+    permission === 'granted'
+      ? 'On for this phone'
+      : permission === 'denied'
+        ? 'Off in your phone settings. Tap to open them.'
+        : 'Tap to turn on alerts for this phone';
 
   const switchColors = {
     trackColor: { false: colors.border, true: colors.primary },
@@ -238,7 +283,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             {...rowProps}
             icon="person-outline"
             title={user?.full_name || 'Seller'}
-            subtitle={user?.phone_number}
+            subtitle={contactLabel(user)}
           />
           <View style={styles.divider} />
           <SettingRow
@@ -257,7 +302,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             icon="shield-checkmark-outline"
             title="Verification"
             subtitle={
-              user?.is_verified ? 'Phone verified' : 'Verification required'
+              user?.is_verified ? (realPhone(user) ? 'Phone verified' : 'Email verified') : 'Verification required'
             }
           />
         </View>
@@ -301,14 +346,27 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <View style={styles.card}>
           <SettingRow
             {...rowProps}
+            icon={permission === 'granted' ? 'notifications-outline' : 'notifications-off-outline'}
+            title="Push notifications"
+            subtitle={pushSubtitle}
+            onPress={permission === 'granted' ? undefined : handlePushRow}
+            right={
+              permission === 'granted' ? (
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+              ) : undefined
+            }
+          />
+          <View style={styles.divider} />
+          <SettingRow
+            {...rowProps}
             icon="flash-outline"
             title={isSeller ? 'New bids & outbids' : 'Bid updates'}
-            subtitle="Get notified when prices change"
+            subtitle="Outbid, ending soon and wins"
             right={
               <Switch
                 key="bid-alerts"
-                value={bidAlerts}
-                onValueChange={setBidAlerts}
+                value={prefs.bids}
+                onValueChange={v => togglePref('bids', v)}
                 {...switchColors}
               />
             }
@@ -322,8 +380,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             right={
               <Switch
                 key="order-alerts"
-                value={orderAlerts}
-                onValueChange={setOrderAlerts}
+                value={prefs.orders}
+                onValueChange={v => togglePref('orders', v)}
                 {...switchColors}
               />
             }
@@ -337,8 +395,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             right={
               <Switch
                 key="marketing-alerts"
-                value={marketingAlerts}
-                onValueChange={setMarketingAlerts}
+                value={prefs.marketing}
+                onValueChange={v => togglePref('marketing', v)}
                 {...switchColors}
               />
             }
@@ -358,8 +416,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             {...rowProps}
             icon="help-circle-outline"
             title="Help & support"
-            subtitle="support@gadgetbid.ng"
-            onPress={() => Linking.openURL('mailto:support@gadgetbid.ng')}
+            subtitle="help@gadgetsbidding.com"
+            onPress={() => Linking.openURL('mailto:help@gadgetsbidding.com')}
           />
           <View style={styles.divider} />
           <SettingRow
@@ -390,7 +448,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </View>
 
         <Text style={styles.footer}>
-          GadgetBid · {isSeller ? 'Seller' : 'Buyer'} settings
+          Gadgets Bidding · {isSeller ? 'Seller' : 'Buyer'} settings
         </Text>
       </ScrollView>
     </SafeAreaView>

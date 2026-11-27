@@ -55,7 +55,7 @@ export const sendOTPSMS = async (
   phoneNumber: string,
   otp: string
 ): Promise<boolean> => {
-  const message = `Your GadgetBid verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
+  const message = `Your Gadgets Bidding verification code is: ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
   return sendSMS({ to: phoneNumber, message });
 };
 
@@ -66,6 +66,6 @@ export const sendWelcomeSMS = async (
   phoneNumber: string,
   name: string
 ): Promise<boolean> => {
-  const message = `Welcome to GadgetBid, ${name}. Your account is ready.`;
+  const message = `Welcome to Gadgets Bidding, ${name}. Your account is ready.`;
   return sendSMS({ to: phoneNumber, message });
 };

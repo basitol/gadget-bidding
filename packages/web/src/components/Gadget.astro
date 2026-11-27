@@ -1,0 +1,22 @@
+---
+import type { GadgetKind } from '../data/auctions';
+
+interface Props {
+  kind: GadgetKind;
+  /** Rendered size in px (device art is square). */
+  size: number;
+}
+
+// Placeholder device art from the brand pack, used until real product photos exist.
+const files: Record<GadgetKind, string> = {
+  phone: 'phone',
+  laptop: 'laptop',
+  headphones: 'headphones',
+  console: 'gamepad',
+  watch: 'watch',
+};
+
+const { kind, size } = Astro.props;
+---
+
+<img src={`/img/devices/${files[kind]}.svg`} width={size} height={size} alt="" loading="lazy" decoding="async" />

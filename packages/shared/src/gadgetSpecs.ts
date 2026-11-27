@@ -74,6 +74,7 @@ export type GadgetSpecKey =
   | 'storage'
   | 'ram'
   | 'warranty'
+  | 'warranty_until'
   | 'included'
   | 'battery_health'
   | 'cycle_count'
@@ -89,6 +90,7 @@ export const GADGET_SPEC_LABELS: Record<GadgetSpecKey, string> = {
   storage: 'Storage',
   ram: 'RAM',
   warranty: 'Warranty',
+  warranty_until: 'Warranty ends',
   included: "What's included",
   battery_health: 'Battery health',
   cycle_count: 'Cycle count',
@@ -106,6 +108,7 @@ export const GADGET_SPEC_ORDER: GadgetSpecKey[] = [
   'storage',
   'ram',
   'warranty',
+  'warranty_until',
   'included',
   'battery_health',
   'cycle_count',
@@ -142,6 +145,12 @@ export function formatSpecValue(key: string, value: unknown): string {
   }
   if (key === 'cycle_count' && typeof value === 'number') {
     return String(value);
+  }
+  // "2027-09-18" → "Sep 18, 2027" (a calendar date, so no time-zone shift).
+  if (key === 'warranty_until' && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split('-').map(Number);
+    const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+    return month ? `${month} ${d}, ${y}` : value;
   }
   if (key === 'included' && Array.isArray(value)) {
     return value

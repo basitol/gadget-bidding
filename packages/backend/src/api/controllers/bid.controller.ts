@@ -10,6 +10,10 @@ import {
 } from '../../services/socket/socket.service';
 import * as auditService from '../../services/audit/audit.service';
 import logger from '../../utils/logger';
+import { bidderLabel } from '../../utils/bidderLabel';
+import * as autoBidService from '../../services/buyer/autobid.service';
+import { isGateError } from '../../services/app/appConfig.service';
+import { sendGateError } from '../middlewares/appGate.middleware';
 
 /**
  * Place a bid on an auction
@@ -36,7 +40,7 @@ export const placeBid = async (req: Request, res: Response) => {
       bid,
       bidder: {
         id: req.user.user_id,
-        full_name: (req.user as any).full_name || 'Anonymous',
+        full_name: bidderLabel(req.user.user_id),
       },
       amount: amount,
       timestamp: new Date(),
@@ -52,10 +56,19 @@ export const placeBid = async (req: Request, res: Response) => {
         newHighestBid: amount,
         message: `You've been outbid! New highest bid: ₦${amount.toLocaleString()}`,
       });
+      // Saved notification + push to their phone (socket only reaches an open app).
+      notificationService
+        .notifyOutbidForAuction(previousHighBidderId, auction_id, amount)
+        .catch(err => logger.error('Outbid notification failed:', err));
     }
+
+    // Anyone with an auto-bid on this auction may answer straight away.
+    void autoBidService.resolveAutoBids(auction_id);
 
     sendSuccess(res, bid, 'Bid placed successfully', 201);
   } catch (error: any) {
+    // Maintenance started between the route check and the bid: same screen as the route gate.
+    if (isGateError(error)) return sendGateError(res, error);
     logger.error('Place bid error:', error);
     auditService.recordBidFailed(
       req,
@@ -131,6 +144,7 @@ export const buyNow = async (req: Request, res: Response) => {
       200
     );
   } catch (error: any) {
+    if (isGateError(error)) return sendGateError(res, error);
     logger.error('Buy now error:', error);
     auditService.recordBidFailed(
       req,
@@ -155,7 +169,12 @@ export const getBidById = async (req: Request, res: Response) => {
       return sendError(res, 'Bid not found', 404);
     }
 
-    sendSuccess(res, bid);
+    // Bidders are anonymous to everyone else (see utils/bidderLabel).
+    const mine = !!req.user && bid.bidder?.id === req.user.user_id;
+    sendSuccess(
+      res,
+      mine ? bid : { ...bid, bidder: { id: '', full_name: bidderLabel(bid.bidder?.id), avatar_url: undefined } }
+    );
   } catch (error: any) {
     logger.error('Get bid error:', error);
     sendError(res, error.message || 'Failed to get bid', 500);

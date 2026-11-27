@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as notificationService from '../../services/notification/notification.service';
+import * as pushService from '../../services/notification/push.service';
 import logger from '../../utils/logger';
 
 /**
@@ -146,5 +147,78 @@ export const deleteNotification = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Delete notification error:', error);
     sendError(res, error.message || 'Failed to delete notification', 500);
+  }
+};
+
+/**
+ * Save this device's Expo push token for the signed-in user
+ * POST /api/v1/notifications/push-token
+ */
+export const registerPushToken = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    await pushService.registerToken(req.user.user_id, req.body.token, req.body.platform);
+    sendSuccess(res, { registered: true }, 'Push notifications on');
+  } catch (error: any) {
+    logger.error('Register push token error:', error);
+    sendError(res, error.message || 'Could not turn on push notifications', 400);
+  }
+};
+
+/**
+ * Forget this device's push token (on logout or when notifications are turned off)
+ * DELETE /api/v1/notifications/push-token
+ */
+export const removePushToken = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    await pushService.removeToken(req.user.user_id, req.body.token);
+    sendSuccess(res, { removed: true }, 'Push notifications off');
+  } catch (error: any) {
+    logger.error('Remove push token error:', error);
+    sendError(res, error.message || 'Could not turn off push notifications', 400);
+  }
+};
+
+/**
+ * Send yourself a test push (not available in production)
+ * POST /api/v1/notifications/push-test
+ */
+export const sendTestPush = async (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production') return sendError(res, 'Not found', 404);
+  if (!req.user) return sendError(res, 'User not authenticated', 401);
+  const sent = await pushService.sendToUser(req.user.user_id, {
+    title: 'Test notification',
+    body: 'Push notifications are working on this device.',
+    data: { type: 'system' },
+  });
+  sendSuccess(res, { sent }, sent ? 'Sent' : 'No devices registered for this account');
+};
+
+/**
+ * GET /api/v1/notifications/preferences
+ */
+export const getPreferences = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    sendSuccess(res, await notificationService.getPreferences(req.user.user_id));
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not load alert settings', 400);
+  }
+};
+
+/**
+ * PUT /api/v1/notifications/preferences  { outbid?, …, channels?: { push, email, sms }, quiet_hours? }
+ */
+export const updatePreferences = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    sendSuccess(
+      res,
+      await notificationService.updatePreferences(req.user.user_id, req.body),
+      'Alert settings saved'
+    );
+  } catch (error: any) {
+    sendError(res, error.message || 'Could not save alert settings', 400);
   }
 };

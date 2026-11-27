@@ -124,6 +124,8 @@ interface Config {
 
   // Platform Settings
   platformFeePercentage: number;
+  /** Flat delivery charge (₦) added to every won order. */
+  deliveryFee: number;
   minBidIncrement: number;
   defaultAuctionDurationHours: number;
   autoExtendMinutes: number;
@@ -202,7 +204,7 @@ const config: Config = {
   // Email (Resend)
   email: {
     resendApiKey: process.env.RESEND_API_KEY || '',
-    from: process.env.EMAIL_FROM || 'GadgetBid <noreply@gadgetbid.ng>',
+    from: process.env.EMAIL_FROM || 'Gadgets Bidding <noreply@gadgetsbidding.com>',
   },
 
   // Cloudinary
@@ -303,6 +305,7 @@ const config: Config = {
 
   // Platform Settings
   platformFeePercentage: parseFloat(process.env.PLATFORM_FEE_PERCENTAGE || '5'),
+  deliveryFee: parseFloat(process.env.DELIVERY_FEE_NGN || '3500'),
   minBidIncrement: parseInt(process.env.MIN_BID_INCREMENT || '100', 10),
   defaultAuctionDurationHours: parseInt(
     process.env.DEFAULT_AUCTION_DURATION_HOURS || '24',

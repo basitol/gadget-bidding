@@ -1,0 +1,71 @@
+---
+import '../styles/global.css';
+import '../styles/motion.css';
+import Base from '../layouts/Base.astro';
+import Nav from '../components/Nav.astro';
+import Hero from '../components/Hero.astro';
+import Guarantees from '../components/Guarantees.astro';
+import Statement from '../components/Statement.astro';
+import ProductShowcase from '../components/ProductShowcase.astro';
+import LiveAuctions from '../components/LiveAuctions.astro';
+import HowItWorks from '../components/HowItWorks.astro';
+import Protection from '../components/Protection.astro';
+import Sellers from '../components/Sellers.astro';
+import Testimonials from '../components/Testimonials.astro';
+import Faq from '../components/Faq.astro';
+import GetApp from '../components/GetApp.astro';
+import Footer from '../components/Footer.astro';
+import { site } from '../data/site';
+
+const orgJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': ['Organization', 'LocalBusiness'],
+  name: site.name,
+  url: 'https://www.gadgetsbidding.com/',
+  email: site.supportEmail,
+  description: 'Live auctions for inspected gadgets from verified Computer Village sellers.',
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: 'Computer Village',
+    addressLocality: 'Ikeja, Lagos',
+    addressRegion: 'LA',
+    addressCountry: 'NG',
+  },
+  areaServed: { '@type': 'Country', name: 'Nigeria' },
+};
+---
+
+<Base
+  title="Gadgets Bidding · Live auctions for inspected gadgets"
+  description="Bid on phones, laptops, consoles and audio from verified Computer Village businesses. Every gadget is IMEI-checked and inspected before it reaches you, and your money sits in escrow until it does."
+  ogTitle="Gadgets Bidding · Bid on the gadgets you want, at the price you set"
+  ogDescription="Live auctions for inspected gadgets from verified Computer Village sellers. Payments held in escrow until delivery."
+  path="/"
+>
+  <script slot="head" is:inline>document.documentElement.classList.add('js');</script>
+  <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(orgJsonLd)} />
+
+  <a class="sr-only" href="#main">Skip to content</a>
+  <Nav />
+  <main id="main">
+    <Hero />
+    <Guarantees />
+    <Statement />
+    <ProductShowcase />
+    <LiveAuctions />
+    <HowItWorks />
+    <Protection />
+    <Sellers />
+    <Testimonials />
+    <Faq />
+    <GetApp />
+  </main>
+  <Footer />
+</Base>
+
+<script>
+  import { startCountdowns } from '../scripts/countdown';
+  import { startMotion } from '../scripts/motion';
+  startCountdowns();
+  startMotion();
+</script>

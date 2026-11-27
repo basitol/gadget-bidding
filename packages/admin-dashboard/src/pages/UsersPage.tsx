@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   Eye,
@@ -26,11 +27,11 @@ import {
 } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Table,
   TableBody,
@@ -99,6 +100,10 @@ export function UsersPage({
   description = 'Roles, verification, wallet balances, and account controls.',
 }: UsersPageProps = {}) {
   const { confirm, prompt } = useConfirmDialog();
+  const [params] = useSearchParams();
+  // Seller KYB queue: /sellers?kyb=pending (and &seller=<id> opens that seller).
+  const kybFilter = fixedRole === 'seller' && params.get('kyb') === 'pending' ? 'pending' : undefined;
+  const sellerParam = fixedRole === 'seller' ? params.get('seller') : null;
   const [role, setRole] = useState(fixedRole || 'all');
   const [active, setActive] = useState('all');
   const [search, setSearch] = useState('');
@@ -121,10 +126,11 @@ export function UsersPage({
       role,
       active: active === 'all' ? undefined : active,
       search: appliedSearch,
+      kyb: kybFilter,
       page,
       limit,
     }),
-    [role, active, appliedSearch, page, limit]
+    [role, active, appliedSearch, kybFilter, page, limit]
   );
 
   const load = useCallback(async () => {
@@ -210,6 +216,11 @@ export function UsersPage({
   const openSellerProfile = (id: string) => {
     void loadSellerProfile(id);
   };
+
+  useEffect(() => {
+    if (sellerParam) void loadSellerProfile(sellerParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerParam]);
 
   const runProfileAction = async (
     actionId: string,
@@ -323,7 +334,14 @@ export function UsersPage({
 
   return (
     <>
-      <PageHeader title={title} description={description} />
+      <PageHeader
+        title={kybFilter ? 'Seller KYB' : title}
+        description={
+          kybFilter
+            ? 'Businesses waiting for verification, oldest first. Open one to check their documents and approve or reject.'
+            : description
+        }
+      />
 
       <ErrorAlert>{error}</ErrorAlert>
 
@@ -596,13 +614,16 @@ function SellerProfileDialog({
   const stats = profile?.stats || {};
 
   return (
-    <Dialog open={Boolean(profile)} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+    <Sheet open={Boolean(profile)} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full gap-4 overflow-y-auto p-6 data-[side=right]:sm:max-w-4xl"
+      >
         {profile ? (
           <>
-            <DialogHeader>
-              <DialogTitle>Seller profile</DialogTitle>
-            </DialogHeader>
+            <SheetHeader className="p-0">
+              <SheetTitle>Seller profile</SheetTitle>
+            </SheetHeader>
 
             <div className="rounded-xl border bg-card p-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -902,8 +923,8 @@ function SellerProfileDialog({
             </div>
           </>
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 

@@ -1,8 +1,11 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import { body } from 'express-validator';
+import * as sellerSummary from '../../services/buyer/sellerSummary.service';
 import * as auctionController from '../controllers/auction.controller';
+import * as listingReportService from '../../services/buyer/listingReport.service';
 import * as auctionValidator from '../validators/auction.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
-import { authenticate, sellerOnly } from '../middlewares/auth.middleware';
+import { authenticate, sellerOnly, optionalAuth } from '../middlewares/auth.middleware';
 
 const router: Router = Router();
 
@@ -19,6 +22,13 @@ router.get('/my-auctions', authenticate, auctionController.getMyAuctions);
  * @access  Public
  */
 router.get('/stats/active-count', auctionController.getActiveAuctionsCount);
+
+/**
+ * @route   GET /api/v1/auctions/facets?category=smartphones
+ * @desc    Live auctions per category, and per brand inside one category
+ * @access  Public
+ */
+router.get('/facets', auctionController.getLiveFacets);
 
 /**
  * @route   GET /api/v1/auctions
@@ -49,8 +59,21 @@ router.get(
  * @desc    Get auction bids
  * @access  Public
  */
+/**
+ * @route   GET /api/v1/auctions/:id/seller
+ * @desc    Public seller summary: code, verified business, rating, sales
+ */
+router.get('/:id/seller', auctionValidator.validateAuctionId, handleValidationErrors, async (req: Request, res: Response) => {
+  try {
+    res.json({ success: true, data: await sellerSummary.forAuction(req.params.id as string) });
+  } catch (error: any) {
+    res.status(404).json({ success: false, error: error.message || 'Not found' });
+  }
+});
+
 router.get(
   '/:id/bids',
+  optionalAuth, // so each viewer can see which bids are theirs (is_mine)
   auctionValidator.validateAuctionId,
   handleValidationErrors,
   auctionController.getAuctionBids
@@ -96,6 +119,44 @@ router.post(
   auctionValidator.validateAuctionId,
   handleValidationErrors,
   auctionController.cancelAuction
+);
+
+/**
+ * @route   POST /api/v1/auctions/:id/relist
+ * @desc    Put an unsold gadget up again (same settings, starts now; may lower price or reserve)
+ * @access  Private (Sellers only - own auctions)
+ */
+router.post(
+  '/:id/relist',
+  authenticate,
+  sellerOnly,
+  auctionValidator.validateAuctionId,
+  body('starting_price').optional().isFloat({ gt: 0 }).toFloat().withMessage('Enter a starting price above ₦0'),
+  body('reserve_price').optional({ nullable: true }).isFloat({ gt: 0 }).toFloat().withMessage('Enter a reserve above ₦0'),
+  handleValidationErrors,
+  auctionController.relistAuction
+);
+
+/**
+ * @route   POST /api/v1/auctions/:id/report { reason, details? }
+ * @desc    Report a listing (stolen, fake, wrong details). Private: the seller never sees who.
+ * @access  Private (signed-in buyers)
+ */
+router.post(
+  '/:id/report',
+  authenticate,
+  auctionValidator.validateAuctionId,
+  body('reason').isIn(['stolen', 'fake', 'wrong_details', 'other']).withMessage("Choose what's wrong"),
+  body('details').optional({ nullable: true }).isString().isLength({ max: 1000 }).withMessage('Keep it under 1,000 characters'),
+  handleValidationErrors,
+  async (req: Request, res: Response) => {
+    try {
+      const r = await listingReportService.reportListing(req.user!.user_id, req.params.id as string, req.body.reason, req.body.details);
+      res.status(201).json({ success: true, data: r, message: "Thanks. We'll look at it within a day." });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message || "We couldn't send your report. Try again." });
+    }
+  }
 );
 
 export default router;

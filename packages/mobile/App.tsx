@@ -4,24 +4,17 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  Inter_800ExtraBold,
-} from '@expo-google-fonts/inter';
 import { RootNavigator } from './src/navigation';
 import { ErrorBoundary, Toast } from './src/components';
+import { OfflineOverlay } from './src/components/states';
+import { AppGates } from './src/screens/buyer/GateScreens';
 import { Sentry } from './src/config/sentry';
 
 function App() {
+  // Satoshi throughout (docs/DESIGN_GUIDE.md): Regular to read, Medium for anything you scan.
   const [fontsLoaded] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Inter_800ExtraBold,
+    'Satoshi-Regular': require('./assets/fonts/Satoshi-Regular.ttf'),
+    'Satoshi-Medium': require('./assets/fonts/Satoshi-Medium.ttf'),
   });
 
   if (!fontsLoaded) {
@@ -33,7 +26,7 @@ function App() {
   };
   defaultText.defaultProps = defaultText.defaultProps || {};
   defaultText.defaultProps.style = [
-    { fontFamily: 'Inter_400Regular' },
+    { fontFamily: 'Satoshi-Regular' },
     defaultText.defaultProps.style,
   ];
 
@@ -42,7 +35,7 @@ function App() {
   };
   defaultTextInput.defaultProps = defaultTextInput.defaultProps || {};
   defaultTextInput.defaultProps.style = [
-    { fontFamily: 'Inter_400Regular' },
+    { fontFamily: 'Satoshi-Regular' },
     defaultTextInput.defaultProps.style,
   ];
 
@@ -53,6 +46,9 @@ function App() {
         <ErrorBoundary>
           <RootNavigator />
         </ErrorBoundary>
+        {/* "Time to update" (whole app) and maintenance (buyer app) cover everything underneath. */}
+        <AppGates />
+        <OfflineOverlay />
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>

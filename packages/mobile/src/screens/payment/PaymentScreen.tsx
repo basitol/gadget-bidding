@@ -1,16 +1,9 @@
 import React, { useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, fonts, spacing, borderRadius } from '../../constants';
+import { fonts } from '../../constants';
+import { G, GlassScreen, GlassHeader, FooterBar, PrimaryButton, TextButton } from '../../components/glass';
 import { orderService } from '../../services';
 import { formatCurrency } from '../../utils';
 import { useToastStore } from '../../store/toastStore';
@@ -48,7 +41,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       setIsLoading(true);
       setError(null);
 
-      const response = await orderService.initializePayment(orderId);
+      const response = await orderService.initializePayment(orderId, undefined, (route.params as any)?.channel);
 
       if (response.data?.authorization_url) {
         setPaymentUrl(response.data.authorization_url);
@@ -58,7 +51,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       }
     } catch (err: any) {
       console.error('Payment initialization error:', err);
-      setError(err.message || 'Failed to initialize payment');
+      setError(err.message || "We couldn't start the payment.");
       setIsLoading(false);
     }
   };
@@ -108,7 +101,12 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           'success',
           { duration: 6000 }
         );
-        navigation.replace('OrderDetail', { orderId });
+        const channel = (route.params as any)?.channel as string | undefined;
+        navigation.replace('Paid', {
+          orderId,
+          paidWith:
+            channel === 'bank_transfer' ? 'Bank transfer' : channel === 'ussd' ? 'USSD' : channel === 'card' ? 'Card' : undefined,
+        });
       } else {
         throw new Error('Payment verification failed');
       }
@@ -134,12 +132,12 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
   const handleCancel = () => {
     Alert.alert(
-      'Cancel payment',
-      'Are you sure you want to cancel this payment?',
+      'Leave without paying?',
+      "Nothing has been charged. You can pay from your order before the deadline.",
       [
-        { text: 'Continue Payment', style: 'cancel' },
+        { text: 'Keep paying', style: 'cancel' },
         {
-          text: 'Cancel',
+          text: 'Leave',
           style: 'destructive',
           onPress: () => navigation.goBack(),
         },
@@ -152,255 +150,139 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   };
 
   const handleWebViewError = () => {
-    setError('Failed to load payment page. Please try again.');
+    setError("The payment page didn't load.");
     setIsLoading(false);
   };
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.closeButton}
-          >
-            <Ionicons name="close" size={22} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Payment</Text>
-          <View style={styles.placeholder} />
-        </View>
+      <GlassScreen>
+        <GlassHeader title="Payment" onBack={() => navigation.goBack()} />
         <View style={styles.errorContainer}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={56}
-            color={colors.error}
-            style={styles.errorIcon}
-          />
-          <Text style={styles.errorTitle}>Payment Error</Text>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={initializePayment}
-          >
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.cancelButtonText}>Go Back</Text>
-          </TouchableOpacity>
+          <View style={styles.errorTile}>
+            <Ionicons name="alert-circle-outline" size={36} color={G.red} />
+          </View>
+          <Text style={styles.errorTitle} accessibilityRole="header">
+            We couldn't open the payment page
+          </Text>
+          <Text style={styles.errorText}>{error} No money was taken.</Text>
         </View>
-      </SafeAreaView>
+        <FooterBar>
+          <PrimaryButton label="Try again" onPress={initializePayment} />
+          <TextButton label="Go back" onPress={() => navigation.goBack()} />
+        </FooterBar>
+      </GlassScreen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleCancel} style={styles.closeButton}>
-          <Ionicons name="close" size={22} color={colors.text} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.title}>Pay {formatCurrency(amount)}</Text>
-          <Text style={styles.subtitle}>Order #{orderNumber}</Text>
-        </View>
-        <View style={styles.placeholder} />
+    <GlassScreen>
+      <GlassHeader title={`Pay ${formatCurrency(amount)}`} onBack={handleCancel} />
+      <Text style={styles.summary} numberOfLines={1}>
+        Order {orderNumber}
+        {gadgetTitle ? ` · ${gadgetTitle}` : ''}
+      </Text>
+
+      {/* Paystack's page, on a white panel like the rest of the app's cards. */}
+      <View style={styles.webWrap}>
+        {paymentUrl ? (
+          <WebView
+            ref={webViewRef}
+            source={{ uri: paymentUrl }}
+            style={styles.webView}
+            onNavigationStateChange={handleNavigationChange}
+            onShouldStartLoadWithRequest={handleShouldStartLoad}
+            onLoad={handleWebViewLoad}
+            onError={handleWebViewError}
+            startInLoadingState={true}
+            renderLoading={() => (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color={G.blue} />
+                <Text style={styles.loadingText}>Opening Paystack…</Text>
+              </View>
+            )}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            thirdPartyCookiesEnabled={true}
+            sharedCookiesEnabled={true}
+          />
+        ) : null}
+        {isLoading && !paymentUrl ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator color={G.blue} />
+            <Text style={styles.loadingText}>Getting your payment ready…</Text>
+          </View>
+        ) : null}
       </View>
 
-      {/* Order Summary */}
-      <View style={styles.summaryBar}>
-        <Text style={styles.summaryText} numberOfLines={1}>
-          {gadgetTitle || 'Your Order'}
-        </Text>
-        <Text style={styles.summaryAmount}>{formatCurrency(amount)}</Text>
+      <View style={styles.secure}>
+        <Ionicons name="lock-closed-outline" size={13} color={G.muted} />
+        <Text style={styles.secureText}>Payments are processed securely by Paystack</Text>
       </View>
-
-      {/* WebView */}
-      {paymentUrl && (
-        <WebView
-          ref={webViewRef}
-          source={{ uri: paymentUrl }}
-          style={styles.webView}
-          onNavigationStateChange={handleNavigationChange}
-          onShouldStartLoadWithRequest={handleShouldStartLoad}
-          onLoad={handleWebViewLoad}
-          onError={handleWebViewError}
-          startInLoadingState={true}
-          renderLoading={() => (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading payment page...</Text>
-            </View>
-          )}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          thirdPartyCookiesEnabled={true}
-          sharedCookiesEnabled={true}
-        />
-      )}
-
-      {/* Loading Overlay */}
-      {isLoading && !paymentUrl && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Initializing payment...</Text>
-        </View>
-      )}
-
-      {/* Security Notice */}
-      <View style={styles.securityBar}>
-        <Ionicons
-          name="lock-closed-outline"
-          size={16}
-          color={colors.success}
-          style={styles.securityIcon}
-        />
-        <Text style={styles.securityText}>Secured by Paystack</Text>
-      </View>
-    </SafeAreaView>
+    </GlassScreen>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  summary: {
+    color: G.slate,
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  webWrap: {
     flex: 1,
-    backgroundColor: colors.background,
+    marginHorizontal: 20,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EDEFF4',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerCenter: {
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: fonts.sizes.lg,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  subtitle: {
-    fontSize: fonts.sizes.sm,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  placeholder: {
-    width: 40,
-  },
-  summaryBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  summaryText: {
-    flex: 1,
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
-    marginRight: spacing.md,
-  },
-  summaryAmount: {
-    color: colors.primary,
-    fontSize: fonts.sizes.lg,
-    fontWeight: '700',
-  },
-  webView: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  webView: { flex: 1, backgroundColor: '#FFFFFF' },
   loadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  loadingOverlay: {
-    flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    gap: 12,
   },
-  loadingText: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
-    marginTop: spacing.md,
-  },
-  securityBar: {
+  loadingText: { color: G.muted, fontSize: 14, fontFamily: fonts.regular },
+  secure: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  securityIcon: {
-    marginRight: spacing.xs,
-  },
-  securityText: {
-    color: colors.textMuted,
-    fontSize: fonts.sizes.sm,
-  },
-  errorContainer: {
-    flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
+    gap: 6,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  errorIcon: {
-    marginBottom: spacing.lg,
+  secureText: { color: G.muted, fontSize: 13, fontFamily: fonts.regular },
+  errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  errorTile: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: G.redTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   errorTitle: {
-    color: colors.text,
-    fontSize: fonts.sizes.xl,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
+    color: G.ink,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.52,
+    fontFamily: fonts.medium,
+    textAlign: 'center',
   },
   errorText: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
+    color: G.slate,
+    fontSize: 16,
+    lineHeight: 24,
+    fontFamily: fonts.regular,
     textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  retryButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginBottom: spacing.md,
-  },
-  retryButtonText: {
-    color: colors.text,
-    fontSize: fonts.sizes.md,
-    fontWeight: '600',
-  },
-  cancelButton: {
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.md,
-  },
-  cancelButtonText: {
-    color: colors.textSecondary,
-    fontSize: fonts.sizes.md,
+    marginTop: 8,
   },
 });
-
-export default PaymentScreen;

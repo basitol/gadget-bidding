@@ -314,6 +314,8 @@ class SocketService {
 
     // Generic error
     this.socket.on('error', (data: { message: string }) => {
+      // A gone auction is expected (old or bad link); the screen already shows "We can't find that auction".
+      if (/not found/i.test(data?.message ?? '')) return;
       console.error('Socket error:', data.message);
     });
   }

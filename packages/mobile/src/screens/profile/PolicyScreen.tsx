@@ -37,7 +37,7 @@ const POLICY_SECTIONS = [
   },
   {
     title: 'Second-place buyer',
-    body: 'If the winning bidder misses payment, GadgetBid may offer the item to the next eligible bidder at their last bid amount.',
+    body: 'If the winning bidder misses payment, Gadgets Bidding may offer the item to the next eligible bidder at their last bid amount.',
   },
   {
     title: 'Seller fees',
@@ -45,7 +45,7 @@ const POLICY_SECTIONS = [
   },
   {
     title: 'Backoffice delivery',
-    body: 'Sellers send sold items to GadgetBid backoffice first. Backoffice confirms receipt, handles buyer delivery, and updates tracking where available.',
+    body: 'Sellers send sold items to Gadgets Bidding backoffice first. Backoffice confirms receipt, handles buyer delivery, and updates tracking where available.',
   },
   {
     title: 'Refunds and disputes',
@@ -56,7 +56,7 @@ const POLICY_SECTIONS = [
 const PRIVACY_SECTIONS = [
   {
     title: 'Introduction',
-    body: 'This Privacy Policy explains how GadgetBid (we, us, or our) collects, uses, and protects your personal data when you use our marketplace app and website to browse, bid, buy, and sell gadgets. We process personal data in line with the Nigeria Data Protection Act 2023 and the Nigeria Data Protection Regulation (NDPR) 2019.',
+    body: 'This Privacy Policy explains how Gadgets Bidding (we, us, or our) collects, uses, and protects your personal data when you use our marketplace app and website to browse, bid, buy, and sell gadgets. We process personal data in line with the Nigeria Data Protection Act 2023 and the Nigeria Data Protection Regulation (NDPR) 2019.',
   },
   {
     title: 'Information we collect',
@@ -96,7 +96,7 @@ const PRIVACY_SECTIONS = [
   },
   {
     title: 'Children',
-    body: 'GadgetBid is intended for people aged 18 and over. We do not knowingly collect personal data from children.',
+    body: 'Gadgets Bidding is intended for people aged 18 and over. We do not knowingly collect personal data from children.',
   },
   {
     title: 'Cookies and analytics',
@@ -108,7 +108,7 @@ const PRIVACY_SECTIONS = [
   },
   {
     title: 'Contact us',
-    body: 'Questions, requests, or complaints about your data can be sent to support@gadgetbid.ng or through in-app support. Our Data Protection Officer can be reached at the same address.',
+    body: 'Questions, requests, or complaints about your data can be sent to privacy@gadgetsbidding.com or through in-app support. Our Data Protection Officer can be reached at the same address.',
   },
 ];
 

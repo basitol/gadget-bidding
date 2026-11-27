@@ -11,6 +11,17 @@ import * as notificationService from '../notification/notification.service';
 import { deleteAssetsByUrl } from '../media/cloudinary.service';
 import fs from 'fs';
 import path from 'path';
+import { sellerCode } from '../buyer/sellerSummary.service';
+
+/** A warranty end date only means something for a seller or manufacturer warranty. */
+const cleanSpecifications = <T extends Record<string, unknown> | undefined>(specs: T): T => {
+  if (!specs || !('warranty_until' in specs)) return specs;
+  const { warranty_until, ...rest } = specs;
+  const keep =
+    warranty_until &&
+    (specs.warranty === 'seller' || specs.warranty === 'manufacturer');
+  return (keep ? { ...rest, warranty_until } : rest) as T;
+};
 
 /**
  * Create a new gadget listing
@@ -36,7 +47,7 @@ export const createGadget = async (
       data.brand || null,
       data.model || null,
       data.condition,
-      JSON.stringify(data.specifications || {}),
+      JSON.stringify(cleanSpecifications(data.specifications) || {}),
       normalizeMediaPaths(data.images),
       initialStatus,
       data.auction_starting_price ?? null,
@@ -71,17 +82,18 @@ export const getGadgetById = async (
   gadgetId: string
 ): Promise<Gadget | null> => {
   const result = await query(
-    `SELECT g.*, gc.name as category_name, gc.slug as category_slug,
-            u.full_name as seller_name
+    `SELECT g.*, gc.name as category_name, gc.slug as category_slug
      FROM gadgets g
      LEFT JOIN gadget_categories gc ON g.category_id = gc.id
-     LEFT JOIN users u ON g.seller_id = u.id
      WHERE g.id = $1`,
     [gadgetId]
   );
 
-  return result.length > 0 ? result[0] : null;
+  return result.length > 0 ? withSellerCode(result[0]) : null;
 };
+
+/** Listings show the seller's public code, never the account name. */
+const withSellerCode = (g: any) => ({ ...g, seller_name: g.seller_id ? sellerCode(g.seller_id) : null });
 
 /**
  * Get gadgets with filters and pagination
@@ -156,17 +168,15 @@ export const getGadgets = async (filters: {
 
   // Get gadgets
   const gadgetsQuery = `
-    SELECT g.*, gc.name as category_name, gc.slug as category_slug,
-           u.full_name as seller_name
+    SELECT g.*, gc.name as category_name, gc.slug as category_slug
     FROM gadgets g
     LEFT JOIN gadget_categories gc ON g.category_id = gc.id
-    LEFT JOIN users u ON g.seller_id = u.id
     ${whereClause}
     ORDER BY g.created_at DESC
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  const gadgets = await query(gadgetsQuery, [...params, limit, offset]);
+  const gadgets = (await query(gadgetsQuery, [...params, limit, offset])).map(withSellerCode);
 
   return { gadgets, total };
 };
@@ -240,7 +250,7 @@ export const updateGadget = async (
 
     if (updates.specifications) {
       updateFields.push(`specifications = $${paramIndex}`);
-      values.push(JSON.stringify(updates.specifications));
+      values.push(JSON.stringify(cleanSpecifications(updates.specifications)));
       paramIndex++;
     }
 

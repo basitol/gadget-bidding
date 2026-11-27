@@ -4,8 +4,10 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as walletService from '../../services/wallet/wallet.service';
 import * as paystackService from '../../services/payment/paystack.service';
 import * as monnifyService from '../../services/payment/monnify.service';
+import * as savedCardService from '../../services/buyer/savedCard.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as auditService from '../../services/audit/audit.service';
+import * as payoutAccountService from '../../services/seller/payoutAccount.service';
 import { query } from '../../config/database';
 import logger from '../../utils/logger';
 import { safeErrorMessage, USER_ERRORS } from '../../utils/errors';
@@ -178,6 +180,9 @@ export const verifyPayment = async (req: Request, res: Response) => {
       source: 'verify',
       gateway,
     });
+    if (gateway === 'paystack') {
+      await savedCardService.saveFromGateway(req.user.user_id, verification.gatewayResponse);
+    }
 
     sendSuccess(res, {
       message: result.alreadyProcessed
@@ -217,12 +222,81 @@ export const verifyPayment = async (req: Request, res: Response) => {
   }
 };
 
+const refuse = (res: Response, status: number, error: string, code: string, extra?: Record<string, unknown>) =>
+  res.status(status).json({ success: false, error, code, ...extra });
+
 /**
- * Withdraw funds — disabled until Paystack transfers are wired.
- * POST /api/v1/wallet/withdraw
+ * Withdraw funds.
+ * POST /api/v1/wallet/withdraw { amount }
+ *
+ * Sellers: always paid to their saved payout account (bank details in the body are ignored),
+ * and only once they have one and 2-step sign-in is on. Everyone else: still disabled.
  */
-export const withdraw = async (_req: Request, res: Response) => {
-  return sendError(res, USER_ERRORS.WITHDRAWALS_DISABLED, 503);
+export const withdraw = async (req: Request, res: Response) => {
+  if (req.user?.role !== 'seller') {
+    return sendError(res, USER_ERRORS.WITHDRAWALS_DISABLED, 503);
+  }
+  const userId = req.user.user_id;
+
+  try {
+    const { account, twoStepEnabled } = await payoutAccountService.getPayoutReadiness(userId);
+    const missing = [!account && 'payout_account', !twoStepEnabled && 'two_step'].filter(Boolean);
+    if (!account) {
+      return refuse(res, 403, 'Add your payout account first.', 'PAYOUT_ACCOUNT_REQUIRED', { missing });
+    }
+    if (!twoStepEnabled) {
+      return refuse(res, 403, 'Turn on 2-step sign-in before your first payout.', 'TWO_STEP_REQUIRED', { missing });
+    }
+
+    const amount = Number(req.body.amount);
+    if (!Number.isInteger(amount)) {
+      return refuse(res, 400, 'Enter a whole naira amount, like 25000.', 'INVALID_AMOUNT');
+    }
+    if (!walletService.sellerPayoutsOpen()) {
+      return sendError(res, USER_ERRORS.WITHDRAWALS_DISABLED, 503);
+    }
+
+    const payout = await walletService.withdrawToPayoutAccount(userId, amount, account);
+    const to = payoutAccountService.maskAccount(account);
+    auditService.recordAuditEventSafe({
+      req,
+      action: 'seller_payout_requested',
+      resourceType: 'wallet_transaction',
+      resourceId: payout.id,
+      changes: { amount, reference: payout.reference, bank_name: to.bank_name, account_last4: to.account_number_last4 },
+    });
+
+    sendSuccess(
+      res,
+      {
+        transaction_id: payout.id,
+        reference: payout.reference,
+        amount,
+        status: payout.status,
+        payout_account: to,
+      },
+      `On its way to ${to.bank_name} ••••${to.account_number_last4}.`
+    );
+  } catch (error: unknown) {
+    if (error instanceof walletService.PayoutSendError) {
+      return refuse(res, 502, error.message, 'PAYOUT_NOT_SENT');
+    }
+    const message = error instanceof Error ? error.message : '';
+    if (message.startsWith('Insufficient available balance')) {
+      const available = Math.max(0, Math.floor(await walletService.getAvailableBalance(userId).catch(() => 0)));
+      return refuse(
+        res,
+        400,
+        `That's more than you can withdraw. You can withdraw up to ₦${available.toLocaleString('en-NG')}.`,
+        'INSUFFICIENT_BALANCE'
+      );
+    }
+    if (message.startsWith('Wallet is locked')) {
+      return refuse(res, 403, 'Your wallet is locked. Contact support.', 'WALLET_LOCKED');
+    }
+    logger.error('Seller withdraw error:', error);
+    sendError(res, "We couldn't start your payout. Try again.", 500);
+  }
 };
 
 /**
@@ -231,7 +305,8 @@ export const withdraw = async (_req: Request, res: Response) => {
  */
 export const listBanks = async (_req: Request, res: Response) => {
   try {
-    const banks = await paystackService.listBanks();
+    // Paystack's bank list (plus its test bank when on test keys).
+    const banks = await payoutAccountService.listPayoutBanks();
     sendSuccess(res, banks);
   } catch (error: unknown) {
     logger.error('List banks error:', error);
@@ -270,23 +345,32 @@ export const resolveAccount = async (req: Request, res: Response) => {
  * back into the app, so the balance is updated even if the app never retries.
  */
 export const handlePaymentCallback = async (req: Request, res: Response) => {
-  const reference = (req.query.reference || req.query.trxref || '') as string;
+  // Paystack's redirect can repeat `reference` (?reference=x&reference=x), which Express reads as an array.
+  const rawRef = req.query.reference || req.query.trxref || '';
+  const reference = String(Array.isArray(rawRef) ? rawRef[0] : rawRef).trim();
   const deepLinkUrl = `${config.mobileAppUrl}wallet/verify?reference=${encodeURIComponent(reference)}`;
 
   let paymentStatus: 'success' | 'pending' = 'success';
   let paymentMessage =
-    'Your payment process is complete. Tap below to return to GadgetBid.';
+    'Your payment process is complete. Tap below to return to Gadgets Bidding.';
 
   if (reference) {
     try {
-      const txResult = await query<{ user_id: string; payment_gateway: string }>(
-        'SELECT user_id, payment_gateway FROM payment_transactions WHERE gateway_reference = $1',
+      const txResult = await query<{ user_id: string; payment_gateway: string; metadata: any }>(
+        'SELECT user_id, payment_gateway, metadata FROM payment_transactions WHERE gateway_reference = $1',
         [reference]
       );
       const userId = txResult[0]?.user_id;
       const gateway = resolveGatewayName(txResult[0]?.payment_gateway);
+      // Only wallet top-ups are finished here. Order payments and "Add a card" checks are
+      // confirmed by the app (and the webhook), so this page just sends people back.
+      const purpose = txResult[0]?.metadata?.purpose;
+      const isTopUp = !purpose || purpose === 'wallet_funding';
+      if (userId && !isTopUp) {
+        paymentMessage = 'Go back to Gadgets Bidding to finish. The app confirms your payment.';
+      }
 
-      if (userId) {
+      if (userId && isTopUp) {
         const verification = await getGatewayService(gateway).verifyPayment(
           reference
         );
@@ -299,6 +383,9 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
             source: 'verify',
             gateway,
           });
+          if (gateway === 'paystack') {
+            await savedCardService.saveFromGateway(userId, verification.gatewayResponse);
+          }
         } else {
           paymentStatus = 'pending';
           paymentMessage =
@@ -322,7 +409,7 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Payment Complete - GadgetBid</title>
+  <title>Payment Complete - Gadgets Bidding</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0F0F0F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
     .card { background: #1A1A1A; border: 1px solid #2E2E2E; border-radius: 16px; padding: 36px 24px; max-width: 380px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
@@ -338,7 +425,7 @@ export const handlePaymentCallback = async (req: Request, res: Response) => {
     <h1>${heading}</h1>
     <p>${paymentMessage}</p>
     <p>If the app does not open automatically, tap the button below.</p>
-    <a href="${deepLinkUrl}" class="btn">Open GadgetBid App</a>
+    <a href="${deepLinkUrl}" class="btn">Open Gadgets Bidding App</a>
   </div>
   <script>
     function openApp() {

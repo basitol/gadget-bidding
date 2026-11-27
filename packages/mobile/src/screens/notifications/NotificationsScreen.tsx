@@ -150,6 +150,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
       payment_initiated: 'card-outline',
       payment_received: 'wallet-outline',
       payment_failed: 'close-circle-outline',
+      payment_reminder: 'alarm-outline',
       wallet_funded: 'card-outline',
       withdrawal_completed: 'cash-outline',
       system: 'megaphone-outline',
@@ -161,7 +162,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
     if (['payment_received', 'order_delivered', 'auction_won'].includes(type)) {
       return colors.success;
     }
-    if (['outbid', 'auction_ending', 'auction_ending_soon'].includes(type)) {
+    if (['outbid', 'auction_ending', 'auction_ending_soon', 'payment_reminder'].includes(type)) {
       return colors.warning;
     }
     if (['payment_failed', 'auction_lost', 'bid_defaulted'].includes(type)) {

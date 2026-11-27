@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.gadgetbid.app",
+      "sha256_cert_fingerprints": [
+        "2C:D6:CA:C1:19:02:85:6A:ED:93:01:8D:E8:83:B0:3C:75:CB:1B:D7:15:58:67:A2:A0:9C:4B:FC:EF:63:E8:3D"
+      ]
+    }
+  }
+]

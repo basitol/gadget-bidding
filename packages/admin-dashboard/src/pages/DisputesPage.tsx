@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { CaseSheet } from '@/components/CaseSheet';
 
 export function DisputesPage() {
   const { prompt } = useConfirmDialog();
@@ -37,6 +38,9 @@ export function DisputesPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [openCase, setOpenCase] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('case')
+  );
 
   const query = useMemo(() => ({ status, page, limit }), [status, page, limit]);
 
@@ -131,8 +135,9 @@ export function DisputesPage() {
               {items.map(d => (
                 <TableRow key={d.id}>
                   <TableCell>
+                    <div className="text-xs font-medium text-muted-foreground">{d.case_number}</div>
                     <div className="font-medium">{label(d.dispute_type)}</div>
-                    <div className="max-w-sm text-sm text-muted-foreground">
+                    <div className="line-clamp-2 max-w-sm whitespace-normal text-sm text-muted-foreground">
                       {d.description}
                     </div>
                     <div className="text-xs text-muted-foreground">
@@ -174,9 +179,9 @@ export function DisputesPage() {
                       <Button
                         size="sm"
                         disabled={busyId === d.id}
-                        onClick={() => update(d.id, 'resolved')}
+                        onClick={() => setOpenCase(d.id)}
                       >
-                        Resolve
+                        Open case
                       </Button>
                       <Button
                         size="sm"
@@ -205,6 +210,7 @@ export function DisputesPage() {
           }}
         />
       </Panel>
+      <CaseSheet disputeId={openCase} onClose={() => setOpenCase(null)} onChanged={load} />
     </>
   );
 }

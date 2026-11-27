@@ -13,6 +13,7 @@ const isLowRiskPollingPath = (path: string) =>
   path.includes('/notifications') ||
   path.includes('/support') ||
   path.includes('/wallet') ||
+  path.includes('/app-config') ||
   path.endsWith('/auth/me');
 
 const isAuthSessionPath = (path: string) =>

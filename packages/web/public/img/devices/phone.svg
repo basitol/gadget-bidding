@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 200 200" role="img" aria-label="Smartphone">
+      <defs>
+        <linearGradient id="da-ph-frame" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5E6470"/><stop offset="0.18" stop-color="#C9CDD6"/><stop offset="0.5" stop-color="#8A909C"/><stop offset="0.85" stop-color="#D6D9E0"/><stop offset="1" stop-color="#5E6470"/></linearGradient>
+        <linearGradient id="da-ph-screen" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#2E5BFF"/><stop offset="0.55" stop-color="#0E1D66"/><stop offset="1" stop-color="#050816"/></linearGradient>
+      </defs>
+      <rect x="140" y="52" width="3" height="20" rx="1.5" fill="#7A808C"/>
+      <rect x="57" y="46" width="3" height="12" rx="1.5" fill="#7A808C"/>
+      <rect x="57" y="64" width="3" height="18" rx="1.5" fill="#7A808C"/>
+      <rect x="59" y="12" width="82" height="174" rx="17" fill="url(#da-ph-frame)"/>
+      <rect x="62.5" y="15.5" width="75" height="167" rx="14" fill="#03050B"/>
+      <rect x="65.5" y="18.5" width="69" height="161" rx="11.5" fill="url(#da-ph-screen)"/>
+      <ellipse cx="118" cy="62" rx="26" ry="40" fill="#5C85FF" opacity="0.35"/>
+      <ellipse cx="84" cy="128" rx="20" ry="34" fill="#8FADFF" opacity="0.18"/>
+      <rect x="88" y="24" width="24" height="7" rx="3.5" fill="#000000"/>
+      <text x="100" y="66" text-anchor="middle" font-family="Satoshi, Arial, sans-serif" font-size="20" font-weight="600" fill="#FFFFFF">9:41</text>
+      <rect x="76" y="160" width="48" height="10" rx="5" fill="#FFFFFF" opacity="0.18"/>
+      <path d="M68 24 L96 24 L68 120 Z" fill="#FFFFFF" opacity="0.05"/>
+    </svg>

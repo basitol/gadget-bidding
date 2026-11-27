@@ -83,6 +83,18 @@ router.put(
 );
 
 /**
+ * @route   PUT /api/v1/orders/:orderId/delivery-method
+ * @desc    Choose home delivery or free hub pickup (before paying)
+ */
+router.put(
+  '/:orderId/delivery-method',
+  authenticate,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.setDeliveryMethod
+);
+
+/**
  * @route   POST /api/v1/orders/:orderId/confirm-payment
  * @desc    Confirm payment for order (wallet-based)
  * @access  Private (Buyer only)
@@ -162,5 +174,55 @@ router.post(
   handleValidationErrors,
   orderController.createDispute
 );
+
+/**
+ * @route   POST /api/v1/orders/:orderId/receipt
+ * @desc    Email the buyer a receipt for a paid order
+ * @access  Private (Buyer only)
+ */
+router.post(
+  '/:orderId/receipt',
+  authenticate,
+  paymentVerificationRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.emailReceipt
+);
+
+/**
+ * Pay without the web checkout: one-time transfer account or USSD code, then poll status.
+ * @access Private (Buyer)
+ */
+router.post(
+  '/:orderId/payment/bank-transfer',
+  authenticate,
+  walletFundingRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.startBankTransfer
+);
+router.post(
+  '/:orderId/payment/ussd',
+  authenticate,
+  walletFundingRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.startUssd
+);
+router.get(
+  '/:orderId/payment/status',
+  authenticate,
+  paymentVerificationRateLimiter,
+  orderValidator.validateOrderId,
+  handleValidationErrors,
+  orderController.paymentStatus
+);
+
+/**
+ * Second-chance offers (the winner didn't pay; the next bidder can buy at their last bid).
+ * @access Private (Buyer)
+ */
+router.post('/:orderId/offer/accept', authenticate, orderValidator.validateOrderId, handleValidationErrors, orderController.acceptOffer);
+router.post('/:orderId/offer/decline', authenticate, orderValidator.validateOrderId, handleValidationErrors, orderController.declineOffer);
 
 export default router;

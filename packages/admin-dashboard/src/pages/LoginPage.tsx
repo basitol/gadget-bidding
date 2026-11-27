@@ -1,154 +1,161 @@
 import { FormEvent, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
-import { getStoredUser, login } from '@/api';
-import { BrandIllustration } from '@/components/BrandIllustration';
-import { BrandMark, BrandPill } from '@/components/BrandMark';
+import { getStoredUser, login, loginWithCode } from '@/api';
+import { AuthField, AuthHeading, AuthLayout, AuthSubmit, authForm, authInput, authLink } from '@/components/AuthLayout';
 import { Seo } from '@/components/Seo';
-import { ErrorAlert } from '@/components/shared';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { PAGES } from '@/lib/site';
 
-function normalizeLoginIdentifier(input: string): string {
-  const trimmed = input.trim();
-  if (trimmed.includes('@')) return trimmed.toLowerCase();
-
-  const digits = trimmed.replace(/\D/g, '');
-  if (digits.startsWith('234') && digits.length === 13) return `+${digits}`;
-  if (digits.startsWith('0') && digits.length === 11) {
-    return `+234${digits.slice(1)}`;
-  }
-  if (digits.length === 10) return `+234${digits}`;
-  return trimmed;
-}
+const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
 export function LoginPage() {
   const navigate = useNavigate();
   const existing = getStoredUser();
-  const [identifier, setIdentifier] = useState('');
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [show, setShow] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [twoStep, setTwoStep] = useState<{ id: string; hint: string } | null>(null);
+  const [code, setCode] = useState('');
 
   if (existing?.role === 'admin' && localStorage.getItem('gb_admin_token')) {
     return <Navigate to="/" replace />;
   }
 
-  const onSubmit = async (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!looksLikeEmail(email)) {
+      setEmailError('Enter your work email, like name@gadgetsbidding.com.');
+      return;
+    }
     setError('');
-    setLoading(true);
+    setBusy(true);
     try {
-      await login(normalizeLoginIdentifier(identifier), password);
-      navigate('/');
+      const res = await login(email.trim().toLowerCase(), password);
+      if (res.done) navigate('/');
+      else setTwoStep({ id: res.verification_id, hint: res.email_hint });
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.message || "That email and password don't match. Try again.");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  const loginSeo = PAGES['/login'];
+  const submitCode = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!twoStep) return;
+    setError('');
+    setBusy(true);
+    try {
+      await loginWithCode(twoStep.id, code.trim());
+      navigate('/');
+    } catch (err: any) {
+      setError(err.message || "That code didn't match. Check the email and try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const seo = PAGES['/login'];
 
   return (
-    <div className="grid min-h-svh bg-background lg:grid-cols-2">
-      <Seo
-        title={loginSeo.title}
-        description={loginSeo.description}
-        path={loginSeo.path}
-        noindex={false}
-      />
-      <div className="relative hidden flex-col bg-muted/60 lg:flex">
-        <div className="relative z-10 shrink-0 px-16 pt-16 xl:px-20 xl:pt-20">
-          <BrandPill />
-          <p className="mt-6 max-w-md text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
-            GadgetBid operations
-          </p>
-          <p className="mt-4 max-w-sm text-base leading-7 text-muted-foreground xl:text-lg">
-            Manage listings, auctions, disputes, and payouts.
-          </p>
-        </div>
-        <div className="relative min-h-0 flex-1">
-          <BrandIllustration />
-        </div>
-      </div>
-
-      <div className="flex flex-col items-center justify-center px-8 py-14 sm:px-14">
-        <div className="w-full max-w-[400px]">
-          <div className="mb-10 flex flex-col items-center gap-5 text-center">
-            <BrandMark size="lg" />
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-                Sign in
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Use your GadgetBid admin email or phone.
-              </p>
-            </div>
-          </div>
-
-          <form className="space-y-5" onSubmit={onSubmit}>
-            <ErrorAlert>{error}</ErrorAlert>
-            <div className="space-y-2">
-              <Label htmlFor="identifier">Email or phone</Label>
-              <Input
-                id="identifier"
-                value={identifier}
-                onChange={e => setIdentifier(e.target.value)}
-                placeholder="admin@gadgetbid.ng or 08011111111"
-                autoComplete="username"
-                className="h-11"
+    <AuthLayout>
+      <Seo title={seo.title} description={seo.description} path={seo.path} noindex={false} />
+      {twoStep ? (
+        <form onSubmit={submitCode} noValidate className={`${authForm} gb-fade-up`}>
+          <AuthHeading title="Check your email">We sent a 6-digit code to {twoStep.hint}.</AuthHeading>
+          <AuthField id="code" label="Sign-in code" error={error || undefined}>
+              <input
+                id="code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                autoFocus
+                value={code}
+                onChange={e => {
+                  setCode(e.target.value.replace(/\D/g, ''));
+                  setError('');
+                }}
+                aria-invalid={!!error}
+                aria-describedby={error ? 'code-error' : undefined}
+                className={`${authInput} tracking-[0.4em] tabular-nums`}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+          </AuthField>
+          <AuthSubmit busy={busy} disabled={code.length !== 6}>
+            {busy ? 'Checking…' : 'Sign in'}
+          </AuthSubmit>
+          <button
+            type="button"
+            onClick={() => {
+              setTwoStep(null);
+              setCode('');
+              setError('');
+            }}
+            className={`${authLink} self-start`}
+          >
+            Use a different account
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={submit} noValidate className={authForm}>
+          <AuthHeading title="Sign in">Use your work email.</AuthHeading>
+          <AuthField id="email" label="Work email" error={emailError || undefined}>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                placeholder="name@gadgetsbidding.com"
+                value={email}
+                onChange={e => {
+                  setEmail(e.target.value);
+                  if (emailError) setEmailError('');
+                  setError('');
+                }}
+                onBlur={() => {
+                  if (email && !looksLikeEmail(email)) setEmailError('Enter your work email, like name@gadgetsbidding.com.');
+                }}
+                aria-invalid={!!emailError}
+                aria-describedby={emailError ? 'email-error' : undefined}
+                className={authInput}
+              />
+            </AuthField>
+            <AuthField id="password" label="Password" error={error || undefined}>
               <div className="relative">
-                <Input
+                <input
                   id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  type={show ? 'text' : 'password'}
                   autoComplete="current-password"
-                  className="h-11 pr-9"
+                  value={password}
+                  onChange={e => {
+                    setPassword(e.target.value);
+                    setError('');
+                  }}
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'password-error' : undefined}
+                  className={`${authInput} pr-12`}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShow(s => !s)}
+                  aria-label={show ? 'Hide password' : 'Show password'}
+                  className="absolute right-[5px] top-[5px] grid size-10 place-items-center rounded-[10px] text-slate hover:text-ink focus-visible:outline-2 focus-visible:outline-blue-brand"
                 >
-                  {showPassword ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
+                  {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
-            </div>
-
-            <Button className="h-11 w-full" type="submit" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
-
-          <p className="mt-8 text-center text-xs text-muted-foreground">
-            Restricted to GadgetBid admin accounts. Activity is recorded in
-            the audit log.
-          </p>
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Need help?{' '}
-            <a
-              className="font-medium text-foreground underline-offset-4 hover:underline"
-              href="mailto:support@gadgetbid.ng"
-            >
-              support@gadgetbid.ng
-            </a>
-          </p>
-        </div>
-      </div>
-    </div>
+          </AuthField>
+          <AuthSubmit busy={busy} disabled={!email || !password}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </AuthSubmit>
+          <div className="flex justify-between">
+            <Link to="/forgot-password" className={authLink}>
+              Forgot password?
+            </Link>
+          </div>
+        </form>
+      )}
+    </AuthLayout>
   );
 }

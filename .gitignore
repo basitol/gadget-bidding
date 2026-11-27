@@ -50,6 +50,7 @@ packages/mobile/.expo-shared/
 
 # Backend
 packages/backend/uploads/
+packages/backend/private-uploads/
 packages/backend/logs/
 
 # Database
@@ -66,3 +67,4 @@ pgdata/
 
 # Local dev/preview build artifacts (too large for git)
 packages/mobile/*.apk
+packages/mobile/*.aab

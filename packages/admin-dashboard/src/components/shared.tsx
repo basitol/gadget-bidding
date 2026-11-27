@@ -1,7 +1,6 @@
 import { ReactNode } from 'react';
 import { Search } from 'lucide-react';
-import { BrandPill } from '@/components/BrandMark';
-import { Breadcrumbs, type Crumb } from '@/components/Breadcrumbs';
+import { type Crumb } from '@/components/Breadcrumbs';
 import { Seo } from '@/components/Seo';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge as ShadcnBadge } from '@/components/ui/badge';
@@ -58,12 +57,13 @@ export function statusTone(status?: string | null): Tone {
   return 'neutral';
 }
 
+/** Status chips: tint + dark text (design guide status table). */
 const toneClass: Record<Tone, string> = {
-  neutral: 'border-transparent bg-slate-500/12 text-slate-700',
-  ok: 'border-transparent bg-emerald-500/15 text-emerald-700',
-  warn: 'border-transparent bg-amber-500/15 text-amber-800',
-  danger: 'border-transparent bg-red-500/15 text-red-700',
-  info: 'border-transparent bg-sky-500/15 text-sky-700',
+  neutral: 'border-transparent bg-[#F5F6F9] text-[#1C1F2A]',
+  ok: 'border-transparent bg-[#EEF9F2] text-[#2E9E5E]',
+  warn: 'border-transparent bg-[#FFF6EE] text-[#DB7A2E]',
+  danger: 'border-transparent bg-[#FDF0F2] text-[#D9536A]',
+  info: 'border-transparent bg-[#F1F5FF] text-[#3E6AF0]',
 };
 
 export function StatusBadge({
@@ -220,49 +220,26 @@ export function PageHeader({
   title,
   description,
   actions,
-  eyebrow = 'GadgetBid Ops',
-  crumbs,
   path,
   noindex = true,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
+  /** Kept for callers; the panel header now shows the breadcrumb. */
   eyebrow?: string | null;
   crumbs?: Crumb[];
   path?: string;
   noindex?: boolean;
 }) {
-  const breadcrumbItems = crumbs ?? [{ label: title }];
-
   return (
-    <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-      <Seo
-        title={title}
-        description={description}
-        path={path}
-        noindex={noindex}
-      />
-      <div>
-        <Breadcrumbs items={breadcrumbItems} />
-        {eyebrow ? <BrandPill>{eyebrow}</BrandPill> : null}
-        <h1
-          className={cn(
-            'text-3xl font-semibold tracking-tight text-foreground md:text-4xl',
-            eyebrow && 'mt-4'
-          )}
-        >
-          {title}
-        </h1>
-        {description ? (
-          <p className="mt-3 max-w-xl text-base leading-7 text-muted-foreground">
-            {description}
-          </p>
-        ) : null}
+    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <Seo title={title} description={description} path={path} noindex={noindex} />
+      <div className="min-w-0">
+        <h1 className="text-[30px] font-medium leading-tight tracking-[-0.02em] text-ink">{title}</h1>
+        {description ? <p className="mt-1.5 max-w-2xl text-[15px] leading-6 text-slate">{description}</p> : null}
       </div>
-      {actions ? (
-        <div className="flex flex-wrap gap-2 sm:pt-12">{actions}</div>
-      ) : null}
+      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
     </div>
   );
 }

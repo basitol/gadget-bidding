@@ -1,0 +1,77 @@
+---
+// Dark device frame for app mockups.
+interface Props {
+  class?: string;
+  tabs?: boolean;
+}
+
+const { class: className, tabs = true } = Astro.props;
+---
+
+<div class:list={['phone', className]} aria-hidden="true">
+  <span class="island"></span>
+  <div class="screen"><slot /></div>
+  {
+    tabs && (
+      <div class="tabbar">
+        <span class="on" />
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
+    )
+  }
+</div>
+
+<style>
+  .phone {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 250px;
+    height: 520px;
+    overflow: hidden;
+    border: 8px solid var(--ink);
+    border-radius: 40px;
+    background: var(--phone-bg);
+    color: #f2f5ff;
+    font-family: var(--body);
+  }
+
+  .island {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 72px;
+    height: 20px;
+    margin-left: -36px;
+    border-radius: 999px;
+    background: var(--ink);
+  }
+
+  .screen {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 38px 14px 12px;
+  }
+
+  .tabbar {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    height: 40px;
+    margin: auto 10px 10px;
+    padding: 3px;
+    border-radius: 20px;
+    background: var(--phone-raised);
+  }
+
+  .tabbar .on {
+    height: 34px;
+    border-radius: 17px;
+    background: #1c2a52;
+  }
+</style>

@@ -59,17 +59,11 @@ export interface SellerDashboard {
   rejected_gadgets: Gadget[];
 }
 
-export interface SellerKybStatus {
-  business_name: string | null;
-  cac_number: string | null;
-  status: 'not_started' | 'pending' | 'approved' | 'rejected';
-  rejection_reason: string | null;
-}
-
-export interface SubmitSellerKybData {
-  business_name: string;
-  cac_number?: string;
-}
+/** The API calls it total_bids; screens read bid_count. */
+const withBidCount = <T extends Record<string, any>>(a: T): T => ({
+  ...a,
+  bid_count: a.bid_count ?? a.total_bids ?? 0,
+});
 
 class AuctionService {
   // ============ GADGETS ============
@@ -168,26 +162,6 @@ class AuctionService {
     }
   }
 
-  async getSellerKyb(): Promise<ApiResponse<SellerKybStatus>> {
-    try {
-      const response = await api.get('/seller/kyb');
-      return response.data;
-    } catch (error) {
-      throw new Error(getErrorMessage(error));
-    }
-  }
-
-  async submitSellerKyb(
-    data: SubmitSellerKybData
-  ): Promise<ApiResponse<SellerKybStatus>> {
-    try {
-      const response = await api.post('/seller/kyb', data);
-      return response.data;
-    } catch (error) {
-      throw new Error(getErrorMessage(error));
-    }
-  }
-
   // Update gadget
   async updateGadget(
     id: string,
@@ -223,6 +197,32 @@ class AuctionService {
     }
   }
 
+  /** Put an unsold gadget up again (same settings, starts now). reserve_price: null removes the reserve. */
+  async relistAuction(
+    auctionId: string,
+    changes: { starting_price?: number; reserve_price?: number | null } = {}
+  ): Promise<ApiResponse<Auction>> {
+    try {
+      const response = await api.post(`/auctions/${auctionId}/relist`, changes);
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /** Live auctions per category, and per brand inside one category (brand chips). */
+  async liveFacets(category?: string): Promise<{
+    categories: { slug: string; name: string; count: number }[];
+    category: { slug: string; live: number; brands: { brand: string; count: number }[] } | null;
+  }> {
+    try {
+      const response = await api.get('/auctions/facets', { params: category ? { category } : {} });
+      return response.data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
   // Get auctions with filters
   async getAuctions(
     filters: AuctionFilters = {},
@@ -233,7 +233,9 @@ class AuctionService {
       const response = await api.get('/auctions', {
         params: { ...filters, page, limit },
       });
-      return response.data;
+      const body = response.data;
+      if (Array.isArray(body?.data)) body.data = body.data.map(withBidCount);
+      return body;
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }
@@ -253,7 +255,9 @@ class AuctionService {
   ): Promise<ApiResponse<Auction & { gadget: Gadget }>> {
     try {
       const response = await api.get(`/auctions/${id}`);
-      return response.data;
+      const body = response.data;
+      if (body?.data) body.data = withBidCount(body.data);
+      return body;
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }

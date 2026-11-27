@@ -1,6 +1,6 @@
 import React from 'react';
 import { Sentry } from '../config/sentry';
-import { ErrorFallback } from './ErrorFallback';
+import { ErrorState, errorCodeFrom } from './states';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -8,12 +8,13 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  code?: string;
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(): ErrorBoundaryState {
+  static getDerivedStateFromError(): Partial<ErrorBoundaryState> {
     return { hasError: true };
   }
 
@@ -21,14 +22,16 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     if (__DEV__) {
       console.error('Unhandled error caught by ErrorBoundary:', error, info);
     }
-    Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
+    // The code on screen is the start of the Sentry event id, so support can find the report.
+    const eventId = Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
+    this.setState({ code: errorCodeFrom(eventId) });
   }
 
-  reset = () => this.setState({ hasError: false });
+  reset = () => this.setState({ hasError: false, code: undefined });
 
   render() {
     if (this.state.hasError) {
-      return <ErrorFallback onRetry={this.reset} />;
+      return <ErrorState code={this.state.code ?? errorCodeFrom()} onRetry={this.reset} />;
     }
     return this.props.children;
   }

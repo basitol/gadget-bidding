@@ -1,0 +1,119 @@
+---
+import { categories, formatCountdown } from '../data/auctions';
+import { badgeStyle, catStyle, deviceSrc } from '../data/landing';
+
+const initial = categories[0].name;
+---
+
+<section id="live" style="border-bottom: 1px solid #E6EAF2" data-live>
+  <div style="max-width: 1200px; margin: 0 auto; padding: 88px 24px; display: flex; flex-direction: column; gap: 36px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20px">
+      <div data-reveal style="display: flex; flex-direction: column; gap: 14px">
+        <span style="font: 500 12px 'JetBrains Mono', monospace; letter-spacing: 0.14em; color: #5E6B8C">01 · LIVE AUCTIONS</span>
+        <h2 style="margin: 0; font-family: 'Sora', sans-serif; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.08; letter-spacing: -0.035em; font-weight: 500">Everything that's live,<br /><span style="color: #3366FF">sorted for you.</span></h2>
+      </div>
+      <p data-reveal="right" style="--i: 1; margin: 0; max-width: 380px; font-size: 16px; line-height: 1.6; color: #4A5878">Pick a category to see what's closing soon. Bids in the final minute add time, so nobody gets sniped.</p>
+    </div>
+
+    <div data-reveal="zoom" style="border-radius: 24px; background: #EEF3FF; padding: 20px; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 999 1 560px; min-width: 0; background: #FFFFFF; border: 1px solid #E2E8F3; border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 16px">
+        <label style="display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #E2E8F3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5E6B8C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"></path></svg>
+          <input data-search aria-label="Search auctions" placeholder="Search iPhone 15, PS5, MacBook…" style="flex: 1; border: 0; outline: none; background: transparent; font: 500 15px Manrope, sans-serif; color: #0B1220" />
+        </label>
+        <div style="display: flex; justify-content: space-between; align-items: baseline">
+          <span data-cat-title style="font-family: 'Sora', sans-serif; font-size: 18px; font-weight: 500">{initial} ending soon</span>
+          <span data-cat-count style="font-size: 13px; color: #5E6B8C">{categories[0].live} live</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px">
+          {
+            categories.flatMap((cat) =>
+              cat.items.map((c) => (
+                <article
+                  data-group={cat.name}
+                  data-name={c.name.toLowerCase()}
+                  hidden={cat.name !== initial}
+                  style="border: 1px solid #E2E8F3; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column"
+                >
+                  <div style="height: 150px; background: #E8EEFF; position: relative; display: flex; align-items: center; justify-content: center">
+                    <img src={deviceSrc(c.kind)} alt="" width="130" height="130" loading="lazy" />
+                    <span data-countdown={c.endsIn} style={badgeStyle(c.endsIn)}>{formatCountdown(c.endsIn)}</span>
+                    <span style="position: absolute; top: 10px; right: 10px; height: 22px; padding: 0 8px; border-radius: 999px; background: #FFFFFF; color: #15803D; font: 700 11px Manrope, sans-serif; display: inline-flex; align-items: center">Inspected</span>
+                  </div>
+                  <div style="padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px">
+                    <span style="font-weight: 700; font-size: 14px">{c.name}</span>
+                    <span style="font-size: 12px; color: #5E6B8C">{c.grade}</span>
+                    <span style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px"><span style="font-family: 'Sora', sans-serif; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums">{c.price}</span><span style="font-size: 12px; color: #5E6B8C">{c.bids} bids</span></span>
+                  </div>
+                </article>
+              )),
+            )
+          }
+        </div>
+        <p data-empty hidden style="margin: 0; padding: 12px 0; font-size: 15px; color: #4A5878">No live auctions match that search.</p>
+      </div>
+
+      <nav data-reveal="right" aria-label="Categories" style="--i: 2; flex: 1 1 260px; background: #FFFFFF; border: 1px solid #E2E8F3; border-radius: 18px; overflow: hidden; display: flex; flex-direction: column">
+        {
+          categories.map((k) => (
+            <button type="button" data-cat={k.name} data-live-count={k.live} aria-pressed={String(k.name === initial)} style={catStyle(k.name === initial)}>
+              <span style="display: flex; justify-content: space-between; align-items: center; width: 100%"><span style="font: 600 16px Manrope, sans-serif; color: #0B1220">{k.name}</span><span style="font: 500 12px 'JetBrains Mono', monospace; color: #5E6B8C">{k.live} LIVE</span></span>
+              <span class="gv-in" data-sub hidden={k.name !== initial} style="font: 500 13px Manrope, sans-serif; color: #4A5878; text-align: left">{k.description}</span>
+            </button>
+          ))
+        }
+      </nav>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { catStyle } from '../data/landing';
+
+  document.querySelectorAll<HTMLElement>('[data-live]').forEach((root) => {
+    const search = root.querySelector<HTMLInputElement>('[data-search]')!;
+    const title = root.querySelector<HTMLElement>('[data-cat-title]')!;
+    const count = root.querySelector<HTMLElement>('[data-cat-count]')!;
+    const empty = root.querySelector<HTMLElement>('[data-empty]')!;
+    const cards = [...root.querySelectorAll<HTMLElement>('article[data-group]')];
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('button[data-cat]')];
+    let current = buttons.find((b) => b.getAttribute('aria-pressed') === 'true')!;
+
+    const apply = () => {
+      const q = search.value.trim().toLowerCase();
+      let shown = 0;
+      cards.forEach((c) => {
+        const show = q ? c.dataset.name!.includes(q) : c.dataset.group === current.dataset.cat;
+        c.hidden = !show;
+        if (show) shown++;
+      });
+      title.textContent = q ? `Results for “${search.value.trim()}”` : `${current.dataset.cat} ending soon`;
+      count.textContent = q ? `${shown} live` : `${current.dataset.liveCount} live`;
+      empty.hidden = shown > 0;
+      // Stagger the visible cards in
+      let n = 0;
+      cards.forEach((c) => {
+        if (c.hidden) return;
+        c.style.setProperty('--d', `${n++ * 60}ms`);
+        c.classList.remove('gb-card-in');
+        void c.offsetWidth;
+        c.classList.add('gb-card-in');
+      });
+    };
+
+    buttons.forEach((b) =>
+      b.addEventListener('click', () => {
+        current = b;
+        search.value = '';
+        buttons.forEach((x) => {
+          const on = x === b;
+          x.setAttribute('aria-pressed', String(on));
+          x.setAttribute('style', catStyle(on));
+          x.querySelector<HTMLElement>('[data-sub]')!.hidden = !on;
+        });
+        apply();
+      }),
+    );
+    search.addEventListener('input', apply);
+  });
+</script>

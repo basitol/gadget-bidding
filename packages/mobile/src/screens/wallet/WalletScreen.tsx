@@ -22,15 +22,11 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, fonts, spacing, borderRadius } from '../../constants';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView, WebViewNavigation } from 'react-native-webview';
-import {
-  WalletCard,
-  Button,
-  EmptyState,
-  LoadingScreen,
-} from '../../components';
+import { WalletCard, Button, EmptyState, LoadingScreen, BottomSheet } from '../../components';
 import { useIsTabRoot } from '../../hooks';
 import { useAuthStore, useWalletStore } from '../../store';
-import { walletService } from '../../services';
+import { walletService, payoutService, PayoutError } from '../../services';
+import type { PayoutAccountState } from '../../services';
 import {
   formatCurrency,
   formatDateTime,
@@ -71,6 +67,38 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
     refreshWallet,
   } = useWalletStore();
   const userEmail = useAuthStore(state => state.user?.email);
+  // Sellers are paid to their saved payout account, once they have one and 2-step sign-in is on.
+  const isSeller = useAuthStore(state => state.user?.role === 'seller');
+  const [payout, setPayout] = useState<PayoutAccountState | null>(null);
+  const [payoutLoadError, setPayoutLoadError] = useState<string | null>(null);
+
+  const loadPayout = useCallback(async () => {
+    setPayoutLoadError(null);
+    try {
+      setPayout(await payoutService.get());
+    } catch (error) {
+      setPayoutLoadError(
+        error instanceof Error && error.message ? error.message : "We couldn't load your payout account."
+      );
+    }
+  }, []);
+
+  const openWithdraw = () => {
+    setShowWithdrawModal(true);
+    if (isSeller) loadPayout();
+  };
+
+  // Back from adding the account or turning on 2-step: show the up-to-date state.
+  useFocusEffect(
+    useCallback(() => {
+      if (isSeller) loadPayout();
+    }, [isSeller, loadPayout])
+  );
+
+  const goFix = (route: 'PayoutAccount' | 'TwoStepSetup') => {
+    setShowWithdrawModal(false);
+    (navigation as any).navigate(route);
+  };
 
   useEffect(() => {
     loadData();
@@ -255,6 +283,35 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
       return;
     }
 
+    if (isSeller) {
+      setIsProcessing(true);
+      try {
+        const { payout: sent, message } = await payoutService.withdraw(amount);
+        setShowWithdrawModal(false);
+        setWithdrawAmount('');
+        useToastStore.getState().show(
+          message ||
+            `On its way to ${sent.payout_account.bank_name} ••••${sent.payout_account.account_number_last4}.`,
+          'success'
+        );
+        await refreshWallet();
+      } catch (error) {
+        const code = error instanceof PayoutError ? error.code : undefined;
+        if (code === 'PAYOUT_ACCOUNT_REQUIRED' || code === 'TWO_STEP_REQUIRED') {
+          await loadPayout(); // the sheet now shows what's missing
+        } else {
+          useToastStore.getState().show(
+            error instanceof Error && error.message ? error.message : "We couldn't send your payout. Try again.",
+            'error'
+          );
+          if (code === 'PAYOUT_NOT_SENT') refreshWallet();
+        }
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+
     // For now, show a message about withdrawal
     useToastStore.getState().show(
       'Withdrawals require bank account verification. Contact support to complete a withdrawal.',
@@ -369,7 +426,7 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
             balance={wallet?.balance || 0}
             heldBalance={wallet?.held_balance || 0}
             onFund={() => setShowFundModal(true)}
-            onWithdraw={() => setShowWithdrawModal(true)}
+            onWithdraw={openWithdraw}
           />
         </View>
 
@@ -426,22 +483,12 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Fund Modal */}
-      <Modal
+      {/* Fund sheet */}
+      <BottomSheet
         visible={showFundModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowFundModal(false)}
+        onClose={() => setShowFundModal(false)}
+        style={styles.modalContent}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-          style={styles.modalOverlay}
-        >
-          <TouchableWithoutFeedback onPress={() => setShowFundModal(false)}>
-            <View style={styles.modalBackground} />
-          </TouchableWithoutFeedback>
-          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Fund Wallet</Text>
               <TouchableOpacity onPress={() => setShowFundModal(false)}>
@@ -500,82 +547,168 @@ export const WalletScreen: React.FC<{ route?: any }> = ({ route }) => {
                 size="lg"
               />
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
 
-      {/* Withdraw Modal */}
-      <Modal
+      {/* Withdraw sheet */}
+      <BottomSheet
         visible={showWithdrawModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowWithdrawModal(false)}
+        onClose={() => setShowWithdrawModal(false)}
+        style={styles.modalContent}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowWithdrawModal(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={e => e.stopPropagation()}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Withdraw Funds</Text>
-                <TouchableOpacity onPress={() => setShowWithdrawModal(false)}>
-                  <Ionicons
-                    name="close"
-                    size={22}
-                    color={colors.textSecondary}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Withdraw Funds</Text>
+            <TouchableOpacity onPress={() => setShowWithdrawModal(false)}>
+              <Ionicons
+                name="close"
+                size={22}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {isSeller ? (
+            <View style={styles.modalBody}>
+              {!payout ? (
+                payoutLoadError ? (
+                  <>
+                    <Text style={styles.payoutError}>{payoutLoadError}</Text>
+                    <Button title="Try again" onPress={loadPayout} variant="outline" fullWidth size="lg" />
+                  </>
+                ) : (
+                  <ActivityIndicator color={colors.primary} style={styles.payoutLoader} />
+                )
+              ) : !payout.account || !payout.two_step_enabled ? (
+                <>
+                  <Text style={styles.payoutLead}>Before your first payout</Text>
+                  {!payout.account ? (
+                    <View style={styles.payoutStep}>
+                      <Ionicons name="business-outline" size={20} color={colors.text} />
+                      <View style={styles.payoutStepText}>
+                        <Text style={styles.payoutStepTitle}>Add your payout account</Text>
+                        <Text style={styles.payoutStepSub}>Must be in your registered business name.</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  {!payout.two_step_enabled ? (
+                    <View style={styles.payoutStep}>
+                      <Ionicons name="shield-checkmark-outline" size={20} color={colors.text} />
+                      <View style={styles.payoutStepText}>
+                        <Text style={styles.payoutStepTitle}>Turn on 2-step sign-in</Text>
+                        <Text style={styles.payoutStepSub}>Required before your first payout.</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  {!payout.account ? (
+                    <Button title="Add payout account" onPress={() => goFix('PayoutAccount')} fullWidth size="lg" />
+                  ) : null}
+                  {!payout.two_step_enabled ? (
+                    <Button
+                      title="Turn on 2-step sign-in"
+                      onPress={() => goFix('TwoStepSetup')}
+                      variant={payout.account ? 'primary' : 'outline'}
+                      fullWidth
+                      size="lg"
+                      style={!payout.account ? styles.payoutSecondButton : undefined}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <View style={styles.availableBalance}>
+                    <Text style={styles.availableLabel}>Available Balance</Text>
+                    <Text style={styles.availableAmount}>
+                      {formatCurrency((wallet?.balance || 0) - (wallet?.held_balance || 0))}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.modalLabel}>Paid to</Text>
+                  <View style={styles.payoutTo}>
+                    <View style={styles.payoutStepText}>
+                      <Text style={styles.payoutStepTitle}>
+                        {payout.account.bank_name} ••••{payout.account.account_number_last4}
+                      </Text>
+                      <Text style={styles.payoutStepSub}>{payout.account.account_name}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => goFix('PayoutAccount')} hitSlop={8} accessibilityRole="button">
+                      <Text style={styles.payoutChange}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.modalLabel}>Amount (₦)</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    value={withdrawAmount}
+                    onChangeText={t => setWithdrawAmount(t.replace(/\D/g, ''))}
+                    keyboardType="number-pad"
+                    placeholder="Enter amount"
+                    placeholderTextColor={colors.textMuted}
+                    accessibilityLabel="Amount to withdraw"
                   />
-                </TouchableOpacity>
-              </View>
 
-              <View style={styles.modalBody}>
-                <View style={styles.availableBalance}>
-                  <Text style={styles.availableLabel}>Available Balance</Text>
-                  <Text style={styles.availableAmount}>
-                    {formatCurrency(
-                      (wallet?.balance || 0) - (wallet?.held_balance || 0)
-                    )}
-                  </Text>
-                </View>
+                  <View style={styles.withdrawInfo}>
+                    <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+                    <Text style={styles.withdrawInfoText}>
+                      Payouts only go to your payout account. Minimum withdrawal is ₦1,000.
+                    </Text>
+                  </View>
 
-                <Text style={styles.modalLabel}>Amount (₦)</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  value={withdrawAmount}
-                  onChangeText={setWithdrawAmount}
-                  keyboardType="number-pad"
-                  placeholder="Enter amount"
-                  placeholderTextColor={colors.textMuted}
-                />
-
-                <View style={styles.withdrawInfo}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={20}
-                    color={colors.primary}
+                  <Button
+                    title={
+                      parseInt(withdrawAmount, 10) > 0
+                        ? `Send ${formatCurrency(parseInt(withdrawAmount, 10))} to my bank`
+                        : 'Send to my bank'
+                    }
+                    onPress={handleWithdraw}
+                    loading={isProcessing}
+                    fullWidth
+                    size="lg"
                   />
-                  <Text style={styles.withdrawInfoText}>
-                    Withdrawals are processed within 24 hours. Minimum
-                    withdrawal is ₦1,000.
-                  </Text>
-                </View>
-
-                <Button
-                  title="Request Withdrawal"
-                  onPress={handleWithdraw}
-                  loading={isProcessing}
-                  fullWidth
-                  size="lg"
-                />
-              </View>
+                </>
+              )}
             </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+          ) : (
+          <View style={styles.modalBody}>
+            <View style={styles.availableBalance}>
+              <Text style={styles.availableLabel}>Available Balance</Text>
+              <Text style={styles.availableAmount}>
+                {formatCurrency(
+                  (wallet?.balance || 0) - (wallet?.held_balance || 0)
+                )}
+              </Text>
+            </View>
+
+            <Text style={styles.modalLabel}>Amount (₦)</Text>
+            <TextInput
+              style={styles.amountInput}
+              value={withdrawAmount}
+              onChangeText={setWithdrawAmount}
+              keyboardType="number-pad"
+              placeholder="Enter amount"
+              placeholderTextColor={colors.textMuted}
+            />
+
+            <View style={styles.withdrawInfo}>
+              <Ionicons
+                name="information-circle-outline"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.withdrawInfoText}>
+                Withdrawals are processed within 24 hours. Minimum
+                withdrawal is ₦1,000.
+              </Text>
+            </View>
+
+            <Button
+              title="Request Withdrawal"
+              onPress={handleWithdraw}
+              loading={isProcessing}
+              fullWidth
+              size="lg"
+            />
+          </View>
+          )}
+      </BottomSheet>
 
       <Modal
         visible={showPaymentWebView}
@@ -960,5 +1093,60 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fonts.sizes.sm,
     lineHeight: 20,
+  },
+  // Seller payouts: what's missing, and where the money goes.
+  payoutLoader: {
+    marginVertical: spacing.xxxl,
+  },
+  payoutError: {
+    color: colors.error,
+    fontSize: fonts.sizes.md,
+    lineHeight: 20,
+    marginBottom: spacing.lg,
+  },
+  payoutLead: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontFamily: fonts.medium,
+    marginBottom: spacing.md,
+  },
+  payoutStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceLight,
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+  },
+  payoutStepText: {
+    flex: 1,
+  },
+  payoutStepTitle: {
+    color: colors.text,
+    fontSize: fonts.sizes.lg,
+    fontFamily: fonts.medium,
+  },
+  payoutStepSub: {
+    color: colors.textSecondary,
+    fontSize: fonts.sizes.sm,
+    marginTop: spacing.xs,
+  },
+  payoutSecondButton: {
+    marginTop: spacing.md,
+  },
+  payoutTo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceLight,
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.lg,
+  },
+  payoutChange: {
+    color: colors.primary,
+    fontSize: fonts.sizes.md,
+    fontFamily: fonts.medium,
   },
 });

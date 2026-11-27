@@ -264,6 +264,19 @@ export const useAuctionStore = create<AuctionState>((set, get) => ({
     );
     unsubscribers.push(unsubAuctionEnded);
 
+    // Anti-snipe: a late bid pushed the end time back
+    const unsubExtended = socketService.on(
+      'auction:extended',
+      (data: { auctionId: string; newEndTime: Date | string }) => {
+        if (data.auctionId === auctionId && data.newEndTime) {
+          get().updateAuctionFromSocket(auctionId, {
+            end_time: new Date(data.newEndTime).toISOString(),
+          });
+        }
+      }
+    );
+    unsubscribers.push(unsubExtended);
+
     // Store unsubscribers for cleanup
     socketUnsubscribers.set(auctionId, unsubscribers);
   },

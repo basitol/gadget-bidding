@@ -6,6 +6,7 @@ import * as walletService from '../../services/wallet/wallet.service';
 import * as orderService from '../../services/order/order.service';
 import prisma from '../../config/prisma';
 import logger from '../../utils/logger';
+import * as savedCardService from '../../services/buyer/savedCard.service';
 
 /**
  * Paystack webhook handler
@@ -111,6 +112,13 @@ async function handleChargeSuccess(
   const metadata = (data.metadata as Record<string, unknown>) || {};
   const gatewayResponse = (data.raw as Record<string, unknown>) || data;
 
+  // "+ Add a card" ₦50 checks: save the card and refund it. Never an order payment or a wallet top-up.
+  if (gateway === 'paystack' && (await savedCardService.isCardCheckReference(reference, metadata))) {
+    logger.info(`Processing card check via webhook: ${reference}`);
+    await savedCardService.settleCardCheckFromWebhook(reference, data);
+    return;
+  }
+
   const existingTx = await prisma.paymentTransaction.findFirst({
     where: {
       gatewayReference: reference,
@@ -152,6 +160,7 @@ async function handleChargeSuccess(
       amount,
       gatewayResponse
     );
+    if (gateway === 'paystack') await savedCardService.saveFromGateway(pendingTx.userId, data);
     return;
   }
 
@@ -167,6 +176,7 @@ async function handleChargeSuccess(
     source: 'webhook',
     gateway,
   });
+  if (gateway === 'paystack') await savedCardService.saveFromGateway(pendingTx.userId, data);
 }
 
 async function handleTransferSuccess(data: Record<string, unknown>) {

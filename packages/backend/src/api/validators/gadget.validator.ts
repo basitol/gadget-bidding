@@ -1,5 +1,33 @@
 import { body, query, param, ValidationChain } from 'express-validator';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * specifications.warranty_until — when a seller or manufacturer warranty ends (YYYY-MM-DD).
+ * Optional. A real calendar date, not more than a day in the past (time zones), within 10 years.
+ */
+const validateWarrantyUntil = (): ValidationChain =>
+  body('specifications.warranty_until')
+    .optional({ values: 'falsy' })
+    .custom(value => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        throw new Error('Warranty end date must look like 2027-09-18');
+      }
+      const [y, m, d] = value.split('-').map(Number);
+      const date = new Date(Date.UTC(y, m - 1, d));
+      if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
+        throw new Error("That warranty end date isn't a real date");
+      }
+      // The warranty runs to the end of that day; allow a day either side for time zones.
+      if (date.getTime() + DAY_MS < Date.now() - DAY_MS) {
+        throw new Error('That warranty has already ended. Pick a later date or leave it blank.');
+      }
+      if (date.getTime() > Date.now() + 10 * 365 * DAY_MS) {
+        throw new Error('Warranty end date must be within 10 years');
+      }
+      return true;
+    });
+
 /**
  * Validate create gadget request
  */
@@ -45,6 +73,7 @@ export const validateCreateGadget: ValidationChain[] = [
     .optional()
     .isObject()
     .withMessage('Specifications must be an object'),
+  validateWarrantyUntil(),
   body('images')
     .isArray({ min: 1, max: 5 })
     .withMessage('At least 1 image is required, maximum 5 images')
@@ -137,6 +166,7 @@ export const validateUpdateGadget: ValidationChain[] = [
     .optional()
     .isObject()
     .withMessage('Specifications must be an object'),
+  validateWarrantyUntil(),
   body('images')
     .optional()
     .isArray({ min: 1, max: 5 })
