@@ -1,0 +1,38 @@
+---
+import Base from './Base.astro';
+import '../styles/legal.css';
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  noindex?: boolean;
+}
+
+const { title, description, path, noindex } = Astro.props;
+---
+
+<Base title={title} description={description} path={path} noindex={noindex} themeColor="#ffffff">
+  <div class="wrap">
+    <header>
+      <a class="brand" href="/" aria-label="Gadgets Bidding home">
+        <img src="/img/brand/logo-wordmark.svg" width="130" height="28" alt="Gadgets Bidding" />
+      </a>
+      <nav aria-label="Primary">
+        <a href="/privacy/">Privacy</a>
+        <a href="/terms/">Terms</a>
+        <a href="mailto:support@gadgetsbidding.com">Support</a>
+      </nav>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer>
+      <a href="/">Gadgets Bidding</a> ·
+      {path === '/privacy/' ? <a href="/terms/">Terms</a> : <a href="/privacy/">Privacy</a>} · Lagos,
+      Nigeria
+    </footer>
+  </div>
+</Base>

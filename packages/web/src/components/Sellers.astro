@@ -1,0 +1,150 @@
+---
+import Icon3D from './Icon3D.astro';
+import type { Icon3DName } from '../data/icons';
+import { site } from '../data/site';
+
+const cells: { icon: Icon3DName; label: string; text: string }[] = [
+  { icon: 'camera', label: 'Listing', text: 'Free to list. Reviewed within the hour.' },
+  { icon: 'tag', label: 'Platform fee', text: 'Only when it sells. Shown before you list.' },
+  { icon: 'store', label: 'Drop-off', text: 'Our hub is in Computer Village.' },
+  { icon: 'wallet', label: 'Payout', text: 'Released after inspection and delivery.' },
+];
+---
+
+<section class="sellers" id="sell" aria-labelledby="sell-title">
+  <div class="inner">
+    <div class="copy" data-reveal="left">
+      <span class="overline">04 · For sellers</span>
+      <h2 class="h2" id="sell-title">Sell to all of Lagos<br /><span class="tone">without leaving Computer Village.</span></h2>
+      <p>
+        For registered businesses only. List in minutes, let buyers bid it up, drop sold items at our hub around the
+        corner, and get paid once the buyer confirms.
+      </p>
+      <div class="ctas">
+        <a class="btn btn-primary" href={site.sellerApplyUrl}>Apply to sell</a>
+        <a class="btn ghost" href="/terms/#seller-fees">See platform fees</a>
+      </div>
+    </div>
+    <div class="grid" data-reveal="right" style="--i: 1">
+      {
+        cells.map((c) => (
+          <div class="cell">
+            <Icon3D name={c.icon} size={40} />
+            <span class="label">{c.label}</span>
+            <p>{c.text}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .sellers {
+    background: var(--navy);
+    color: var(--white);
+  }
+
+  .inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 56px;
+    max-width: var(--container);
+    margin: 0 auto;
+    padding: 88px 24px;
+  }
+
+  .copy {
+    display: flex;
+    flex: 1 1 420px;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .overline {
+    color: var(--navy-soft);
+  }
+
+  .h2 .tone {
+    color: #7f8bab;
+  }
+
+  .copy p {
+    max-width: 480px;
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--navy-soft);
+  }
+
+  .ctas {
+    margin-top: 10px;
+  }
+
+  .ghost {
+    border-color: #2a3757;
+    color: var(--white);
+  }
+
+  .ghost:hover {
+    border-color: #50608a;
+  }
+
+  .grid {
+    display: grid;
+    flex: 1 1 420px;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+    border: 1px solid var(--navy-line);
+    border-radius: 18px;
+    background: var(--navy-2);
+  }
+
+  .cell {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 24px 20px 28px;
+  }
+
+  .cell:nth-child(even) {
+    border-left: 1px solid var(--navy-line);
+  }
+
+  .cell:nth-child(n + 3) {
+    border-top: 1px solid var(--navy-line);
+  }
+
+  .label {
+    margin-top: 8px;
+    font: 500 11px var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #7d9bff;
+  }
+
+  .cell p {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e6ebf7;
+  }
+
+  @media (max-width: 600px) {
+    .inner {
+      gap: 40px;
+      padding: 64px 24px;
+    }
+
+    .grid {
+      grid-template-columns: 1fr;
+    }
+
+    .cell:nth-child(even) {
+      border-left: 0;
+    }
+
+    .cell + .cell {
+      border-top: 1px solid var(--navy-line);
+    }
+  }
+</style>

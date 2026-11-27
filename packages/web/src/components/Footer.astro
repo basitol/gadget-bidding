@@ -1,0 +1,144 @@
+---
+import Wordmark from './Wordmark.astro';
+import { site } from '../data/site';
+
+const columns = [
+  {
+    title: 'Product',
+    links: [
+      ['Live auctions', '/#live'],
+      ['How it works', '/#how'],
+      ['Buyer protection', '/#protection'],
+    ],
+  },
+  {
+    title: 'Sell',
+    links: [
+      ['Apply to sell', '/#sell'],
+      ['Platform fees', '/terms/#seller-fees'],
+      ['Seller rules', '/terms/'],
+    ],
+  },
+  {
+    title: 'Company',
+    links: [
+      ['About', '/#how'],
+      ['Careers', `mailto:${site.supportEmail}?subject=Careers`],
+      ['Contact', `mailto:${site.supportEmail}`],
+    ],
+  },
+  {
+    title: 'Support',
+    links: [
+      ['Help centre', '/#faq'],
+      ['Disputes', '/terms/#disputes'],
+      ['Privacy', '/privacy/'],
+    ],
+  },
+];
+
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="container">
+    <div class="top">
+      <Wordmark />
+      <p>Live auctions for inspected gadgets.</p>
+    </div>
+    <div class="cols">
+      {
+        columns.map((c) => (
+          <div>
+            <h4>{c.title}</h4>
+            <ul>
+              {c.links.map(([label, href]) => (
+                <li>
+                  <a href={href}>{label}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+    <div class="bottom">
+      <span>© {year} Gadgets Bidding · Computer Village, Ikeja</span>
+      <span class="pay">Payments by Paystack</span>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    padding: 48px 0 28px;
+  }
+
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .top p {
+    font-size: 13px;
+    color: var(--blue);
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 36px;
+  }
+
+  h4 {
+    margin: 0 0 6px;
+    font: 500 11px var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    font-size: 14px;
+    transition: color 150ms ease;
+  }
+
+  a:hover {
+    color: var(--blue);
+  }
+
+  .bottom {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 36px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--slate);
+  }
+
+  .pay {
+    color: var(--blue);
+  }
+
+  @media (max-width: 860px) {
+    .cols {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>

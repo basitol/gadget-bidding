@@ -1,0 +1,17 @@
+---
+import { formatCountdown } from '../data/auctions';
+
+interface Props {
+  seconds: number;
+  /** Smaller pill for phone mockups. */
+  small?: boolean;
+  class?: string;
+}
+
+const { seconds, small = false, class: className } = Astro.props;
+// Orange when the auction closes within the hour; white pill otherwise.
+---
+
+<span class:list={['clock', { calm: seconds >= 3600, xs: small }, className]} data-countdown={seconds}>
+  {formatCountdown(seconds)}
+</span>

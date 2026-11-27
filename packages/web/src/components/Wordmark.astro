@@ -1,0 +1,23 @@
+---
+interface Props {
+  height?: number;
+  dark?: boolean;
+}
+
+// Outlined SVG wordmark from the brand pack.
+const { height = 30, dark = false } = Astro.props;
+const width = Math.round((height * 675.91) / 145.3);
+const src = dark ? '/img/brand/logo-wordmark-on-dark.svg' : '/img/brand/logo-wordmark.svg';
+---
+
+<a class="wordmark" href="/" aria-label="Gadgets Bidding home">
+  <img src={src} width={width} height={height} alt="Gadgets Bidding" />
+</a>
+
+<style>
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+</style>

@@ -1,0 +1,30 @@
+---
+import { iconSrc, steps } from '../data/landing';
+---
+
+<section id="how" style="border-bottom: 1px solid #E6EAF2">
+  <div data-reveal style="max-width: 1200px; margin: 0 auto; padding: 88px 24px 0; display: flex; flex-direction: column; gap: 14px">
+    <span style="font: 500 12px 'JetBrains Mono', monospace; letter-spacing: 0.14em; color: #5E6B8C">02 · HOW IT WORKS</span>
+    <h2 style="margin: 0 0 40px; font-family: 'Sora', sans-serif; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.08; letter-spacing: -0.035em; font-weight: 500">Checked three times<br /><span style="color: #9AA6C0">before it's yours.</span></h2>
+  </div>
+  <div style="max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); border-top: 1px solid #E6EAF2">
+    {
+      steps.map((s, si) => (
+        <div data-reveal style={`--i: ${si}; padding: 32px 24px 40px; border-right: 1px solid #E6EAF2; display: flex; flex-direction: column; gap: 18px`}>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start"><span style="font: 500 12px 'JetBrains Mono', monospace; letter-spacing: 0.12em; color: #3366FF">{s.n}</span><img src={iconSrc(s.kind)} alt="" width="64" height="64" loading="lazy" /></div>
+          <h3 style="margin: 0; font-family: 'Sora', sans-serif; font-size: 22px; font-weight: 500; letter-spacing: -0.02em">{s.title}</h3>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #4A5878">{s.body}</p>
+          <div style="margin-top: 6px; border-radius: 16px; background: #F7F8FB; border: 1px solid #E6EAF2; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+            {s.rows.map((r, ri) => (
+              <div style="display: flex; align-items: center; gap: 10px; font-size: 13px">
+                <svg class="gb-check" style={`--d: ${si * 120 + 300 + ri * 150}ms`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>
+                <span style="flex: 1; color: #0B1220; font-weight: 600">{r.k}</span>
+                <span style="font: 500 11px 'JetBrains Mono', monospace; color: #5E6B8C">{r.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</section>

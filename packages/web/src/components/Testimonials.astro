@@ -1,0 +1,105 @@
+---
+import SectionHead from './SectionHead.astro';
+
+// Leave empty until real quotes exist — the section is not rendered without them.
+const quotes: { quote: string; name: string; role: string }[] = [
+  // { quote: '…', name: 'Tunde A.', role: 'BUYER · LAGOS' },
+];
+
+// Partner names shown under the quotes.
+const partners = ['Paystack'];
+---
+
+{
+  quotes.length > 0 && (
+    <section class="section" aria-labelledby="quotes-title">
+      <div class="container">
+        <SectionHead id="quotes-title" overline="What people say" title="Buyers and sellers" tone="in their own words." />
+        <div class="quotes">
+          {quotes.map((q) => (
+            <figure class="quote">
+              <blockquote>“{q.quote}”</blockquote>
+              <figcaption>
+                <i />
+                <span>
+                  {q.name}
+                  <small>{q.role}</small>
+                </span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+        <div class="partners">
+          <span class="overline">Partners</span>
+          {partners.map((p) => (
+            <span class="name">{p}</span>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+<style>
+  .quotes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+  }
+
+  .quote {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 24px;
+    margin: 0;
+    padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--soft-bg);
+  }
+
+  blockquote {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  figcaption {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  figcaption i {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--blue-50);
+  }
+
+  small {
+    display: block;
+    font: 500 10px var(--mono);
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+
+  .partners {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 28px;
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .name {
+    font: 600 17px var(--display);
+    color: var(--slate);
+  }
+</style>

@@ -1,0 +1,20 @@
+---
+import { site } from '../data/site';
+---
+
+<nav aria-label="Main" style="border-bottom: 1px solid #E6EAF2">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+    <a href="/" aria-label="Gadgets Bidding home" style="display: flex; align-items: center; text-decoration: none"><img src="/img/brand/logo-wordmark.svg" alt="Gadgets Bidding" style="height: 37px; width: auto" /></a>
+    <div style="display: flex; flex-wrap: wrap; gap: 28px; font-size: 15px; font-weight: 500">
+      <a href="#live" style="color: #4A5878; text-decoration: none">Live auctions</a>
+      <a href="#how" style="color: #4A5878; text-decoration: none">How it works</a>
+      <a href="#protection" style="color: #4A5878; text-decoration: none">Protection</a>
+      <a href="#sell" style="color: #4A5878; text-decoration: none">Sell</a>
+      <a href="#faq" style="color: #4A5878; text-decoration: none">FAQ</a>
+    </div>
+    <div style="display: flex; gap: 8px">
+      <a href={site.signInUrl} style="height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #E6EAF2; display: inline-flex; align-items: center; color: #0B1220; text-decoration: none; font-weight: 600; font-size: 14px">Sign in</a>
+      <a href="#get-app" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #3366FF; display: inline-flex; align-items: center; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 14px">Get the app</a>
+    </div>
+  </div>
+</nav>

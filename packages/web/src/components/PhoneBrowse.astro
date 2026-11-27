@@ -1,0 +1,133 @@
+---
+import Phone from './Phone.astro';
+import Gadget from './Gadget.astro';
+import Timer from './Timer.astro';
+
+interface Props {
+  class?: string;
+}
+
+const { class: className } = Astro.props;
+---
+
+<Phone class={className}>
+  <span class="hello">Good evening</span>
+  <span class="title">Find your next gadget</span>
+  <span class="search">Search phones, laptops…</span>
+  <div class="feature">
+    <div class="art">
+      <Gadget kind="phone" size={100} />
+      <Timer seconds={180} small class="feature-clock" />
+    </div>
+    <div class="row">
+      <span class="col"><span class="name">iPhone 15 Pro</span><span class="price">₦915,000</span></span>
+      <span class="bid">Bid</span>
+    </div>
+  </div>
+  <div class="tiles">
+    <div class="tile"><Gadget kind="laptop" size={60} /><span class="name">MacBook Air</span><span class="price">₦910,000</span></div>
+    <div class="tile"><Gadget kind="console" size={60} /><span class="name">PS5 Slim</span><span class="price">₦520,000</span></div>
+  </div>
+</Phone>
+
+<style>
+  .hello {
+    font-size: 10px;
+    color: var(--phone-muted);
+  }
+
+  .title {
+    margin-top: -6px;
+    font: 600 15px var(--display);
+  }
+
+  .search {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 10px;
+    background: var(--phone-raised);
+    font-size: 10px;
+    color: var(--phone-muted);
+  }
+
+  .feature {
+    overflow: hidden;
+    border: 1px solid #2a3b6e;
+    border-radius: 14px;
+    background: var(--phone-card);
+  }
+
+  .art {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 104px;
+    background: #0d1733;
+  }
+
+  .art :global(.feature-clock) {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .name {
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .row .price {
+    font-size: 13px;
+  }
+
+  .bid {
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: var(--blue);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px;
+    border: 1px solid #1c2a52;
+    border-radius: 12px;
+    background: var(--phone-card);
+  }
+
+  .tile .name {
+    font-size: 9px;
+  }
+
+  .tile .price {
+    font-size: 11px;
+  }
+</style>

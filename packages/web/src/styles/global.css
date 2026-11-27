@@ -1,0 +1,317 @@
+/* Gadgets Bidding landing page — tokens + shared primitives (matches the landing design export).
+   Section styles live in each component. */
+@import '@fontsource/sora/500.css';
+@import '@fontsource/sora/600.css';
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+:root {
+  --blue: #3366ff;
+  --blue-700: #1f4fe6;
+  --blue-50: #eef3ff;
+  --tile: #e8eeff;
+  --ink: #0b1220;
+  --slate: #4a5878;
+  --muted: #5e6b8c;
+  --dim: #9aa6c0;
+  --line: #e6eaf2;
+  --line-2: #e2e8f3;
+  --soft-bg: #f7f8fb;
+  --white: #ffffff;
+  --clock: #ff7a1a;
+  --clock-ink: #170a02;
+  --peach: #fff1e7;
+  --green: #15803d;
+  --green-dot: #22a55b;
+
+  /* Dark (sellers + phone mockups) */
+  --navy: #0b1220;
+  --navy-2: #0f1830;
+  --navy-line: #1c2742;
+  --navy-soft: #a7b2cc;
+  --phone-bg: #050a18;
+  --phone-card: #0a1226;
+  --phone-raised: #111c3a;
+  --phone-muted: #7e8db5;
+
+  --display: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --body: 'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --container: 1200px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--white);
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 500;
+}
+
+p {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.num-tab {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Layout ---------- */
+.container {
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.sr-only:focus {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  width: auto;
+  height: auto;
+  clip: auto;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--white);
+}
+
+.section {
+  border-bottom: 1px solid var(--line);
+}
+
+.section > .container {
+  padding-block: 88px;
+}
+
+/* ---------- Type ---------- */
+.overline {
+  font: 500 12px var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.h2 {
+  font-size: clamp(2rem, 3.6vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.h2 .tone {
+  color: var(--dim);
+}
+
+.h2 .tone-brand {
+  color: var(--blue);
+}
+
+.lead {
+  max-width: 380px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--slate);
+}
+
+.price {
+  font-family: var(--display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 50px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.btn-sm {
+  height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: var(--white);
+}
+
+.btn-primary:hover {
+  background: var(--blue-700);
+}
+
+.btn-outline {
+  border-color: var(--line);
+  background: var(--white);
+  color: var(--ink);
+}
+
+.btn-outline:hover {
+  border-color: var(--dim);
+}
+
+.btn-dark {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.btn-dark:hover {
+  background: #1b2540;
+}
+
+.ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ---------- Clock pill ---------- */
+.clock {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--clock);
+  color: var(--clock-ink);
+  font: 700 11px var(--body);
+  font-variant-numeric: tabular-nums;
+}
+
+.clock.calm {
+  background: var(--white);
+  color: var(--ink);
+}
+
+.clock.xs {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 9px;
+}
+
+/* Section header (overline + h2 on the left, lead on the right) */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 36px;
+}
+
+.head-title {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 600px) {
+  .section > .container {
+    padding-block: 64px;
+  }
+}
+
+/* Entrance used by the design export (new bid rows, selected category description) */
+.gv-in {
+  animation: gv-in 250ms ease-out;
+}
+
+@keyframes gv-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Elements sliding in from the sides must not widen the page. */
+html,
+body {
+  overflow-x: clip;
+}

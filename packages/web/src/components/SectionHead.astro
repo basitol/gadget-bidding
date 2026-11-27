@@ -1,0 +1,20 @@
+---
+interface Props {
+  id: string;
+  /** Overline text, e.g. "01 · Live auctions". */
+  overline: string;
+  title: string;
+  tone: string;
+  toneColor?: 'dim' | 'brand';
+}
+
+const { id, overline, title, tone, toneColor = 'dim' } = Astro.props;
+---
+
+<div class="head">
+  <div class="head-title">
+    <span class="overline">{overline}</span>
+    <h2 class="h2" id={id}>{title}<br /><span class={toneColor === 'brand' ? 'tone-brand' : 'tone'}>{tone}</span></h2>
+  </div>
+  {Astro.slots.has('default') && <p class="lead"><slot /></p>}
+</div>
