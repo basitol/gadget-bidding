@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import prisma from '../../config/prisma';
 import { Prisma } from '../../generated/prisma';
 import { hashPassword, comparePassword } from '../../utils/password';
@@ -18,16 +18,20 @@ import {
   roleForAccountType,
   assertAccountTypeAccess,
   normalizeUserRole,
+  TwoFactorMethod,
 } from '@gadget-bidding/shared';
 import * as socialAuth from './socialAuth.service';
+import { readTotpStore, verifyTotp, writeTotpStore } from './totp';
+import { forgetTrustedDevices, hashDeviceId, isTrustedDevice, trustDevice } from './trustedDevices';
 import logger from '../../utils/logger';
 
-const USER_SELECT: {
+export const USER_SELECT: {
   id: true;
   phoneNumber: true;
   email: true;
   username: true;
   twoFactorEnabled: true;
+  twoFactorMethod: true;
   fullName: true;
   avatarUrl: true;
   role: true;
@@ -45,6 +49,7 @@ const USER_SELECT: {
   email: true,
   username: true,
   twoFactorEnabled: true,
+  twoFactorMethod: true,
   fullName: true,
   avatarUrl: true,
   role: true,
@@ -58,13 +63,15 @@ const USER_SELECT: {
   updatedAt: true,
 };
 
-const toPublicUser = (user: Record<string, any>): User =>
+export const toPublicUser = (user: Record<string, any>): User =>
   ({
     id: user.id,
     phone_number: user.phoneNumber,
     email: user.email || undefined,
     username: user.username || undefined,
     two_factor_enabled: user.twoFactorEnabled ?? false,
+    // Older accounts with 2-step on have no method saved: that's the emailed code.
+    two_factor_method: user.twoFactorEnabled ? ((user.twoFactorMethod as TwoFactorMethod | null) ?? 'email') : null,
     full_name: user.fullName,
     avatar_url: user.avatarUrl || undefined,
     role: normalizeUserRole(user.role),
@@ -82,7 +89,7 @@ const toPublicUser = (user: Record<string, any>): User =>
  * Generate an access + refresh token pair for a user and persist the refresh
  * token so the session survives app restarts.
  */
-async function issueTokensForUser(
+export async function issueTokensForUser(
   user: Record<string, any>,
   db: Pick<typeof prisma, 'refreshToken'> = prisma
 ) {
@@ -303,7 +310,9 @@ export const verifyOTP = async (data: OTPVerification): Promise<AuthTokens> => {
 /**
  * Login user with an email address or phone number
  */
-export const loginUser = async (data: UserLogin): Promise<AuthTokens> => {
+export const loginUser = async (
+  data: UserLogin & { device_id?: string; device_label?: string }
+): Promise<AuthTokens> => {
   const identifier = data.identifier.trim();
 
   // Find user by email (case-insensitive) or phone number
@@ -344,9 +353,13 @@ export const loginUser = async (data: UserLogin): Promise<AuthTokens> => {
 
   assertAccountTypeAccess(data.account_type, user.role);
 
-  // 2-step sign-in: password was right; now prove access to the email.
-  if (user.twoFactorEnabled && user.email) {
-    return (await startTwoFactorChallenge(user)) as unknown as AuthTokens;
+  // 2-step sign-in: password was right; now ask for a code, unless this phone already passed.
+  const method = liveTwoFactorMethod(user);
+  if (method) {
+    const deviceHash = data.device_id ? hashDeviceId(data.device_id) : undefined;
+    if (!deviceHash || !(await isTrustedDevice(user.id, deviceHash))) {
+      return (await startTwoFactorChallenge(user, method, deviceHash, data.device_label)) as unknown as AuthTokens;
+    }
   }
 
   const { access_token, refresh_token } = await issueTokensForUser(user);
@@ -358,64 +371,192 @@ export const loginUser = async (data: UserLogin): Promise<AuthTokens> => {
 
 /* ---------------- 2-step sign-in ---------------- */
 
+/*
+ * Methods: 'email' (emailed code), 'totp' (authenticator app), 'sms' (texted code).
+ * A sign-in challenge is a user_verifications row (the DB only allows type
+ * phone | email | kyc, so every challenge uses 'email'); its target says how to check it:
+ *   "login"                                  — emailed code, rows from before methods existed
+ *   "login|<method>|<device hash>|<label>"   — device hash/label are empty when the app sent none
+ */
 const TWO_FACTOR = 'email';
+const LOGIN_TARGET = 'login';
+const LOGIN_ROWS = { OR: [{ target: LOGIN_TARGET }, { target: { startsWith: `${LOGIN_TARGET}|` } }] };
+const SIGN_IN_EXPIRED = 'This sign-in has expired. Log in again.';
+const CODE_MISMATCH = "That code didn't match. Try again.";
 
-const maskEmail = (email: string) => {
+const loginTarget = (method: TwoFactorMethod, deviceHash?: string, label?: string) =>
+  [LOGIN_TARGET, method, deviceHash ?? '', (label ?? '').replace(/\|/g, ' ').trim().slice(0, 60)].join('|');
+
+const parseLoginTarget = (target: string): { method: TwoFactorMethod; deviceHash?: string; label?: string } => {
+  if (target === LOGIN_TARGET) return { method: 'email' };
+  const [, method, deviceHash, ...label] = target.split('|');
+  return { method: method as TwoFactorMethod, deviceHash: deviceHash || undefined, label: label.join('|') || undefined };
+};
+
+const sameCode = (a: string, b: string) =>
+  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+export const maskEmail = (email: string) => {
   const [name, domain] = email.split('@');
   return `${name.slice(0, 2)}${'•'.repeat(Math.max(1, name.length - 2))}@${domain}`;
 };
 
-const startTwoFactorChallenge = async (user: { id: string; email: string | null }) => {
-  const otp = generateOTP();
-  // Only the newest code counts.
+/** "+2348031234521" / "08031234521" / "2348031234521" → "+2348031234521" (Nigerian numbers without a code get +234). */
+export const toE164Phone = (phone: string) => {
+  const p = phone.replace(/[^\d+]/g, '');
+  if (p.startsWith('+')) return p;
+  if (p.startsWith('234')) return `+${p}`;
+  return `+234${p.startsWith('0') ? p.slice(1) : p}`;
+};
+
+/** "0803 ••• 4521" */
+export const maskPhone = (phone: string) => {
+  const e164 = toE164Phone(phone);
+  const local = e164.startsWith('+234') ? `0${e164.slice(4)}` : e164;
+  return local.length < 8 ? '•••' : `${local.slice(0, 4)} ••• ${local.slice(-4)}`;
+};
+
+type TwoFactorUser = {
+  id: string;
+  email: string | null;
+  twoFactorEnabled: boolean;
+  twoFactorMethod: string | null;
+  totpSecret: string | null;
+  twoFactorPhone: string | null;
+};
+
+/** What sign-in asks for, or null when 2-step is off. */
+const liveTwoFactorMethod = (user: TwoFactorUser): TwoFactorMethod | null => {
+  if (!user.twoFactorEnabled) return null;
+  const method = (user.twoFactorMethod ?? 'email') as TwoFactorMethod;
+  if (method === 'totp' && readTotpStore(user.totpSecret).s) return 'totp';
+  if (method === 'sms' && user.twoFactorPhone) return 'sms';
+  // Older email set-ups never asked when the account had no email.
+  if (method === 'email') return user.email ? 'email' : null;
+  // An app or text set-up we can't use: fall back to the email code rather than let anyone in.
+  if (user.email) return 'email';
+  throw new Error("We couldn't check your 2-step sign-in. Contact support and we'll sort it out.");
+};
+
+const startTwoFactorChallenge = async (
+  user: TwoFactorUser,
+  method: TwoFactorMethod,
+  deviceHash?: string,
+  deviceLabel?: string
+) => {
+  // Only the newest challenge counts.
   await prisma.userVerification.deleteMany({
-    where: { userId: user.id, verificationType: TWO_FACTOR, target: 'login', isVerified: false },
+    where: { userId: user.id, verificationType: TWO_FACTOR, isVerified: false, ...LOGIN_ROWS },
   });
+  // The authenticator app makes its own codes; nothing to send.
+  const otp = method === 'totp' ? null : generateOTP();
   const v = await prisma.userVerification.create({
     data: {
       userId: user.id,
       verificationType: TWO_FACTOR,
       verificationCode: otp,
-      target: 'login',
+      target: loginTarget(method, deviceHash, deviceLabel),
       expiresAt: getOTPExpiry(config.otpExpiryMinutes),
     },
   });
-  sendOTPEmail(user.email!, otp).catch(err => logger.error('Failed to send sign-in code:', err));
-  if (config.nodeEnv === 'development') logger.info(`[DEV] Sign-in code for ${user.email}: ${otp}`);
-  return {
-    two_factor_required: true,
-    verification_id: v.id,
-    email_hint: maskEmail(user.email!),
-  };
+  const challenge = { two_factor_required: true as const, method, verification_id: v.id };
+
+  if (method === 'email') {
+    sendOTPEmail(user.email!, otp!).catch(err => logger.error('Failed to send sign-in code:', err));
+    if (config.nodeEnv === 'development') logger.info(`[DEV] Sign-in code for ${user.email}: ${otp}`);
+    return { ...challenge, email_hint: maskEmail(user.email!) };
+  }
+  if (method === 'sms') {
+    sendOTPSMS(user.twoFactorPhone!, otp!).catch(err => logger.error('Failed to text sign-in code:', err));
+    if (config.nodeEnv === 'development') logger.info(`[DEV] Sign-in code for user ${user.id}: ${otp}`);
+    return { ...challenge, phone_hint: maskPhone(user.twoFactorPhone!) };
+  }
+  return challenge;
 };
 
 export const completeTwoFactorLogin = async (data: {
   verification_id: string;
   otp: string;
   account_type?: 'buyer' | 'seller';
+  device_id?: string;
+  device_label?: string;
 }): Promise<AuthTokens> => {
   const v = await prisma.userVerification.findFirst({
-    where: { id: data.verification_id, verificationType: TWO_FACTOR, target: 'login' },
+    where: { id: data.verification_id, verificationType: TWO_FACTOR, ...LOGIN_ROWS },
     include: { user: true },
   });
-  if (!v || !v.user || v.isVerified) throw new Error('This sign-in has expired. Log in again.');
+  if (!v || !v.user || !v.target || v.isVerified) throw new Error(SIGN_IN_EXPIRED);
   if (!v.expiresAt || isOTPExpired(v.expiresAt)) throw new Error('That code has expired. Log in again.');
-  if (v.verificationCode !== data.otp) throw new Error("That code isn't right. Check it and try again.");
-  assertAccountTypeAccess(data.account_type, v.user.role);
+  const user = v.user;
+  const challenge = parseLoginTarget(v.target);
 
-  await prisma.userVerification.delete({ where: { id: v.id } });
-  const { access_token, refresh_token } = await issueTokensForUser(v.user);
-  logger.info(`User logged in with 2-step: ${v.user.id}`);
-  return { access_token, refresh_token, user: toPublicUser(v.user) };
+  // The method changed since the code was asked for (e.g. 2-step was reset on another phone).
+  let method: TwoFactorMethod | null = null;
+  try {
+    method = liveTwoFactorMethod(user);
+  } catch {
+    method = null;
+  }
+  if (challenge.method !== method) throw new Error(SIGN_IN_EXPIRED);
+
+  if (method === 'totp') {
+    const store = readTotpStore(user.totpSecret);
+    const step = verifyTotp(store.s!, data.otp, { afterStep: store.ls });
+    if (step === null) {
+      if (verifyTotp(store.s!, data.otp) !== null) {
+        throw new Error('That code was just used. Wait for a new one in your app and try again.');
+      }
+      throw new Error(CODE_MISMATCH);
+    }
+    // Remember the step so the same code can't be used twice; the where clause loses a race cleanly.
+    const saved = await prisma.user.updateMany({
+      where: { id: user.id, totpSecret: user.totpSecret },
+      data: { totpSecret: writeTotpStore({ ...store, ls: step }) },
+    });
+    if (!saved.count) throw new Error('That code was just used. Wait for a new one in your app and try again.');
+  } else if (!v.verificationCode || !sameCode(v.verificationCode, data.otp)) {
+    throw new Error(CODE_MISMATCH);
+  }
+  assertAccountTypeAccess(data.account_type, user.role);
+
+  const spent = await prisma.userVerification.deleteMany({ where: { id: v.id } });
+  if (!spent.count) throw new Error(SIGN_IN_EXPIRED);
+
+  // Trust the phone that asked for the code, so it isn't asked again.
+  const sameDevice = !data.device_id || hashDeviceId(data.device_id) === challenge.deviceHash;
+  if (challenge.deviceHash && sameDevice) {
+    await trustDevice(user.id, challenge.deviceHash, data.device_label?.trim().slice(0, 100) || challenge.label);
+  }
+
+  const { access_token, refresh_token } = await issueTokensForUser(user);
+  logger.info(`User logged in with 2-step (${method}): ${user.id}`);
+  return { access_token, refresh_token, user: toPublicUser(user) };
 };
 
+/** PUT /auth/2fa: the emailed code on or off (buyer Security screen). Off clears every method. */
 export const setTwoFactor = async (userId: string, enabled: boolean, password: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error('Account not found');
   if (!(await comparePassword(password, user.passwordHash))) throw new Error('That password is wrong');
   if (enabled && !user.email) throw new Error('Add an email to your account first');
-  await prisma.user.update({ where: { id: userId }, data: { twoFactorEnabled: enabled } });
-  return { two_factor_enabled: enabled };
+
+  const was = user.twoFactorEnabled ? user.twoFactorMethod ?? 'email' : null;
+  const next: TwoFactorMethod | null = enabled ? 'email' : null;
+  // Turning off, or moving from the app / text method to email, drops the old secret and phone,
+  // and phones trusted under the old method have to pass again.
+  const reset = !enabled || was !== next;
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorEnabled: enabled,
+        twoFactorMethod: next,
+        ...(reset ? { totpSecret: null, twoFactorPhone: null } : {}),
+      },
+    }),
+    ...(reset ? [forgetTrustedDevices(userId)] : []),
+  ]);
+  return { two_factor_enabled: enabled, two_factor_method: next };
 };
 
 /**
@@ -537,7 +678,7 @@ export const resendOTP = async (
 /** Reserve a phone-number space that can never collide with real (+234) numbers. */
 const SYNTHETIC_PHONE_PREFIX = '+9';
 
-const makeSyntheticPhone = async (): Promise<string> => {
+export const makeSyntheticPhone = async (): Promise<string> => {
   for (let attempt = 0; attempt < 5; attempt++) {
     const digits = Array.from({ length: 12 }, () =>
       Math.floor(Math.random() * 10)
@@ -1017,11 +1158,23 @@ export const deleteAccount = async (userId: string): Promise<{ deleted: true }> 
   }
 
   const phone = await makeSyntheticPhone();
+  // A seller's verification documents are private: they go with the account.
+  const application = await prisma.sellerApplication.findUnique({ where: { userId }, select: { documents: true } });
+  const documentFiles = Object.values((application?.documents ?? {}) as Record<string, { file?: string }>)
+    .map(d => d?.file)
+    .filter((f): f is string => !!f);
   await prisma.$transaction([
     prisma.user.update({
       where: { id: userId },
       data: {
         fullName: 'Deleted user',
+        businessName: null,
+        cacNumber: null,
+        payoutBankCode: null,
+        payoutBankName: null,
+        payoutAccountNumber: null,
+        payoutAccountName: null,
+        payoutAccountAddedAt: null,
         email: null,
         username: null,
         phoneNumber: phone,
@@ -1030,6 +1183,9 @@ export const deleteAccount = async (userId: string): Promise<{ deleted: true }> 
         notificationPrefs: Prisma.DbNull,
         interests: Prisma.DbNull,
         twoFactorEnabled: false,
+        twoFactorMethod: null,
+        totpSecret: null,
+        twoFactorPhone: null,
         personalisedPicks: true,
         usageStats: true,
         isActive: false,
@@ -1045,9 +1201,15 @@ export const deleteAccount = async (userId: string): Promise<{ deleted: true }> 
     prisma.autoBid.deleteMany({ where: { userId } }),
     prisma.userAddress.deleteMany({ where: { userId } }),
     prisma.socialAccount.deleteMany({ where: { userId } }),
+    forgetTrustedDevices(userId),
     // A pending "Download my data" request holds the old email; nothing is left to send.
     prisma.dataRequest.deleteMany({ where: { userId } }),
+    prisma.sellerApplication.deleteMany({ where: { userId } }),
   ]);
+  if (documentFiles.length) {
+    const { deletePrivateFile } = await import('../seller/privateFiles.service');
+    await Promise.all(documentFiles.map(f => deletePrivateFile(f)));
+  }
   logger.info(`Account deleted (anonymised): ${userId}`);
   return { deleted: true };
 };

@@ -1,4 +1,4 @@
-import { body, query, ValidationChain } from 'express-validator';
+import { body, query, Meta, ValidationChain } from 'express-validator';
 
 /**
  * Validate fund wallet request
@@ -16,6 +16,9 @@ export const validateFundWallet: ValidationChain[] = [
     .withMessage('Gateway must be paystack or monnify'),
 ];
 
+/** Sellers are always paid to their saved payout account, so they send only an amount. */
+const sendsBankDetails = (_value: unknown, { req }: Meta) => req.user?.role !== 'seller';
+
 /**
  * Validate withdraw request
  */
@@ -24,15 +27,18 @@ export const validateWithdraw: ValidationChain[] = [
     .isFloat({ min: 500 })
     .withMessage('Minimum withdrawal amount is ₦500'),
   body('bank_code')
+    .if(sendsBankDetails)
     .trim()
     .notEmpty()
     .withMessage('Bank code is required'),
   body('account_number')
+    .if(sendsBankDetails)
     .trim()
     .isLength({ min: 10, max: 10 })
     .isNumeric()
     .withMessage('Account number must be 10 digits'),
   body('account_name')
+    .if(sendsBankDetails)
     .trim()
     .notEmpty()
     .withMessage('Account name is required'),

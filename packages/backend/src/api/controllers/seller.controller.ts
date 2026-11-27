@@ -3,6 +3,7 @@ import { query } from '../../config/database';
 import { sendSuccess, sendError } from '../../utils/response';
 import logger from '../../utils/logger';
 import prisma from '../../config/prisma';
+import * as payoutAccountService from '../../services/seller/payoutAccount.service';
 
 export const getDashboard = async (req: Request, res: Response) => {
   try {
@@ -133,48 +134,56 @@ export const getKybStatus = async (req: Request, res: Response) => {
   }
 };
 
+
 /**
- * Submit seller KYB (business identity) details for admin review.
- * This does NOT unlock listing creation by itself — an admin must approve
- * it first (see admin.controller.ts approveSellerKyb/rejectSellerKyb).
- * POST /api/v1/seller/kyb
+ * The seller's payout account (masked), or null.
+ * GET /api/v1/seller/payout-account
+ * → { data: { bank_code, bank_name, account_number_last4, account_name, added_at } | null,
+ *     meta: { business_name, two_step_enabled } }
  */
-export const submitKyb = async (req: Request, res: Response) => {
+export const getPayoutAccount = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       return sendError(res, 'User not authenticated', 401);
     }
-
-    const { business_name, cac_number } = req.body;
-
-    const user = await prisma.user.update({
-      where: { id: req.user.user_id },
-      data: {
-        businessName: business_name,
-        cacNumber: cac_number || null,
-        sellerKybStatus: 'pending',
-        sellerKybSubmittedAt: new Date(),
-        sellerKybReviewedAt: null,
-        sellerKybRejectionReason: null,
-      },
-      select: {
-        businessName: true,
-        cacNumber: true,
-        sellerKybStatus: true,
-        sellerKybRejectionReason: true,
-      },
-    });
-
-    logger.info(`Seller KYB submitted for review: ${req.user.user_id}`);
-
-    sendSuccess(res, {
-      business_name: user.businessName,
-      cac_number: user.cacNumber,
-      status: user.sellerKybStatus,
-      rejection_reason: user.sellerKybRejectionReason,
-    });
+    const { account, business_name, two_step_enabled } = await payoutAccountService.getPayoutAccount(
+      req.user.user_id
+    );
+    res.status(200).json({ success: true, data: account, meta: { business_name, two_step_enabled } });
   } catch (error: any) {
-    logger.error('Submit seller KYB error:', error);
-    sendError(res, error.message || 'Failed to submit KYB details', 500);
+    if (error instanceof payoutAccountService.PayoutAccountError) {
+      return res.status(error.status).json({ success: false, error: error.message, code: error.code });
+    }
+    logger.error('Get payout account error:', error);
+    sendError(res, "We couldn't load your payout account. Try again.", 500);
+  }
+};
+
+/**
+ * Add or change the payout account. Checks the password, resolves the name with the bank and
+ * saves it only when it matches the registered business name.
+ * PUT /api/v1/seller/payout-account { bank_code, account_number, password }
+ */
+export const setPayoutAccount = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+    const account = await payoutAccountService.setPayoutAccount(
+      req.user.user_id,
+      {
+        bankCode: String(req.body.bank_code).trim(),
+        accountNumber: String(req.body.account_number).trim(),
+        password: String(req.body.password),
+      },
+      req
+    );
+    sendSuccess(res, account, 'Payout account saved');
+  } catch (error: any) {
+    if (error instanceof payoutAccountService.PayoutAccountError) {
+      return res.status(error.status).json({ success: false, error: error.message, code: error.code });
+    }
+    logger.error('Set payout account error:', error);
+    sendError(res, "We couldn't save your payout account. Try again.", 500);
   }
 };

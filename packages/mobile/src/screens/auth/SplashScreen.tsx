@@ -102,7 +102,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
           </Pressable>
 
           <Pressable
-            onPress={() => navigation.navigate('Register', { interfaceType: 'seller' })}
+            onPress={() => navigation.navigate('SellWithUs')}
             style={({ pressed }) => [styles.textButton, pressed && styles.pressedText]}
             accessibilityRole="link"
           >

@@ -53,7 +53,7 @@ export const NAV: NavItem[] = [
   { key: 'tasks', label: 'My tasks', to: '/tasks', icon: CircleCheck, match: ['/tasks'], count: 'tasks', group: 'main' },
   { key: 'users', label: 'Users', to: '/buyers', icon: Users, match: ['/buyers', '/sellers'], group: 'main' },
 
-  { key: 'kyb', label: 'Seller KYB', to: '/sellers?kyb=pending', icon: IdCard, match: [], count: 'kyb', tint: 'violet', group: 'queues' },
+  { key: 'kyb', label: 'Seller KYB', to: '/sellers/applications', icon: IdCard, match: ['/sellers/applications'], count: 'kyb', tint: 'violet', group: 'queues' },
   { key: 'listings', label: 'Listing review', to: '/gadgets?status=pending', icon: Camera, match: ['/gadgets'], count: 'listing_review', tint: 'blue', group: 'queues' },
   { key: 'hub', label: 'Inspection hub', to: '/backoffice', icon: Box, match: ['/backoffice'], count: 'inspection_hub', tint: 'amber', group: 'queues' },
   { key: 'disputes', label: 'Disputes', to: '/disputes', icon: Flag, match: ['/disputes', '/support'], count: 'disputes', tint: 'red', group: 'queues' },
@@ -101,9 +101,12 @@ const GROUP_LABEL: Record<NavItem['group'], string | null> = {
   settings: 'Settings',
 };
 
-/** The nav item for a path, with the KYB queue winning on /sellers?kyb=pending. */
+/** The nav item for a path, with the KYB queue (seller applications) winning over Users › Sellers. */
 export function activeItem(pathname: string, search: string): NavItem | undefined {
-  if (pathname === '/sellers' && new URLSearchParams(search).get('kyb') === 'pending') {
+  if (
+    pathname === '/sellers/applications' ||
+    (pathname === '/sellers' && new URLSearchParams(search).get('kyb') === 'pending')
+  ) {
     return NAV.find(n => n.key === 'kyb');
   }
   if (pathname === '/') return NAV[0];

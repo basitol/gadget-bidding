@@ -35,10 +35,22 @@ export const validateRegistration: ValidationChain[] = [
     .withMessage('You must accept the Terms of Service and Privacy Policy'),
 ];
 
+/** The app's stable device id (2-step sign-in trusts a phone once it passes). */
+const deviceFields: ValidationChain[] = [
+  body('device_id')
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ min: 8, max: 200 })
+    .withMessage('Invalid device id'),
+  body('device_label').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+];
+
 /**
  * Validate login request
  */
 export const validateLogin: ValidationChain[] = [
+  ...deviceFields,
   body('identifier')
     .trim()
     .notEmpty()
@@ -150,6 +162,37 @@ export const validateSignupComplete: ValidationChain[] = [
   body('accepted_terms')
     .custom(value => value === true)
     .withMessage('You must accept the Terms of Service and Privacy Policy'),
+];
+
+/* ---------- 2-step sign-in ---------- */
+
+export const validateLoginTwoFactor: ValidationChain[] = [
+  body('verification_id').isUUID().withMessage('This sign-in has expired. Log in again.'),
+  body('otp')
+    .trim()
+    .matches(/^[0-9]{6}$/)
+    .withMessage('Enter the 6-digit code'),
+  body('account_type')
+    .optional()
+    .isIn(['buyer', 'seller'])
+    .withMessage('Account type must be buyer or seller'),
+  ...deviceFields,
+];
+
+export const validateTwoFactorSetup: ValidationChain[] = [
+  body('method').isIn(['totp', 'sms']).withMessage('Choose an authenticator app or text message'),
+];
+
+export const validateTwoFactorConfirm: ValidationChain[] = [
+  body('method').isIn(['totp', 'sms']).withMessage('Choose an authenticator app or text message'),
+  body('code')
+    .trim()
+    .matches(/^[0-9]{6}$/)
+    .withMessage('Enter the 6-digit code'),
+  body('verification_id')
+    .if(body('method').equals('sms'))
+    .isUUID()
+    .withMessage('This code has expired. Send a new one.'),
 ];
 
 /* ---------- Password reset ---------- */

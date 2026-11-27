@@ -3,6 +3,21 @@ import * as SecureStore from 'expo-secure-store';
 import { STORAGE_KEYS } from '../constants';
 import { User, LoginResponse, ApiResponse } from '../types';
 import { AppInterfaceType } from '../utils/roles';
+import { deviceFields } from '../utils/deviceId';
+import type { TwoFactorMethod } from '@gadget-bidding/shared';
+
+export type { TwoFactorMethod };
+
+/** GET /auth/2fa */
+export interface TwoFactorStatus {
+  enabled: boolean;
+  method: TwoFactorMethod | null;
+  email_hint: string | null;
+  sms_phone_hint: string | null;
+}
+
+/** The signed-in user as the server returns it, with the 2-step fields. */
+export type UserWithTwoFactor = User & { two_factor_enabled?: boolean; two_factor_method?: TwoFactorMethod | null };
 
 export interface RegisterData {
   phone_number: string;
@@ -81,8 +96,9 @@ class AuthService {
   // Login
   async login(data: LoginData): Promise<LoginResponse> {
     try {
-      const response = await api.post('/auth/login', data);
-      // 2-step sign-in: no tokens yet, the caller asks for the emailed code.
+      // The device id lets 2-step sign-in skip the code on a phone that already passed it.
+      const response = await api.post('/auth/login', { ...data, ...(await deviceFields()) });
+      // 2-step sign-in: no tokens yet, the caller asks for the code.
       if (response.data.data?.two_factor_required) return response.data;
       const { access_token, refresh_token, user } = response.data.data;
 
@@ -116,14 +132,19 @@ class AuthService {
     }
   }
 
-  /** Finish a 2-step sign-in with the emailed code. */
+  /** Finish a 2-step sign-in with the emailed, texted or authenticator code. This phone is then trusted. */
   async loginTwoFactor(
     verification_id: string,
     otp: string,
     account_type: AppInterfaceType
   ): Promise<LoginResponse> {
     try {
-      const response = await api.post('/auth/login/2fa', { verification_id, otp, account_type });
+      const response = await api.post('/auth/login/2fa', {
+        verification_id,
+        otp,
+        account_type,
+        ...(await deviceFields()),
+      });
       const { access_token, refresh_token, user } = response.data.data;
       await SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, access_token);
       await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, refresh_token);
@@ -133,6 +154,54 @@ class AuthService {
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }
+  }
+
+  /* ---------- 2-step sign-in set-up (authenticator app or text message) ---------- */
+
+  async getTwoFactor(): Promise<TwoFactorStatus> {
+    try {
+      const response = await api.get('/auth/2fa');
+      return response.data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /** A new authenticator key; nothing changes until a code from the app confirms it. */
+  async setupAuthenticator(): Promise<{ secret: string; otpauth_uri: string }> {
+    try {
+      const response = await api.post('/auth/2fa/setup', { method: 'totp' });
+      return response.data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /** Texts a 6-digit code to the business phone. */
+  async sendTwoFactorSetupCode(): Promise<{ verification_id: string; phone_hint: string }> {
+    try {
+      const response = await api.post('/auth/2fa/setup', { method: 'sms' });
+      return response.data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  }
+
+  /** Turns 2-step sign-in on with that method; saves and returns the updated user. */
+  async confirmTwoFactor(
+    method: 'totp' | 'sms',
+    code: string,
+    verification_id?: string
+  ): Promise<UserWithTwoFactor> {
+    let user: UserWithTwoFactor;
+    try {
+      const response = await api.post('/auth/2fa/confirm', { method, code, verification_id });
+      user = response.data.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+    await this.persistUser(user).catch(() => undefined);
+    return user;
   }
 
   /* ---------- Email-first buyer sign-up ---------- */

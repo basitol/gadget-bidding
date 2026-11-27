@@ -41,7 +41,7 @@ const countLabel = (n?: number | null) => (n == null ? null : n > 999 ? '999+' :
 
 const RAIL: { key: string; label: string; to: string; icon: Icon3dName; count?: 'live_auctions' | 'kyb' | 'listing_review' | 'inspection_hub' | 'unread_notifications' }[] = [
   { key: 'auctions', label: 'Live auctions', to: '/auctions', icon: 'gavel', count: 'live_auctions' },
-  { key: 'kyb', label: 'Seller KYB', to: '/sellers?kyb=pending', icon: 'idcard', count: 'kyb' },
+  { key: 'kyb', label: 'Seller KYB', to: '/sellers/applications', icon: 'idcard', count: 'kyb' },
   { key: 'listings', label: 'Listing review', to: '/gadgets?status=pending', icon: 'camera', count: 'listing_review' },
   { key: 'hub', label: 'Inspection hub', to: '/backoffice', icon: 'box', count: 'inspection_hub' },
   { key: 'money', label: 'Payouts & escrow', to: '/payouts', icon: 'wallet' },

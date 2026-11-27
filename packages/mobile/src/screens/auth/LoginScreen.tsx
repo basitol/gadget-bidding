@@ -136,6 +136,117 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) =
 
   const goBack = () => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Splash'));
 
+  const challengeCopy =
+    challenge?.method === 'totp'
+      ? 'Enter the 6-digit code from your authenticator app.'
+      : challenge?.method === 'sms'
+        ? `We texted a 6-digit code to ${challenge.phone_hint ?? 'your phone'}.`
+        : `We emailed a 6-digit code to ${challenge?.email_hint ?? 'your email'}. It works for 10 minutes.`;
+
+  const challengeSheet = (
+    <BottomSheet visible={!!challenge} onClose={() => setChallenge(null)}>
+      <Text style={styles.codeTitle}>Enter your sign-in code</Text>
+      <Text style={styles.codeSub}>{challengeCopy}</Text>
+      <CodeBoxes value={code} onChange={setCode} onComplete={submitCode} />
+      <View style={styles.codeButton}>
+        <AuthButton label="Log in" onPress={() => submitCode()} disabled={code.length !== 6} busy={isLoading && !!challenge} />
+      </View>
+    </BottomSheet>
+  );
+
+  const passwordField = (
+    <Field label="Password">
+      <PasswordField
+        ref={passwordRef}
+        value={password}
+        onChangeText={setPassword}
+        placeholder={seller ? undefined : 'Your password'}
+        autoComplete="password"
+        textContentType="password"
+        returnKeyType="go"
+        onSubmitEditing={handleLogin}
+        textToggle={seller}
+      />
+    </Field>
+  );
+
+  const emailField = (
+    <Field label={seller ? 'Business email' : 'Email'} error={idError}>
+      <TextField
+        value={identifier}
+        onChangeText={t => {
+          identifierRef.current = t;
+          setIdentifier(t);
+          if (idError) setIdError(null);
+        }}
+        onBlur={() => setIdError(identifierError(identifierRef.current))}
+        placeholder={seller ? 'you@yourshop.com' : 'you@example.com'}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        autoComplete="email"
+        textContentType="username"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
+        invalid={!!idError}
+      />
+    </Field>
+  );
+
+  const forgot = (
+    <TextLink
+      label="Forgot password?"
+      onPress={() =>
+        navigation.navigate('ResetPassword', {
+          interfaceType,
+          email: identifier.includes('@') ? identifier.trim() : undefined,
+        })
+      }
+      style={styles.forgot}
+    />
+  );
+
+  if (seller) {
+    return (
+      <AuthShell
+        title="Seller log in"
+        onBack={goBack}
+        footer={
+          <>
+            <AuthButton label="Log in" onPress={handleLogin} disabled={!canSubmit} busy={isLoading && !challenge} />
+            <TextLink label="New here? Apply to sell" muted onPress={() => navigation.navigate('SellWithUs')} style={styles.apply} />
+          </>
+        }
+      >
+        <View style={styles.sellerBrand}>
+          <Image source={require('../../../assets/brand/logo-mark.png')} style={styles.mark} accessibilityLabel="Gadgets Bidding" />
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>Seller account</Text>
+          </View>
+        </View>
+        <AuthTitle title="Welcome back" sub="Log in with your business email." />
+        {emailField}
+        {passwordField}
+        {forgot}
+        <View style={styles.note}>
+          <Text style={styles.noteText}>
+            Seller and buyer accounts are separate. Want to buy?{' '}
+            <Text
+              style={styles.noteLink}
+              accessibilityRole="link"
+              onPress={() => navigation.replace('Login', { interfaceType: 'buyer' })}
+            >
+              Log in as a buyer
+            </Text>
+            .
+          </Text>
+        </View>
+        {challengeSheet}
+      </AuthShell>
+    );
+  }
+
   return (
     <AuthShell title="Log in" onBack={goBack}>
       <Image
@@ -143,56 +254,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) =
         style={styles.wordmark}
         accessibilityLabel="Gadgets Bidding"
       />
-      <AuthTitle
-        title="Welcome back"
-        sub={seller ? 'Log in to manage your listings and payouts.' : 'Log in to keep bidding and track your orders.'}
-      />
+      <AuthTitle title="Welcome back" sub="Log in to keep bidding and track your orders." />
 
-      <Field label="Email" error={idError}>
-        <TextField
-          value={identifier}
-          onChangeText={t => {
-            identifierRef.current = t;
-            setIdentifier(t);
-            if (idError) setIdError(null);
-          }}
-          onBlur={() => setIdError(identifierError(identifierRef.current))}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          spellCheck={false}
-          autoComplete="email"
-          textContentType="username"
-          returnKeyType="next"
-          onSubmitEditing={() => passwordRef.current?.focus()}
-          invalid={!!idError}
-        />
-      </Field>
-
-      <Field label="Password">
-        <PasswordField
-          ref={passwordRef}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Your password"
-          autoComplete="password"
-          textContentType="password"
-          returnKeyType="go"
-          onSubmitEditing={handleLogin}
-        />
-      </Field>
-
-      <TextLink
-        label="Forgot password?"
-        onPress={() =>
-          navigation.navigate('ResetPassword', {
-            interfaceType,
-            email: identifier.includes('@') ? identifier.trim() : undefined,
-          })
-        }
-        style={styles.forgot}
-      />
+      {emailField}
+      {passwordField}
+      {forgot}
 
       <AuthButton label="Log in" onPress={handleLogin} disabled={!canSubmit} busy={isLoading && !challenge} />
 
@@ -202,33 +268,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) =
 
       <Text style={styles.newHere}>
         New here?{' '}
-        <Text
-          style={styles.newHereLink}
-          accessibilityRole="link"
-          onPress={() => (seller ? navigation.navigate('Register', { interfaceType: 'seller' }) : navigation.navigate('SignUp'))}
-        >
-          {seller ? 'Open a seller account' : 'Create an account'}
+        <Text style={styles.newHereLink} accessibilityRole="link" onPress={() => navigation.navigate('SignUp')}>
+          Create an account
         </Text>
       </Text>
-      {seller ? (
-        <TextLink
-          label="Buying instead? Log in as a buyer"
-          muted
-          onPress={() => navigation.replace('Login', { interfaceType: 'buyer' })}
-          style={styles.switch}
-        />
-      ) : null}
 
-      <BottomSheet visible={!!challenge} onClose={() => setChallenge(null)}>
-        <Text style={styles.codeTitle}>Enter your sign-in code</Text>
-        <Text style={styles.codeSub}>
-          We emailed a 6-digit code to {challenge?.email_hint}. It works for 10 minutes.
-        </Text>
-        <CodeBoxes value={code} onChange={setCode} onComplete={submitCode} />
-        <View style={styles.codeButton}>
-          <AuthButton label="Log in" onPress={() => submitCode()} disabled={code.length !== 6} busy={isLoading && !!challenge} />
-        </View>
-      </BottomSheet>
+      {challengeSheet}
     </AuthShell>
   );
 };
@@ -239,7 +284,14 @@ const styles = StyleSheet.create({
   or: { color: A.muted, fontSize: 13, fontFamily: fonts.regular, textAlign: 'center', marginVertical: 16 },
   newHere: { color: A.muted, fontSize: 14, fontFamily: fonts.regular, textAlign: 'center', marginTop: 20 },
   newHereLink: { color: A.blue600, fontFamily: fonts.medium },
-  switch: { alignSelf: 'center', marginTop: 16 },
+  sellerBrand: { alignItems: 'center', gap: 12, marginTop: 4, marginBottom: 28 },
+  mark: { width: 64, height: 64, borderRadius: 16 },
+  chip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, backgroundColor: '#F5F2FF', borderWidth: 1, borderColor: 'rgba(124,104,232,0.12)' },
+  chipText: { color: '#7C68E8', fontSize: 13, fontFamily: fonts.medium },
+  note: { padding: 16, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.6)' },
+  noteText: { color: A.slate, fontSize: 14, lineHeight: 21, fontFamily: fonts.regular },
+  noteLink: { color: A.blue600, fontFamily: fonts.medium },
+  apply: { alignSelf: 'center', marginTop: 16, marginBottom: 4 },
   codeTitle: { color: A.ink, fontSize: 19, fontFamily: fonts.medium },
   codeSub: { color: A.muted, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, marginTop: 6, marginBottom: 16 },
   codeButton: { marginTop: 20 },

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { sendSuccess, sendError } from '../../utils/response';
 import * as authService from '../../services/auth/auth.service';
+import * as twoFactorService from '../../services/auth/twoFactor.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as auditService from '../../services/audit/audit.service';
 import logger from '../../utils/logger';
@@ -89,12 +90,14 @@ const recordAdminSignIn = (req: Request, result: any) => {
  */
 export const login = async (req: Request, res: Response) => {
   try {
-    const { identifier, password, account_type } = req.body;
+    const { identifier, password, account_type, device_id, device_label } = req.body;
 
     const tokens = await authService.loginUser({
       identifier,
       password,
       account_type,
+      device_id,
+      device_label,
     });
     recordAdminSignIn(req, tokens);
 
@@ -259,10 +262,17 @@ export const signupComplete = async (req: Request, res: Response) => {
   }
 };
 
-/** POST /api/v1/auth/login/2fa — finish a 2-step sign-in with the emailed code */
+/** POST /api/v1/auth/login/2fa — finish a 2-step sign-in with the emailed, texted or app code */
 export const loginTwoFactor = async (req: Request, res: Response) => {
   try {
-    const tokens = await authService.completeTwoFactorLogin(req.body);
+    const { verification_id, otp, account_type, device_id, device_label } = req.body;
+    const tokens = await authService.completeTwoFactorLogin({
+      verification_id,
+      otp,
+      account_type,
+      device_id,
+      device_label,
+    });
     recordAdminSignIn(req, tokens);
     sendSuccess(res, tokens, 'Login successful');
   } catch (error: any) {
@@ -278,6 +288,47 @@ export const setTwoFactor = async (req: Request, res: Response) => {
     sendSuccess(res, result, result.two_factor_enabled ? '2-step sign-in is on' : '2-step sign-in is off');
   } catch (error: any) {
     sendError(res, error.message || 'Could not change 2-step sign-in', 400);
+  }
+};
+
+/** GET /api/v1/auth/2fa — { enabled, method, email_hint, sms_phone_hint } */
+export const getTwoFactor = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    sendSuccess(res, await twoFactorService.getTwoFactorStatus(req.user.user_id));
+  } catch (error: any) {
+    sendError(res, error.message || "Couldn't load 2-step sign-in", 400);
+  }
+};
+
+/** POST /api/v1/auth/2fa/setup { method: 'totp' | 'sms' } */
+export const setupTwoFactor = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    const method = req.body.method as twoFactorService.SetupMethod;
+    const result = await twoFactorService.startTwoFactorSetup(req.user.user_id, method);
+    sendSuccess(res, result, method === 'totp' ? 'Add this key to your authenticator app' : 'We texted you a code');
+  } catch (error: any) {
+    sendError(res, error.message || "Couldn't start 2-step sign-in", 400);
+  }
+};
+
+/** POST /api/v1/auth/2fa/confirm { method, code, verification_id? } — turns 2-step on, returns the user */
+export const confirmTwoFactor = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return sendError(res, 'User not authenticated', 401);
+    const { method, code, verification_id } = req.body;
+    const user = await twoFactorService.confirmTwoFactorSetup(req.user.user_id, { method, code, verification_id });
+    auditService.recordAuditEventSafe({
+      req,
+      userId: req.user.user_id,
+      action: 'two_factor_enabled',
+      resourceType: 'auth',
+      resourceId: req.user.user_id,
+    });
+    sendSuccess(res, user, '2-step sign-in is on');
+  } catch (error: any) {
+    sendError(res, error.message || "Couldn't turn on 2-step sign-in", 400);
   }
 };
 

@@ -186,13 +186,37 @@ router.post(
   authController.passwordReset
 );
 
-/** 2-step sign-in */
+/**
+ * 2-step sign-in
+ *   POST /login/2fa      — finish a sign-in with the code (email, text or authenticator app)
+ *   GET  /2fa            — { enabled, method, email_hint, sms_phone_hint }
+ *   POST /2fa/setup      — { method: totp | sms } → { secret, otpauth_uri } | { verification_id, phone_hint }
+ *   POST /2fa/confirm    — { method, code, verification_id? } → the updated user
+ *   PUT  /2fa            — { enabled, password }: the emailed code on/off (off clears every method)
+ */
 router.post(
   '/login/2fa',
   otpRateLimiter,
-  authValidator.validateSignupVerify,
+  authValidator.validateLoginTwoFactor,
   handleValidationErrors,
   authController.loginTwoFactor
+);
+router.get('/2fa', authenticate, authController.getTwoFactor);
+router.post(
+  '/2fa/setup',
+  otpRateLimiter,
+  authenticate,
+  authValidator.validateTwoFactorSetup,
+  handleValidationErrors,
+  authController.setupTwoFactor
+);
+router.post(
+  '/2fa/confirm',
+  otpRateLimiter,
+  authenticate,
+  authValidator.validateTwoFactorConfirm,
+  handleValidationErrors,
+  authController.confirmTwoFactor
 );
 router.put('/2fa', authRateLimiter, authenticate, authController.setTwoFactor);
 

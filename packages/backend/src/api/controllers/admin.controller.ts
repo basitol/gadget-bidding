@@ -1872,22 +1872,13 @@ export const getPendingSellerKyb = async (req: Request, res: Response) => {
 export const approveSellerKyb = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        sellerKybStatus: 'approved',
-        sellerKybReviewedAt: new Date(),
-        sellerKybRejectionReason: null,
-      },
-      select: { id: true, fullName: true, businessName: true },
-    });
-
-    await audit(req, 'seller_kyb_approve', 'user', id, {
-      business_name: user.businessName,
-    });
-
-    sendSuccess(res, user, 'Seller verification approved');
+    const applications = await import('../../services/seller/sellerApplication.service');
+    const applicationId = await applications.applicationIdForUser(id as string);
+    if (!applicationId) return sendError(res, "This seller hasn't sent an application yet.", 400);
+    // Same rules as the review screen: number matched and all three documents accepted.
+    const result = await applications.approveApplication(req.user!.user_id, applicationId);
+    await audit(req, 'seller_kyb_approve', 'user', id, { business_name: result.business_name });
+    sendSuccess(res, result, 'Seller verification approved');
   } catch (error: any) {
     logger.error('Approve seller KYB error:', error);
     sendError(res, error.message || 'Failed to approve seller KYB', 400);
@@ -1900,22 +1891,13 @@ export const approveSellerKyb = async (req: Request, res: Response) => {
 export const rejectSellerKyb = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const reason =
-      (req.body?.reason as string) || 'Business details could not be verified';
-
-    const user = await prisma.user.update({
-      where: { id },
-      data: {
-        sellerKybStatus: 'rejected',
-        sellerKybReviewedAt: new Date(),
-        sellerKybRejectionReason: reason,
-      },
-      select: { id: true, fullName: true, businessName: true },
-    });
-
+    const reason = (req.body?.reason as string) || 'Business details could not be verified';
+    const applications = await import('../../services/seller/sellerApplication.service');
+    const applicationId = await applications.applicationIdForUser(id as string);
+    if (!applicationId) return sendError(res, "This seller hasn't sent an application yet.", 400);
+    const result = await applications.rejectApplication(req.user!.user_id, applicationId, reason);
     await audit(req, 'seller_kyb_reject', 'user', id, { reason });
-
-    sendSuccess(res, user, 'Seller verification rejected');
+    sendSuccess(res, result, 'Seller verification rejected');
   } catch (error: any) {
     logger.error('Reject seller KYB error:', error);
     sendError(res, error.message || 'Failed to reject seller KYB', 400);

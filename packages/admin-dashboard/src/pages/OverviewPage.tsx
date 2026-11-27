@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, Check, Circle, Hash, TrendingUp } from 'lucide-react';
-import { adminApi, getStoredUser, type ChecklistItem, type Overview } from '@/api';
+import { adminApi, getStoredUser, sellerApplicationsApi, type ChecklistItem, type Overview, type SellerApplicationRow } from '@/api';
 import { refreshQueues } from '@/hooks/useQueues';
 import { connectAdminSocket } from '@/lib/socket';
 import { compactMoney, friendlyTime, money } from '@/lib/format';
@@ -173,25 +173,45 @@ function ListRow({ title, sub, right, to }: { title: string; sub: string; right?
 }
 
 function VerificationTab() {
-  const [kyb, setKyb] = useState<any[] | null>(null);
+  const [kyb, setKyb] = useState<{ rows: SellerApplicationRow[]; waiting: number } | null>(null);
   const [listings, setListings] = useState<any[] | null>(null);
   useEffect(() => {
-    adminApi.pendingSellerKyb({ page: 1, limit: 6 }).then(r => setKyb(r.data ?? [])).catch(() => setKyb([]));
+    sellerApplicationsApi
+      .list({ status: 'in_review' })
+      .then(r => setKyb({ rows: (r.data ?? []).slice(0, 6), waiting: r.counts?.in_review ?? r.data?.length ?? 0 }))
+      .catch(() => setKyb({ rows: [], waiting: 0 }));
     adminApi.gadgets({ status: 'pending', page: 1, limit: 6 }).then(r => setListings(r.data ?? [])).catch(() => setListings([]));
   }, []);
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <SectionCard icon={<Icon3d name="idcard" size={26} />} title="Seller KYB" meta={kyb ? `${kyb.length} waiting` : undefined}>
+      <SectionCard
+        icon={<Icon3d name="idcard" size={26} />}
+        title="Seller KYB"
+        meta={kyb ? `${kyb.waiting} waiting` : undefined}
+        right={
+          kyb && kyb.waiting > kyb.rows.length ? (
+            <Link to="/sellers/applications" className="text-[14px] font-medium text-blue-press hover:underline">
+              See all {kyb.waiting}
+            </Link>
+          ) : null
+        }
+      >
         {kyb === null ? (
           <Skeleton className="m-6 h-24" />
-        ) : kyb.length ? (
+        ) : kyb.rows.length ? (
           <ul>
-            {kyb.map(s => (
+            {kyb.rows.map(a => (
               <ListRow
-                key={s.id}
-                title={s.business_name || s.full_name}
-                sub={`Sent ${friendlyTime(s.seller_kyb_submitted_at || s.created_at)}${s.cac_number ? ` · CAC ${s.cac_number}` : ''}`}
-                to={`/sellers?kyb=pending&seller=${s.id}`}
+                key={a.id}
+                title={a.business_name || a.owner_name || 'New seller'}
+                sub={[
+                  `Sent ${friendlyTime(a.submitted_at)}`,
+                  a.registration,
+                  a.second_review ? 'Second review' : a.resubmitted_at ? 'Fix sent' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                to={`/sellers/applications?application=${a.id}`}
               />
             ))}
           </ul>
@@ -427,7 +447,7 @@ export function OverviewPage() {
               value={String(s.kyb_queue)}
               caption="Businesses waiting for review"
               chip={s.kyb_queue ? <QueueChip label="Needs review" tint="amber" /> : null}
-              to="/sellers?kyb=pending"
+              to="/sellers/applications"
             />
             <StatCard
               icon="box"

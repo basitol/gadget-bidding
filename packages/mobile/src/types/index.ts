@@ -9,8 +9,10 @@ export interface User {
   is_verified: boolean;
   business_name?: string;
   cac_number?: string;
-  seller_kyb_status?: 'not_started' | 'pending' | 'approved' | 'rejected';
+  seller_kyb_status?: 'not_started' | 'pending' | 'needs_info' | 'approved' | 'rejected';
   seller_kyb_rejection_reason?: string;
+  two_factor_enabled?: boolean;
+  two_factor_method?: 'email' | 'totp' | 'sms' | null;
   created_at: string;
 }
 

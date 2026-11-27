@@ -124,7 +124,7 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
             </Text>
 
             <Pressable
-              onPress={() => navigation.navigate('Register', { interfaceType: 'seller' })}
+              onPress={() => navigation.navigate('SellWithUs')}
               style={({ pressed }) => [styles.sellerCard, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Selling as a business? Create a seller account"

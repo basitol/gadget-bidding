@@ -418,6 +418,122 @@ export const reportsApi = {
     }),
 };
 
+export type SellerApplicationStatus = 'draft' | 'in_review' | 'needs_info' | 'approved' | 'rejected';
+/** "all" means everything that was sent (drafts are left out). */
+export type SellerApplicationFilter = SellerApplicationStatus | 'all';
+export type NumberCheck = 'pending' | 'matched' | 'not_matched';
+export type SellerDocumentKind = 'cac_certificate' | 'owner_id' | 'shop_address';
+export type SellerDocumentStatus = 'submitted' | 'accepted' | 'needs_fix';
+
+/** One row in the verification team's queue. */
+export type SellerApplicationRow = {
+  id: string;
+  user_id: string;
+  seller_code: string;
+  status: SellerApplicationStatus;
+  business_name: string | null;
+  owner_name: string | null;
+  email: string | null;
+  /** "RC 1234567" */
+  registration: string | null;
+  number_check: NumberCheck;
+  documents: { uploaded: number; accepted: number; needs_fix: number };
+  submitted_at: string | null;
+  resubmitted_at: string | null;
+  second_review: boolean;
+  decided_at: string | null;
+};
+
+export type SellerApplicationCounts = Record<SellerApplicationStatus, number>;
+
+export type SellerApplicationDocument = {
+  kind: SellerDocumentKind;
+  label: string;
+  uploaded: boolean;
+  name: string | null;
+  mime: string | null;
+  size: number | null;
+  uploaded_at: string | null;
+  status: SellerDocumentStatus | null;
+  /** What we asked the seller to fix (kept next to the new file after they upload it). */
+  note: string | null;
+  reviewed_at: string | null;
+  is_pdf: boolean;
+  /** Signed links that stop working 10 minutes after the application was loaded. */
+  url: string | null;
+  /** Page 1 of a PDF, or a HEIC photo, as a JPG. */
+  preview_url: string | null;
+};
+
+/** The full application, as our verification team sees it. */
+export type SellerApplication = {
+  id: string;
+  user_id: string;
+  seller_code: string;
+  status: SellerApplicationStatus;
+  email: string | null;
+  account_created_at: string | null;
+  account_active: boolean;
+  business_name: string | null;
+  owner_name: string | null;
+  plaza: string | null;
+  shop_number: string | null;
+  business_phone: string | null;
+  area: string | null;
+  categories: string[];
+  registration_type: 'rc' | 'bn' | null;
+  registration_number: string | null;
+  registration: string | null;
+  number_check: NumberCheck;
+  number_checked_at: string | null;
+  documents: SellerApplicationDocument[];
+  rules_accepted_at: string | null;
+  submitted_at: string | null;
+  resubmitted_at: string | null;
+  decided_at: string | null;
+  reviewed_by: string | null;
+  team_note: string | null;
+  reject_reason: string | null;
+  second_review_requested_at: string | null;
+};
+
+type ApplicationResult = { success: boolean; data: SellerApplication; message?: string };
+
+/** Seller applications: business details, the RC/BN number and three private documents. */
+export const sellerApplicationsApi = {
+  list: (params: { status: SellerApplicationFilter; search?: string; page?: number }) => {
+    const sp = new URLSearchParams({ status: params.status });
+    if (params.search?.trim()) sp.set('search', params.search.trim());
+    if (params.page && params.page > 1) sp.set('page', String(params.page));
+    return request<PageResult<SellerApplicationRow> & { counts: SellerApplicationCounts }>(
+      `/admin/seller-applications?${sp}`
+    );
+  },
+  get: (id: string) => request<ApplicationResult>(`/admin/seller-applications/${id}`),
+  numberCheck: (id: string, result: 'matched' | 'not_matched') =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/number-check`, {
+      method: 'POST',
+      body: JSON.stringify({ result }),
+    }),
+  reviewDocument: (id: string, kind: SellerDocumentKind, status: 'accepted' | 'needs_fix', note?: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/documents/${kind}`, {
+      method: 'POST',
+      body: JSON.stringify({ status, note: note?.trim() || undefined }),
+    }),
+  approve: (id: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/approve`, { method: 'POST' }),
+  needsInfo: (id: string, note: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/needs-info`, {
+      method: 'POST',
+      body: JSON.stringify({ note: note.trim() }),
+    }),
+  reject: (id: string, reason: string) =>
+    request<ApplicationResult>(`/admin/seller-applications/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason.trim() }),
+    }),
+};
+
 export type AttentionItem = {
   id: string;
   kind: 'kyb' | 'listing' | 'dispute' | 'hub' | 'payouts';

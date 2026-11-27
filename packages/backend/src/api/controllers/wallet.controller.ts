@@ -7,6 +7,7 @@ import * as monnifyService from '../../services/payment/monnify.service';
 import * as savedCardService from '../../services/buyer/savedCard.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as auditService from '../../services/audit/audit.service';
+import * as payoutAccountService from '../../services/seller/payoutAccount.service';
 import { query } from '../../config/database';
 import logger from '../../utils/logger';
 import { safeErrorMessage, USER_ERRORS } from '../../utils/errors';
@@ -221,12 +222,81 @@ export const verifyPayment = async (req: Request, res: Response) => {
   }
 };
 
+const refuse = (res: Response, status: number, error: string, code: string, extra?: Record<string, unknown>) =>
+  res.status(status).json({ success: false, error, code, ...extra });
+
 /**
- * Withdraw funds — disabled until Paystack transfers are wired.
- * POST /api/v1/wallet/withdraw
+ * Withdraw funds.
+ * POST /api/v1/wallet/withdraw { amount }
+ *
+ * Sellers: always paid to their saved payout account (bank details in the body are ignored),
+ * and only once they have one and 2-step sign-in is on. Everyone else: still disabled.
  */
-export const withdraw = async (_req: Request, res: Response) => {
-  return sendError(res, USER_ERRORS.WITHDRAWALS_DISABLED, 503);
+export const withdraw = async (req: Request, res: Response) => {
+  if (req.user?.role !== 'seller') {
+    return sendError(res, USER_ERRORS.WITHDRAWALS_DISABLED, 503);
+  }
+  const userId = req.user.user_id;
+
+  try {
+    const { account, twoStepEnabled } = await payoutAccountService.getPayoutReadiness(userId);
+    const missing = [!account && 'payout_account', !twoStepEnabled && 'two_step'].filter(Boolean);
+    if (!account) {
+      return refuse(res, 403, 'Add your payout account first.', 'PAYOUT_ACCOUNT_REQUIRED', { missing });
+    }
+    if (!twoStepEnabled) {
+      return refuse(res, 403, 'Turn on 2-step sign-in before your first payout.', 'TWO_STEP_REQUIRED', { missing });
+    }
+
+    const amount = Number(req.body.amount);
+    if (!Number.isInteger(amount)) {
+      return refuse(res, 400, 'Enter a whole naira amount, like 25000.', 'INVALID_AMOUNT');
+    }
+    if (!walletService.sellerPayoutsOpen()) {
+      return sendError(res, USER_ERRORS.WITHDRAWALS_DISABLED, 503);
+    }
+
+    const payout = await walletService.withdrawToPayoutAccount(userId, amount, account);
+    const to = payoutAccountService.maskAccount(account);
+    auditService.recordAuditEventSafe({
+      req,
+      action: 'seller_payout_requested',
+      resourceType: 'wallet_transaction',
+      resourceId: payout.id,
+      changes: { amount, reference: payout.reference, bank_name: to.bank_name, account_last4: to.account_number_last4 },
+    });
+
+    sendSuccess(
+      res,
+      {
+        transaction_id: payout.id,
+        reference: payout.reference,
+        amount,
+        status: payout.status,
+        payout_account: to,
+      },
+      `On its way to ${to.bank_name} ••••${to.account_number_last4}.`
+    );
+  } catch (error: unknown) {
+    if (error instanceof walletService.PayoutSendError) {
+      return refuse(res, 502, error.message, 'PAYOUT_NOT_SENT');
+    }
+    const message = error instanceof Error ? error.message : '';
+    if (message.startsWith('Insufficient available balance')) {
+      const available = Math.max(0, Math.floor(await walletService.getAvailableBalance(userId).catch(() => 0)));
+      return refuse(
+        res,
+        400,
+        `That's more than you can withdraw. You can withdraw up to ₦${available.toLocaleString('en-NG')}.`,
+        'INSUFFICIENT_BALANCE'
+      );
+    }
+    if (message.startsWith('Wallet is locked')) {
+      return refuse(res, 403, 'Your wallet is locked. Contact support.', 'WALLET_LOCKED');
+    }
+    logger.error('Seller withdraw error:', error);
+    sendError(res, "We couldn't start your payout. Try again.", 500);
+  }
 };
 
 /**
@@ -235,7 +305,8 @@ export const withdraw = async (_req: Request, res: Response) => {
  */
 export const listBanks = async (_req: Request, res: Response) => {
   try {
-    const banks = await paystackService.listBanks();
+    // Paystack's bank list (plus its test bank when on test keys).
+    const banks = await payoutAccountService.listPayoutBanks();
     sendSuccess(res, banks);
   } catch (error: unknown) {
     logger.error('List banks error:', error);

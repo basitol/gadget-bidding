@@ -4,10 +4,14 @@ import { authService } from '../services';
 import { unregisterPush } from '../services/pushNotifications';
 import { useWatchStore } from './watchStore';
 import { AppInterfaceType, validateInterfaceAccess } from '../utils/roles';
+import type { TwoFactorMethod } from '../services/auth.service';
 
+/** Password accepted; the account asks for a code. email_hint / phone_hint say where it went. */
 export interface TwoFactorChallenge {
   verification_id: string;
-  email_hint: string;
+  method: TwoFactorMethod;
+  email_hint?: string;
+  phone_hint?: string;
 }
 
 interface AuthState {
@@ -75,10 +79,16 @@ export const useAuthStore = create<AuthState>(set => ({
         password,
         account_type: interfaceType,
       });
-      const challenge = response.data as unknown as TwoFactorChallenge & { two_factor_required?: boolean };
-      if (challenge?.two_factor_required) {
+      const challenge = response.data as unknown as Partial<TwoFactorChallenge> & { two_factor_required?: boolean };
+      if (challenge?.two_factor_required && challenge.verification_id) {
         set({ isLoading: false });
-        return { verification_id: challenge.verification_id, email_hint: challenge.email_hint };
+        return {
+          verification_id: challenge.verification_id,
+          // Servers from before methods existed only emailed the code.
+          method: challenge.method ?? 'email',
+          email_hint: challenge.email_hint,
+          phone_hint: challenge.phone_hint,
+        };
       }
       const accessError = validateInterfaceAccess(
         interfaceType,

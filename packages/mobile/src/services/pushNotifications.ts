@@ -112,6 +112,8 @@ export const routeForNotification = (
   if (!data) return null;
   // "Support replied": the chat screen has the same name in the buyer and seller apps.
   if (data.route === 'SupportChat') return { name: 'SupportChat' };
+  // A decision on a seller's application.
+  if (data.route === 'SellerStatus') return { name: 'SellerStatus' };
   const orderId = (data.orderId ?? data.order_id) as string | undefined;
   const auctionId = (data.auctionId ?? data.auction_id) as string | undefined;
   const missedPaymentId = data.missedPaymentId as string | undefined;

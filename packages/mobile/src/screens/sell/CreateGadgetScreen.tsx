@@ -316,7 +316,8 @@ export const CreateGadgetScreen: React.FC<CreateGadgetScreenProps> = ({
   // already have.
   useEffect(() => {
     if (!isEditing && user && user.seller_kyb_status !== 'approved') {
-      navigation.replace('SellerKyb');
+      // Not verified yet: show where the application stands (or finish it).
+      navigation.replace(user.seller_kyb_status === 'not_started' ? 'SellerApply' : 'SellerStatus', { resume: true });
     }
   }, [isEditing, user, navigation]);
 

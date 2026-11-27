@@ -50,6 +50,7 @@ packages/mobile/.expo-shared/
 
 # Backend
 packages/backend/uploads/
+packages/backend/private-uploads/
 packages/backend/logs/
 
 # Database

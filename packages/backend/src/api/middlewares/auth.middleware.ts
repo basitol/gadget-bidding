@@ -139,8 +139,12 @@ const requireSellerKybCheck = async (
     return sendError(
       res,
       user?.sellerKybStatus === 'pending'
-        ? 'Your seller verification is still under review.'
-        : 'Complete your seller verification before listing a gadget.',
+        ? "We're still checking your business. You can list once you're approved."
+        : user?.sellerKybStatus === 'needs_info'
+          ? 'Our team needs one more thing before you can list. Open your application to see what.'
+          : user?.sellerKybStatus === 'rejected'
+            ? "Your business wasn't approved, so you can't list yet."
+            : 'Finish your seller application before listing a gadget.',
       403
     );
   }

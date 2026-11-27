@@ -6,7 +6,9 @@ export type UserRole = 'bidder' | 'seller' | 'admin';
 
 export type AccountType = 'buyer' | 'seller';
 
-export type SellerKybStatus = 'not_started' | 'pending' | 'approved' | 'rejected';
+export type SellerKybStatus = 'not_started' | 'pending' | 'needs_info' | 'approved' | 'rejected';
+
+export type TwoFactorMethod = 'email' | 'totp' | 'sms';
 
 export interface User {
   id: string;
@@ -21,6 +23,8 @@ export interface User {
   cac_number?: string;
   seller_kyb_status?: SellerKybStatus;
   seller_kyb_rejection_reason?: string;
+  two_factor_enabled?: boolean;
+  two_factor_method?: TwoFactorMethod | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -418,6 +422,7 @@ export type NotificationType =
   | 'payment_reminder'
   | 'saved_search_match'
   | 'store_new_listing'
+  | 'seller_application'
   | 'payment_initiated'
   | 'order_created'
   | 'order_shipped'

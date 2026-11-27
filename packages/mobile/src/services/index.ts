@@ -6,8 +6,6 @@ export type {
   GadgetCategory,
   CreateGadgetData,
   SellerDashboard,
-  SellerKybStatus,
-  SubmitSellerKybData,
 } from './auction.service';
 export { orderService } from './order.service';
 export { addressService } from './address.service';
@@ -28,3 +26,5 @@ export type {
   PrivacySwitch,
   DataRequest,
 } from './me.service';
+export { payoutService, PayoutError } from './payout.service';
+export type { PayoutAccount, PayoutAccountState, Bank, PayoutSent } from './payout.service';

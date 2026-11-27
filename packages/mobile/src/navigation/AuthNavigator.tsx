@@ -10,6 +10,8 @@ import {
   ResetPasswordScreen,
 } from '../screens/auth';
 import { PolicyScreen } from '../screens/profile';
+import { SellWithUsScreen } from '../screens/sell/onboarding/SellWithUsScreen';
+import { SellerSignUpScreen } from '../screens/sell/onboarding/SellerSignUpScreen';
 import { AppInterfaceType } from '../utils/roles';
 
 export type AuthStackParamList = {
@@ -27,6 +29,9 @@ export type AuthStackParamList = {
     interfaceType: AppInterfaceType;
   };
   Policy: undefined;
+  /** Seller onboarding: who can sell, then the six-step sign-up. */
+  SellWithUs: undefined;
+  SellerSignUp: undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -55,6 +60,12 @@ export const AuthNavigator: React.FC = () => {
         component={OtpVerificationScreen as any}
       />
       <Stack.Screen name="Policy" component={PolicyScreen as any} />
+      <Stack.Screen name="SellWithUs" component={SellWithUsScreen as any} />
+      <Stack.Screen
+        name="SellerSignUp"
+        component={SellerSignUpScreen as any}
+        options={{ gestureEnabled: false }}
+      />
     </Stack.Navigator>
   );
 };

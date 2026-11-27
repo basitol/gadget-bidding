@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 import { getStoredUser } from './api';
 import { AdminShell } from './components/shell/AdminShell';
 import { ConfirmDialogProvider } from './components/ConfirmDialogProvider';
@@ -21,6 +21,9 @@ const TasksPage = lazy(() =>
 );
 const ReportsPage = lazy(() =>
   import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage }))
+);
+const SellerApplicationsPage = lazy(() =>
+  import('./pages/SellerApplicationsPage').then(m => ({ default: m.SellerApplicationsPage }))
 );
 const RulesPage = lazy(() =>
   import('./pages/RulesPage').then(m => ({ default: m.RulesPage }))
@@ -90,6 +93,21 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * /sellers is the seller accounts list. Admin notifications (/sellers?application=<id>) and the old
+ * Seller KYB queue (/sellers?kyb=pending&seller=<user id>) open Seller applications instead.
+ */
+function SellersEntry() {
+  const [params] = useSearchParams();
+  const application = params.get('application');
+  if (!application && params.get('kyb') !== 'pending') return <SellersPage />;
+  const next = new URLSearchParams();
+  if (application) next.set('application', application);
+  else if (params.get('seller')) next.set('seller', params.get('seller')!);
+  const qs = next.toString();
+  return <Navigate to={`/sellers/applications${qs ? `?${qs}` : ''}`} replace />;
+}
+
 function Guard({ children }: { children: React.ReactNode }) {
   return (
     <RequireAdmin>
@@ -111,6 +129,7 @@ export function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/tasks" element={<Guard><TasksPage /></Guard>} />
             <Route path="/reports" element={<Guard><ReportsPage /></Guard>} />
+            <Route path="/sellers/applications" element={<Guard><SellerApplicationsPage /></Guard>} />
             <Route path="/rules" element={<Guard><RulesPage /></Guard>} />
             <Route path="/settings" element={<Guard><SettingsPage /></Guard>} />
             <Route
@@ -165,7 +184,7 @@ export function App() {
               path="/sellers"
               element={
                 <Guard>
-                  <SellersPage />
+                  <SellersEntry />
                 </Guard>
               }
             />

@@ -127,7 +127,8 @@ export const TextField = forwardRef<TextInput, TextInputProps & { invalid?: bool
   );
 });
 
-export const PasswordField = forwardRef<TextInput, TextInputProps & { invalid?: boolean }>(({ invalid, onFocus, onBlur, ...props }, ref) => {
+/** textToggle: a "Show" / "Hide" chip instead of the eye (seller log in). */
+export const PasswordField = forwardRef<TextInput, TextInputProps & { invalid?: boolean; textToggle?: boolean }>(({ invalid, textToggle, onFocus, onBlur, ...props }, ref) => {
   const [show, setShow] = useState(false);
   const [focused, setFocused] = useState(false);
   return (
@@ -149,15 +150,27 @@ export const PasswordField = forwardRef<TextInput, TextInputProps & { invalid?: 
         }}
         style={[styles.input, styles.inputBare]}
       />
-      <Pressable
-        onPress={() => setShow(s => !s)}
-        hitSlop={10}
-        style={styles.eye}
-        accessibilityRole="button"
-        accessibilityLabel={show ? 'Hide password' : 'Show password'}
-      >
-        <Ionicons name={show ? 'eye-off-outline' : 'eye-outline'} size={18} color={A.muted} />
-      </Pressable>
+      {textToggle ? (
+        <Pressable
+          onPress={() => setShow(s => !s)}
+          hitSlop={6}
+          style={({ pressed }) => [styles.showChip, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={show ? 'Hide password' : 'Show password'}
+        >
+          <Text style={styles.showChipText}>{show ? 'Hide' : 'Show'}</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          onPress={() => setShow(s => !s)}
+          hitSlop={10}
+          style={styles.eye}
+          accessibilityRole="button"
+          accessibilityLabel={show ? 'Hide password' : 'Show password'}
+        >
+          <Ionicons name={show ? 'eye-off-outline' : 'eye-outline'} size={18} color={A.muted} />
+        </Pressable>
+      )}
     </View>
   );
 });
@@ -169,7 +182,24 @@ export const passwordRules = (pw: string) => ({
   letter: /[A-Za-z]/.test(pw),
 });
 
-export const PasswordRules: React.FC<{ password: string }> = ({ password }) => {
+/** Seller accounts handle money: 10+ characters, a number, a capital letter (the server checks the same). */
+export const sellerPasswordRules = (pw: string) => ({
+  length: pw.length >= 10,
+  number: /[0-9]/.test(pw),
+  capital: /[A-Z]/.test(pw),
+});
+
+export const PasswordRules: React.FC<{ password: string; seller?: boolean }> = ({ password, seller }) => {
+  if (seller) {
+    const r = sellerPasswordRules(password);
+    return (
+      <View style={styles.rules}>
+        <Rule ok={r.length} label="10 characters or more" />
+        <Rule ok={r.number} label="A number" />
+        <Rule ok={r.capital} label="A capital letter" />
+      </View>
+    );
+  }
   const r = passwordRules(password);
   return (
     <View style={styles.rules}>
@@ -314,6 +344,8 @@ const styles = StyleSheet.create({
   inputFocused: { borderColor: A.blue },
   inputInvalid: { borderColor: A.red },
   eye: { paddingHorizontal: 16, height: 52, justifyContent: 'center' },
+  showChip: { height: 36, paddingHorizontal: 14, marginRight: 8, borderRadius: 10, backgroundColor: '#F3F4F8', justifyContent: 'center' },
+  showChipText: { color: A.ink, fontSize: 14, fontFamily: fonts.medium },
 
   rules: { gap: 8, marginTop: -4, marginBottom: 8 },
   rule: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -328,7 +360,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    // Faint edge so the boxes still show on white sheets (2-step sign-in code).
+    borderColor: 'rgba(28,31,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
