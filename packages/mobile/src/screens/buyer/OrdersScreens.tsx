@@ -216,6 +216,9 @@ const confirmDelivery = (order: any, onDone: () => void) => {
   );
 };
 
+/** Support chat about this order: it shows the order and starts the message with its number. */
+const openSupport = (navigation: any, order: any) =>
+  navigation.navigate('SupportChat', { orderId: order.id, orderNumber: order.order_number });
 
 /* ================= My orders ================= */
 
@@ -745,11 +748,7 @@ export const OrderTrackScreen: React.FC<{ navigation: any; route: any }> = ({ na
           {paid || stage === 'refunded' ? (
             <SecondaryButton label={sending ? 'Sending…' : 'Email receipt'} onPress={emailReceipt} disabled={sending} style={styles.flex} />
           ) : null}
-          <SecondaryButton
-            label="Get help"
-            onPress={() => navigation.navigate('ContactSupport', { orderId: order.id, topic: 'order' })}
-            style={styles.flex}
-          />
+          <SecondaryButton label="Get help" onPress={() => openSupport(navigation, order)} style={styles.flex} />
         </View>
 
         {latestCase ? (

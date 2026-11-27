@@ -1655,9 +1655,11 @@ export const getSupportThreads = async (req: Request, res: Response) => {
   try {
     const { page, limit } = parsePage(req);
     const status = req.query.status as string | undefined;
+    const role = req.query.role as string | undefined;
     const search = (req.query.search as string | undefined)?.trim();
     const result = await supportService.listThreadsForAdmin({
       status,
+      role,
       page,
       limit,
       search,

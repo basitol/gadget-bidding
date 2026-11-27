@@ -13,7 +13,12 @@ const router: Router = Router();
 
 router.use(authenticate);
 
-router.get('/thread', supportController.getMyThread);
+router.get(
+  '/thread',
+  [query('order_id').optional().isUUID()],
+  handleValidationErrors,
+  supportController.getMyThread
+);
 
 /**
  * @route   POST /api/v1/support/contact
@@ -49,6 +54,7 @@ router.post(
   [
     param('id').isUUID(),
     body('body').isString().trim().isLength({ min: 1, max: 2000 }),
+    body('order_id').optional({ values: 'null' }).isUUID(),
   ],
   handleValidationErrors,
   supportController.sendMessage

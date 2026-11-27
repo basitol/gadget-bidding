@@ -3,10 +3,13 @@ import * as supportService from '../../services/support/support.service';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import logger from '../../utils/logger';
 
+/** GET /support/thread?order_id= — the caller's open support thread (buyer or seller). */
 export const getMyThread = async (req: Request, res: Response) => {
   try {
-    const thread = await supportService.getOrCreateOwnThread(
-      req.user!.user_id
+    const orderId = req.query.order_id ? String(req.query.order_id) : undefined;
+    const thread = await supportService.getOrCreateThread(
+      { userId: req.user!.user_id, role: req.user!.role },
+      { orderId }
     );
     sendSuccess(res, thread);
   } catch (error: any) {
@@ -39,14 +42,17 @@ export const getMessages = async (req: Request, res: Response) => {
 export const sendMessage = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { body } = req.body as { body?: string };
+    const { body, order_id } = req.body as { body?: string; order_id?: string };
     if (!body || !String(body).trim()) {
       return sendError(res, 'Message body is required', 400);
     }
     const message = await supportService.sendOwnerMessage(
       id,
       req.user!.user_id,
-      body
+      body,
+      {
+        orderId: order_id || undefined,
+      }
     );
     sendSuccess(res, message, 'Message sent');
   } catch (error: any) {
@@ -58,11 +64,14 @@ export const sendMessage = async (req: Request, res: Response) => {
 /** Help › Contact support: topic, optional order and a message, into the person's own thread. */
 export const contact = async (req: Request, res: Response) => {
   try {
-    const result = await supportService.contactSupport(req.user!.user_id, {
-      topic: req.body?.topic,
-      order_id: req.body?.order_id ?? null,
-      body: req.body?.body,
-    });
+    const result = await supportService.contactSupport(
+      { userId: req.user!.user_id, role: req.user!.role },
+      {
+        topic: req.body?.topic,
+        order_id: req.body?.order_id ?? null,
+        body: req.body?.body,
+      }
+    );
     sendSuccess(res, result, `Message sent. We'll reply within ${result.reply_within}.`);
   } catch (error: any) {
     logger.warn(`Contact support: ${error?.message}`);

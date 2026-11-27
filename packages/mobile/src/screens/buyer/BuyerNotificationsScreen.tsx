@@ -201,6 +201,10 @@ export const BuyerNotificationsScreen: React.FC<{ navigation: any }> = ({ naviga
         return { icon: ICONS.box, open: openDefault, action: null };
       case 'payment_received':
         return { icon: ICONS.wallet, open: openDefault, action: null };
+      case 'support_message': {
+        const chat = () => navigation.navigate('SupportChat');
+        return { icon: ICONS.bell, open: chat, action: { label: 'Reply', primary: false, go: chat } };
+      }
       case 'auction_ending_soon':
       case 'saved_search_match':
         return { icon: ICONS.bell, open: openDefault, action: null };

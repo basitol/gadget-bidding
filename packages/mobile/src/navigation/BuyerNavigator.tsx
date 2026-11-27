@@ -51,6 +51,7 @@ import {
   ChangeContactScreen,
   ProfilePhotoScreen,
   ReportListingScreen,
+  SupportScreen,
 } from '../screens/buyer';
 import { WalletScreen } from '../screens/wallet';
 import {
@@ -112,6 +113,8 @@ export const BuyerNavigator: React.FC = () => {
       <RootStack.Screen name="Case" component={CaseScreen as any} />
       <RootStack.Screen name="CaseReturn" component={CaseReturnScreen as any} />
       <RootStack.Screen name="AccountPaused" component={AccountPausedScreen as any} />
+      {/* Same name as the seller app's chat, so "Support replied" alerts open it on either side. */}
+      <RootStack.Screen name="SupportChat" component={SupportScreen as any} />
       <RootStack.Screen name="MyBids" component={BidsScreen as any} />
       <RootStack.Screen name="Search" component={ExploreScreen as any} />
       <RootStack.Screen name="Alerts" component={AlertsScreen as any} />

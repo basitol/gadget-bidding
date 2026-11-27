@@ -110,6 +110,8 @@ export const routeForNotification = (
   data: Record<string, unknown> | undefined
 ): { name: string; params?: Record<string, unknown> } | null => {
   if (!data) return null;
+  // "Support replied": the chat screen has the same name in the buyer and seller apps.
+  if (data.route === 'SupportChat') return { name: 'SupportChat' };
   const orderId = (data.orderId ?? data.order_id) as string | undefined;
   const auctionId = (data.auctionId ?? data.auction_id) as string | undefined;
   const missedPaymentId = data.missedPaymentId as string | undefined;

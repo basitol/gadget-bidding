@@ -26,3 +26,4 @@ export { AuctionResultScreen } from './ResultScreens';
 export { CategoryBrowseScreen, CategoriesSheet } from './BrowseScreens';
 export { ChangeContactScreen, ProfilePhotoScreen } from './ProfileScreens';
 export { ReportListingScreen } from './ReportScreens';
+export { SupportScreen } from './SupportScreen';

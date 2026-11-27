@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { adminApi } from '@/api';
 import { label, when } from '@/lib/format';
 import {
@@ -32,6 +33,44 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+/** Buyer or seller, as a tinted chip with a word (design guide › status colours). */
+const ROLE_CHIP: Record<string, { label: string; className: string }> = {
+  buyer: { label: 'Buyer', className: 'bg-[#F1F5FF] text-[#3E6AF0]' },
+  seller: { label: 'Seller', className: 'bg-[#F5F2FF] text-[#7C68E8]' },
+};
+
+function RoleChip({ role }: { role?: string }) {
+  const chip = ROLE_CHIP[role || ''] || ROLE_CHIP.seller;
+  return <Badge className={chip.className}>{chip.label}</Badge>;
+}
+
+/** Sellers go by their business name when they have one. */
+const ownerName = (t: any) =>
+  (t.owner_role === 'seller' && t.user?.business_name) ||
+  t.user?.full_name ||
+  (t.owner_role === 'buyer' ? 'Buyer' : 'Seller');
+
+const ownerContact = (t: any) =>
+  [t.user?.phone_number, t.user?.email].filter(Boolean).join(' · ');
+
+function OrderLink({ order }: { order?: any }) {
+  if (!order?.order_number) return null;
+  return (
+    <div className="max-w-[16rem] whitespace-normal text-sm">
+      <Link
+        to={`/orders?search=${encodeURIComponent(order.order_number)}`}
+        onClick={e => e.stopPropagation()}
+        className="font-medium text-primary hover:underline"
+      >
+        Order {order.order_number}
+      </Link>
+      {order.title ? (
+        <div className="truncate text-muted-foreground">{order.title}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function mergeMessages(current: any[], incoming: any[]) {
   const map = new Map<string, any>();
   [...current, ...incoming].forEach(m => {
@@ -42,13 +81,10 @@ function mergeMessages(current: any[], incoming: any[]) {
   );
 }
 
-/** Phone when it's real; email sign-ups have a placeholder +9… number. */
-const contactOf = (t: any) =>
-  [t.seller?.phone_number, t.seller?.email].filter(Boolean).join(' · ');
-
 export function SupportPage() {
   const { confirm } = useConfirmDialog();
   const [status, setStatus] = useState('open');
+  const [role, setRole] = useState('all');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -66,8 +102,8 @@ export function SupportPage() {
   const selectedIdRef = useRef<string | null>(null);
 
   const query = useMemo(
-    () => ({ status, search: appliedSearch, page, limit }),
-    [status, appliedSearch, page, limit]
+    () => ({ status, role, search: appliedSearch, page, limit }),
+    [status, role, appliedSearch, page, limit]
   );
 
   const load = useCallback(
@@ -219,8 +255,20 @@ export function SupportPage() {
                 { value: 'all', label: 'All' },
               ]}
             />
+            <SelectField
+              value={role}
+              onValueChange={v => {
+                setRole(v);
+                setPage(1);
+              }}
+              options={[
+                { value: 'all', label: 'Buyers and sellers' },
+                { value: 'buyer', label: 'Buyers' },
+                { value: 'seller', label: 'Sellers' },
+              ]}
+            />
             <SearchInput
-              placeholder="Name, phone or email…"
+              placeholder="Name, phone, email or order…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => {
@@ -264,34 +312,27 @@ export function SupportPage() {
                       onClick={() => openThread(t)}
                     >
                       <TableCell>
-                        <div className="font-medium">
-                          {t.seller?.full_name || 'Customer'}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{ownerName(t)}</span>
+                          <RoleChip role={t.owner_role} />
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {contactOf(t)}
+                          {ownerContact(t)}
                         </div>
-                        <Badge
-                          tone="neutral"
-                          className={cn(
-                            'mt-1',
-                            // Seller identity is violet (design guide); buyers stay neutral.
-                            t.owner_role === 'seller' &&
-                              'bg-[#F5F2FF] text-[#7C68E8]'
-                          )}
-                        >
-                          {t.owner_role === 'seller' ? 'Seller' : 'Buyer'}
-                        </Badge>
+                        <OrderLink order={t.order} />
                         {t.admin_unread_count > 0 ? (
-                          <Badge tone="danger" className="mt-1">
-                            {t.admin_unread_count} new
-                          </Badge>
+                          <div>
+                            <Badge tone="danger" className="mt-1">
+                              {t.admin_unread_count} new
+                            </Badge>
+                          </div>
                         ) : null}
                       </TableCell>
                       <TableCell>
                         {t.subject && t.subject !== 'Support' ? (
                           <div className="text-sm font-medium">{t.subject}</div>
                         ) : null}
-                        <div className="line-clamp-2 text-sm">
+                        <div className="line-clamp-2 max-w-[22rem] whitespace-normal text-sm">
                           {t.last_message_preview || '—'}
                         </div>
                         <div className="text-xs text-muted-foreground">
@@ -328,16 +369,15 @@ export function SupportPage() {
           ) : (
             <>
               <div className="flex items-start justify-between gap-3 border-b bg-muted/60 px-5 py-4">
-                <div>
-                  <div className="font-medium">
-                    {selected.seller?.full_name}{' '}
-                    <span className="text-sm font-normal text-muted-foreground">
-                      · {selected.owner_role === 'seller' ? 'Seller' : 'Buyer'}
-                    </span>
+                <div className="space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{ownerName(selected)}</span>
+                    <RoleChip role={selected.owner_role} />
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {contactOf(selected)}
+                    {ownerContact(selected)}
                   </div>
+                  <OrderLink order={selected.order} />
                 </div>
                 <div className="flex gap-2">
                   <Badge tone={selected.status === 'open' ? 'ok' : 'neutral'}>
@@ -383,7 +423,7 @@ export function SupportPage() {
                         >
                           {fromAdmin
                             ? 'You (Support)'
-                            : m.sender?.full_name || 'Customer'}
+                            : m.sender?.full_name || ownerName(selected)}
                         </div>
                         <div className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words pr-1">
                           {m.body}
@@ -410,9 +450,9 @@ export function SupportPage() {
                     value={reply}
                     onChange={e => setReply(e.target.value)}
                     placeholder={
-                      selected.owner_role === 'seller'
-                        ? 'Write a reply to the seller…'
-                        : 'Write a reply. The buyer gets it as a notification and by email.'
+                      selected.owner_role === 'buyer'
+                        ? 'Write a reply. The buyer gets it in the app and by email.'
+                        : 'Write a reply to the seller…'
                     }
                     rows={3}
                   />

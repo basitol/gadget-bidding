@@ -329,7 +329,8 @@ export const ContactSupportScreen: React.FC<{ navigation: any; route: any }> = (
     try {
       const res = await supportService.contact({ topic, order_id: orderId, body: body.trim() });
       toast(res.message || "Message sent. We'll reply within 1 working day.");
-      navigation.goBack();
+      // The reply lands in the support chat, so show them where it will appear.
+      navigation.replace('SupportChat');
     } catch (e) {
       toast(getErrorMessage(e) || "We couldn't send that. Try again.", 'error');
     } finally {

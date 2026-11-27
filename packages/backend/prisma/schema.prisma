@@ -64,7 +64,7 @@ model User {
   paymentTransactions PaymentTransaction[]
   auditLogs           AuditLog[]
   riskFlags           UserRiskFlag[]
-  supportThreads      SupportThread[]      @relation("SellerSupportThreads")
+  supportThreads      SupportThread[]      @relation("UserSupportThreads")
   supportMessages     SupportMessage[]
   addresses           UserAddress[]
   socialAccounts      SocialAccount[]
@@ -297,6 +297,7 @@ model Order {
   auction  Auction?  @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   buyer    User?     @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   seller   User?     @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  supportThreads SupportThread[]
   disputes Dispute[]
   ratings  Rating[]
   events   OrderEvent[]
@@ -569,22 +570,29 @@ model UserRiskFlag {
   @@map("user_risk_flags")
 }
 
+/// A support conversation between one user (buyer or seller) and the admin team.
 model SupportThread {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sellerId           String    @map("seller_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  /// 'buyer' or 'seller': which side of the marketplace opened it.
+  ownerRole          String    @map("owner_role") @db.VarChar(20)
+  /// The order a buyer last asked about (set when they write from an order page).
+  orderId            String?   @map("order_id") @db.Uuid
   status             String    @default("open") @db.VarChar(20)
   subject            String?   @db.VarChar(255)
   lastMessageAt      DateTime? @default(now()) @map("last_message_at") @db.Timestamp(6)
   lastMessagePreview String?   @map("last_message_preview") @db.VarChar(255)
-  sellerUnreadCount  Int       @default(0) @map("seller_unread_count")
+  ownerUnreadCount   Int       @default(0) @map("owner_unread_count")
   adminUnreadCount   Int       @default(0) @map("admin_unread_count")
   createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt          DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
-  seller   User             @relation("SellerSupportThreads", fields: [sellerId], references: [id], onDelete: Cascade)
+  user     User             @relation("UserSupportThreads", fields: [userId], references: [id], onDelete: Cascade)
+  order    Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
   messages SupportMessage[]
 
-  @@index([sellerId, status], map: "idx_support_threads_seller")
+  @@index([userId, status], map: "idx_support_threads_user")
+  @@index([orderId], map: "idx_support_threads_order")
   @@index([status, lastMessageAt(sort: Desc)], map: "idx_support_threads_status")
   @@map("support_threads")
 }

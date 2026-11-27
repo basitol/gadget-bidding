@@ -6,9 +6,13 @@ import logger from '../../utils/logger';
 import { bidderLabel } from '../../utils/bidderLabel';
 import * as biddingService from '../bidding/bidding.service';
 import * as auctionService from '../auction/auction.service';
+import * as supportService from '../support/support.service';
 import type { JwtPayload } from '../../utils/jwt';
 
 let io: Server;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Track connected users and their rooms
 const connectedUsers = new Map<string, Set<string>>(); // userId -> Set of socketIds
@@ -60,13 +64,20 @@ export const initializeSocket = (httpServer: HttpServer): Server => {
       logger.info(`User connected: ${userId} (socket: ${socket.id})`);
     }
 
-    // Join support thread room (seller or admin)
-    socket.on('support:join', (threadId: string) => {
-      if (!threadId || typeof threadId !== 'string') return;
-      socket.join(`support:${threadId}`);
-      logger.info(
-        `User ${userId} joined support thread room ${threadId} (socket: ${socket.id})`
-      );
+    // Join support thread room: only the thread's owner (buyer or seller) or an admin.
+    socket.on('support:join', async (threadId: string) => {
+      if (!threadId || typeof threadId !== 'string' || !UUID_RE.test(threadId))
+        return;
+      try {
+        if (!(await supportService.canWatchThread(threadId, socket.data.user)))
+          return;
+        socket.join(`support:${threadId}`);
+        logger.info(
+          `User ${userId} joined support thread room ${threadId} (socket: ${socket.id})`
+        );
+      } catch (error) {
+        logger.error('Join support thread error:', error);
+      }
     });
 
     socket.on('support:leave', (threadId: string) => {
