@@ -146,7 +146,7 @@ export function DashboardPage() {
             Marketplace overview
           </h1>
           <p className="mt-4 max-w-sm text-base leading-7 text-muted-foreground xl:text-lg">
-            Listings, auctions, payments, and open risk items for GadgetBid.
+            Listings, auctions, payments, and open risk items for Gadgets Bidding.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Button asChild>

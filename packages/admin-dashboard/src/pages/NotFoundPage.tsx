@@ -9,7 +9,7 @@ export function NotFoundPage() {
     <div className="flex min-h-svh flex-col items-center justify-center bg-background px-6 py-16">
       <Seo
         title="Page not found"
-        description="This page does not exist in GadgetBid Ops."
+        description="This page does not exist in Gadgets Bidding Ops."
         path="/404"
         noindex
       />
@@ -28,7 +28,7 @@ export function NotFoundPage() {
           Page not found
         </h1>
         <p className="mt-3 text-base leading-7 text-muted-foreground">
-          That URL is not part of GadgetBid Ops. Check the address or return to
+          That URL is not part of Gadgets Bidding Ops. Check the address or return to
           overview.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

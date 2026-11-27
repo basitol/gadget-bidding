@@ -1,7 +1,7 @@
 {
-  "name": "GadgetBid Ops",
-  "short_name": "GadgetBid",
-  "description": "Operations console for the GadgetBid Nigerian gadget auction marketplace.",
+  "name": "Gadgets Bidding Ops",
+  "short_name": "Gadgets Bidding",
+  "description": "Operations console for the Gadgets Bidding Nigerian gadget auction marketplace.",
   "start_url": "/login",
   "display": "standalone",
   "background_color": "#0f172a",

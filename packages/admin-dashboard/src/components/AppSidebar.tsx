@@ -114,7 +114,7 @@ export function AppSidebar() {
           <BrandMark size="md" className="group-data-[collapsible=icon]:size-8" />
           <div className="flex flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-              GadgetBid
+              Gadgets Bidding
             </span>
             <span className="text-xs text-muted-foreground">
               Operations console

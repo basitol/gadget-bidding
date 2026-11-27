@@ -195,7 +195,7 @@ export function SupportPage() {
     <>
       <PageHeader
         title="Support chat"
-        description="Reply to sellers who message GadgetBid from the app."
+        description="Reply to sellers who message Gadgets Bidding from the app."
       />
 
       <ErrorAlert>{error}</ErrorAlert>

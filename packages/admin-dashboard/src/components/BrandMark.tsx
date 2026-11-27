@@ -32,7 +32,7 @@ export function BrandMark({
 }
 
 export function BrandPill({
-  children = 'GadgetBid Ops',
+  children = 'Gadgets Bidding Ops',
   className,
 }: {
   children?: string;

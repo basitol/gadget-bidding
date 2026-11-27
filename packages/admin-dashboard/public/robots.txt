@@ -1,4 +1,4 @@
-# GadgetBid Ops
+# Gadgets Bidding Ops
 User-agent: *
 Allow: /login
 Allow: /robots.txt

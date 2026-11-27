@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { connectAdminSocket } from '@/lib/socket';
 import { adminApi } from '@/api';
 import { mediaUrl } from '@/lib/media';
 import { label, money, when } from '@/lib/format';
@@ -66,6 +67,50 @@ export function AuctionsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Live auctions on this page: update price/bids in place and flash the row.
+  const [flash, setFlash] = useState<Record<string, number>>({});
+  const liveIds = useMemo(
+    () => items.filter(a => a.status === 'active').map(a => a.id as string),
+    [items]
+  );
+  useEffect(() => {
+    if (liveIds.length === 0) return;
+    const socket = connectAdminSocket();
+    if (!socket) return;
+
+    const join = () => liveIds.forEach(id => socket.emit('auction:join', id));
+    if (socket.connected) join();
+    socket.on('connect', join);
+
+    const onBid = (data: {
+      bid?: { auction_id?: string };
+      currentPrice?: number;
+      totalBids?: number;
+    }) => {
+      const id = data.bid?.auction_id;
+      if (!id || !liveIds.includes(id)) return;
+      setItems(prev =>
+        prev.map(a =>
+          a.id === id
+            ? {
+                ...a,
+                current_price: data.currentPrice ?? a.current_price,
+                total_bids: data.totalBids || Number(a.total_bids || 0) + 1,
+              }
+            : a
+        )
+      );
+      setFlash(prev => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
+    };
+    socket.on('bid:placed', onBid);
+
+    return () => {
+      socket.off('connect', join);
+      socket.off('bid:placed', onBid);
+      liveIds.forEach(id => socket.emit('auction:leave', id));
+    };
+  }, [liveIds]);
 
   const cancelAuction = async (auction: any) => {
     const hasBids = Number(auction.total_bids || 0) > 0;
@@ -158,7 +203,10 @@ export function AuctionsPage() {
             </TableHeader>
             <TableBody>
               {items.map(a => (
-                <TableRow key={a.id}>
+                <TableRow
+                  key={`${a.id}:${flash[a.id] || 0}`}
+                  className={flash[a.id] ? 'gb-row-flash' : undefined}
+                >
                   <TableCell>
                     <div className="flex items-center gap-3">
                       {a.gadget?.image ? (

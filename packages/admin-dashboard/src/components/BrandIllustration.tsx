@@ -12,7 +12,7 @@ export function BrandIllustration({
     <div
       className={cn('absolute inset-0 overflow-hidden', className)}
       role="img"
-      aria-label="GadgetBid brand illustration of auction characters"
+      aria-label="Gadgets Bidding brand illustration of auction characters"
     >
       <span className="absolute left-[12%] top-[16%] size-2.5 rounded-full bg-primary/25" />
       <span className="absolute left-[68%] top-[10%] size-1.5 rounded-full bg-amber-400/40" />

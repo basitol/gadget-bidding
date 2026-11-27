@@ -65,7 +65,7 @@ export function LoginPage() {
         <div className="relative z-10 shrink-0 px-16 pt-16 xl:px-20 xl:pt-20">
           <BrandPill />
           <p className="mt-6 max-w-md text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
-            GadgetBid operations
+            Gadgets Bidding operations
           </p>
           <p className="mt-4 max-w-sm text-base leading-7 text-muted-foreground xl:text-lg">
             Manage listings, auctions, disputes, and payouts.
@@ -85,7 +85,7 @@ export function LoginPage() {
                 Sign in
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Use your GadgetBid admin email or phone.
+                Use your Gadgets Bidding admin email or phone.
               </p>
             </div>
           </div>
@@ -135,7 +135,7 @@ export function LoginPage() {
           </form>
 
           <p className="mt-8 text-center text-xs text-muted-foreground">
-            Restricted to GadgetBid admin accounts. Activity is recorded in
+            Restricted to Gadgets Bidding admin accounts. Activity is recorded in
             the audit log.
           </p>
           <p className="mt-4 text-center text-xs text-muted-foreground">

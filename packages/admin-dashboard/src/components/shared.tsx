@@ -220,7 +220,7 @@ export function PageHeader({
   title,
   description,
   actions,
-  eyebrow = 'GadgetBid Ops',
+  eyebrow = 'Gadgets Bidding Ops',
   crumbs,
   path,
   noindex = true,

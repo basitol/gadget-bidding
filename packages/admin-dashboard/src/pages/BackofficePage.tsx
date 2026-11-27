@@ -47,7 +47,7 @@ const queues: Queue[] = [
   {
     status: 'received_by_backoffice',
     title: 'Ready to ship',
-    description: 'Items received by backoffice and ready for buyer delivery.',
+    description: 'Items that passed the hub check and are ready for buyer delivery.',
     icon: <PackageCheck className="size-5" />,
     color: 'text-sky-700 dark:text-sky-400',
     empty: 'No items waiting for shipping.',
@@ -81,7 +81,7 @@ const nextAction: Partial<
   >
 > = {
   sent_to_backoffice: {
-    label: 'Mark received',
+    label: 'Passed hub check',
     nextStatus: 'received_by_backoffice',
   },
   received_by_backoffice: {

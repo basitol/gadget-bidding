@@ -82,7 +82,7 @@ export function Seo({
   return null;
 }
 
-/** Organization + LocalBusiness JSON-LD for GadgetBid. */
+/** Organization + LocalBusiness JSON-LD for Gadgets Bidding. */
 export function LocalBusinessJsonLd() {
   useEffect(() => {
     const id = 'gadgetbid-localbusiness-jsonld';
@@ -97,8 +97,8 @@ export function LocalBusinessJsonLd() {
       '@context': 'https://schema.org',
       '@type': ['Organization', 'LocalBusiness'],
       '@id': `${SITE_URL}/#organization`,
-      name: 'GadgetBid',
-      legalName: 'GadgetBid',
+      name: 'Gadgets Bidding',
+      legalName: 'Gadgets Bidding',
       url: SITE_URL,
       logo: absoluteUrl('/icon-512.png'),
       image: absoluteUrl('/og-image.png'),

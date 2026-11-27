@@ -26,11 +26,11 @@ import {
 } from '@/components/shared';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Table,
   TableBody,
@@ -596,13 +596,16 @@ function SellerProfileDialog({
   const stats = profile?.stats || {};
 
   return (
-    <Dialog open={Boolean(profile)} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+    <Sheet open={Boolean(profile)} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full gap-4 overflow-y-auto p-6 data-[side=right]:sm:max-w-4xl"
+      >
         {profile ? (
           <>
-            <DialogHeader>
-              <DialogTitle>Seller profile</DialogTitle>
-            </DialogHeader>
+            <SheetHeader className="p-0">
+              <SheetTitle>Seller profile</SheetTitle>
+            </SheetHeader>
 
             <div className="rounded-xl border bg-card p-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -902,8 +905,8 @@ function SellerProfileDialog({
             </div>
           </>
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 

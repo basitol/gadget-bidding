@@ -48,7 +48,7 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* GadgetBid brand — electric blue / sky / indigo */
+/* Gadgets Bidding brand — electric blue / sky / indigo */
 :root {
     --background: oklch(0.985 0.012 250);
     --foreground: oklch(0.22 0.04 255);
@@ -135,4 +135,24 @@
   box-shadow:
     0 2px 4px 0 rgb(14 18 27 / 0.03),
     0 6px 10px 0 rgb(14 18 27 / 0.06);
+}
+
+/* Live-auction row flash when a new bid lands (admin stays quiet otherwise) */
+@keyframes gb-row-flash {
+  0% {
+    background-color: color-mix(in oklab, var(--color-primary) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.gb-row-flash {
+  animation: gb-row-flash 1200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gb-row-flash {
+    animation-duration: 1ms;
+  }
 }
