@@ -224,13 +224,15 @@ const InReview: React.FC<{ c: Case; setC: (c: Case) => void; navigation: any }> 
               <View key={s.title} style={styles.tlRow}>
                 <View style={styles.tlRail}>
                   <View style={[styles.tlDot, s.state === 'done' && styles.tlDone, s.state === 'now' && styles.tlNow]} />
-                  {i < steps.length - 1 ? <View style={[styles.tlLine, s.state === 'done' && styles.tlLineDone]} /> : null}
+                  {i < steps.length - 1 ? (
+                    <View style={[styles.tlLine, s.state === 'done' && steps[i + 1].state === 'done' && styles.tlLineDone]} />
+                  ) : null}
                 </View>
                 <View style={styles.tlBody}>
                   <Text style={[styles.tlTitle, s.state === 'now' && styles.tlTitleNow, s.state === 'todo' && styles.tlTodoText]}>
                     {s.title}
                   </Text>
-                  {s.sub ? <Text style={[styles.tlSub, s.state === 'todo' && styles.tlTodoText]}>{s.sub}</Text> : null}
+                  {s.sub ? <Text style={styles.tlSub}>{s.sub}</Text> : null}
                 </View>
               </View>
             ))}
@@ -289,7 +291,11 @@ const InReview: React.FC<{ c: Case; setC: (c: Case) => void; navigation: any }> 
               accessibilityRole="button"
               accessibilityLabel="Send message"
             >
-              {sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="paper-plane" size={16} color="#FFFFFF" />}
+              {sending ? (
+                <ActivityIndicator color={G.faint} size="small" />
+              ) : (
+                <Ionicons name="paper-plane" size={16} color={text.trim() ? '#FFFFFF' : G.faint} />
+              )}
             </Pressable>
           </View>
 
@@ -476,7 +482,7 @@ export const CaseReturnScreen: React.FC<{ navigation: any; route: any }> = ({ na
       sub: r?.refunded_at
         ? dayLabel(r.refunded_at)
         : c.order.paid_with && c.order.paid_with !== 'Wallet'
-          ? '3–5 working days after, to your card or bank'
+          ? '3–5 working days after'
           : 'To your wallet as soon as it arrives',
       state: r?.refunded_at ? 'done' : 'todo',
     },
@@ -555,13 +561,15 @@ export const CaseReturnScreen: React.FC<{ navigation: any; route: any }> = ({ na
             <View key={s.title} style={styles.tlRow}>
               <View style={styles.tlRail}>
                 <View style={[styles.tlDot, s.state === 'done' && styles.tlDone, s.state === 'now' && styles.tlNow]} />
-                {i < timeline.length - 1 ? <View style={styles.tlLine} /> : null}
+                {i < timeline.length - 1 ? (
+                  <View style={[styles.tlLine, s.state === 'done' && timeline[i + 1].state === 'done' && styles.tlLineDone]} />
+                ) : null}
               </View>
               <View style={styles.tlBody}>
                 <Text style={[styles.tlTitle, s.state === 'now' && styles.tlTitleNow, s.state === 'todo' && styles.tlTodoText]}>
                   {s.title}
                 </Text>
-                <Text style={[styles.tlSub, s.state === 'todo' && styles.tlTodoText]}>{s.sub}</Text>
+                <Text style={styles.tlSub}>{s.sub}</Text>
               </View>
             </View>
           ))}
@@ -672,7 +680,7 @@ const styles = StyleSheet.create({
     color: G.ink,
   },
   send: { width: 48, height: 48, borderRadius: 14, backgroundColor: G.blue, alignItems: 'center', justifyContent: 'center' },
-  sendOff: { backgroundColor: '#C9D5FA' },
+  sendOff: { backgroundColor: '#F5F6F9' },
 
   noteGreen: { padding: 14, borderRadius: 16, backgroundColor: '#EEF9F2', marginTop: 16 },
   noteNeutral: { padding: 14, borderRadius: 16, backgroundColor: '#F5F6F9', marginTop: 12 },

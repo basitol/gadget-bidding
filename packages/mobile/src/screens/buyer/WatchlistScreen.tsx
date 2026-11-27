@@ -143,7 +143,7 @@ export const WatchlistScreen: React.FC<{ navigation: any }> = ({ navigation }) =
                 <Text style={styles.alertTitle}>Can't find it?</Text>
                 <Text style={styles.alertText}>Get an alert when it's listed.</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={G.faint} />
+              <Ionicons name="chevron-forward" size={16} color={G.blue} />
             </GlassCard>
           </Pressable>
         }

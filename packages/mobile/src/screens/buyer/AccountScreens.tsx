@@ -642,7 +642,7 @@ const SECTIONS: { title: string; rows: { key: SwitchKey; title: string; sub?: st
     title: 'Bids',
     rows: [
       { key: 'outbid', title: 'Outbid', sub: 'Straight away, with a one-tap re-bid' },
-      { key: 'ending_soon', title: 'Watchlist ending soon', sub: '5 minutes before it ends' },
+      { key: 'ending_soon', title: 'Watchlist ending soon', sub: '1 hour and 15 minutes before' },
       { key: 'autobid_max', title: 'Auto-bid hit your max', sub: 'So you can decide to go higher' },
       { key: 'won', title: 'You won', sub: 'With your 24-hour pay deadline' },
     ],
@@ -650,7 +650,7 @@ const SECTIONS: { title: string; rows: { key: SwitchKey; title: string; sub?: st
   {
     title: 'Orders',
     rows: [
-      { key: 'payment_reminders', title: 'Payment reminders', sub: '6 hours before your deadline' },
+      { key: 'payment_reminders', title: 'Payment reminders', sub: '12h and 2h before your deadline' },
       { key: 'delivery_updates', title: 'Hub check and delivery updates' },
       { key: 'dispute_updates', title: 'Dispute updates' },
     ],
@@ -919,7 +919,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EDEFF4',
   },
-  inputLocked: { backgroundColor: 'rgba(255,255,255,0.55)' },
+  inputLocked: { backgroundColor: '#F5F6F9' },
   lockedText: { color: G.slate },
   inputBare: { borderWidth: 0, paddingLeft: 2, backgroundColor: 'transparent' },
   at: { color: G.faint, fontSize: 16, paddingLeft: 16 },
@@ -956,7 +956,7 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cardTitle: { color: G.ink, fontSize: 16, fontFamily: fonts.medium },
   cardActions: { flexDirection: 'row', gap: 8 },
-  brandTile: { width: 48, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  brandTile: { width: 52, height: 36, borderRadius: 8, alignItems: 'flex-start', justifyContent: 'flex-end', padding: 6 },
   brandVisa: { backgroundColor: '#3E6AF0' },
   brandMc: { backgroundColor: G.ink },
   brandOther: { backgroundColor: G.slate },

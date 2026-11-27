@@ -165,23 +165,37 @@ const expirePendingOrders = async (): Promise<void> => {
 };
 
 /**
- * Notify users about auctions ending soon
+ * "Ending soon" alerts go to bidders and watchers twice: an hour before the end and
+ * 15 minutes before (Notification settings › Watchlist ending soon). Each fires once.
  */
+const ENDING_SOON_REMINDERS = [
+  { key: '15m', minutes: 15 },
+  { key: '1h', minutes: 60 },
+] as const;
+/** Open screens get a live "ending soon" signal over the socket in the last few minutes. */
+const ENDING_SOON_BROADCAST_MINUTES = 5;
+
 const notifyAuctionsEndingSoon = async (): Promise<void> => {
   try {
     // Maintenance: end times are about to move, so "ending soon" would be wrong.
     if (await isMaintenanceActive()) return;
-    // Get auctions ending in 5 minutes
-    const auctionsEndingSoon = await biddingService.getAuctionsEndingSoon(5);
+    const auctionsEndingSoon = await biddingService.getAuctionsEndingSoon(
+      ENDING_SOON_REMINDERS[ENDING_SOON_REMINDERS.length - 1].minutes
+    );
 
     for (const auction of auctionsEndingSoon) {
       const minutesRemaining = Math.ceil(
         (new Date(auction.end_time).getTime() - Date.now()) / (60 * 1000)
       );
 
-      socketService.broadcastAuctionEndingSoon(auction.id, minutesRemaining);
+      if (minutesRemaining <= ENDING_SOON_BROADCAST_MINUTES) {
+        socketService.broadcastAuctionEndingSoon(auction.id, minutesRemaining);
+      }
 
-      // Bidders and watchers get one "ending soon" alert per auction (this runs every 30s).
+      // The closest reminder that applies now (15m wins over 1h once we're inside 15 minutes).
+      const reminder = ENDING_SOON_REMINDERS.find(r => minutesRemaining <= r.minutes)!.key;
+
+      // Bidders and watchers get each reminder once per auction (this runs every 30s).
       const rows = await query(
         `SELECT p.user_id AS bidder_id, g.title, bool_and(p.watching) AS watching
          FROM (
@@ -201,7 +215,8 @@ const notifyAuctionsEndingSoon = async (): Promise<void> => {
             row.bidder_id,
             'auction_ending_soon',
             'auctionId',
-            auction.id
+            auction.id,
+            reminder
           )
         ) {
           continue;
@@ -211,7 +226,8 @@ const notifyAuctionsEndingSoon = async (): Promise<void> => {
           auction.id,
           row.title || 'an item',
           Math.max(1, minutesRemaining),
-          row.watching === true
+          row.watching === true,
+          reminder
         );
       }
     }
@@ -220,11 +236,19 @@ const notifyAuctionsEndingSoon = async (): Promise<void> => {
   }
 };
 
-/** Remind winners to pay when this many hours are left on the payment window. */
-const PAYMENT_REMINDER_HOURS_LEFT = Number(process.env.PAYMENT_REMINDER_HOURS_LEFT || 6);
+/**
+ * Remind winners to pay when this many hours are left on the payment window
+ * (Notification settings › Payment reminders: 12h and 2h before the deadline).
+ * Override with PAYMENT_REMINDER_HOURS_LEFT, e.g. "12,2".
+ */
+const PAYMENT_REMINDER_HOURS = String(process.env.PAYMENT_REMINDER_HOURS_LEFT || '12,2')
+  .split(',')
+  .map(h => Number(h.trim()))
+  .filter(h => Number.isFinite(h) && h > 0)
+  .sort((a, b) => a - b);
 
 /**
- * Remind winners who haven't paid yet, once, before their order expires.
+ * Remind winners who haven't paid yet, once per reminder, before their order expires.
  */
 const remindUnpaidOrders = async (): Promise<void> => {
   try {
@@ -242,20 +266,24 @@ const remindUnpaidOrders = async (): Promise<void> => {
          AND COALESCE(o.payment_due_at, o.created_at + make_interval(secs => $2)) > NOW()
          AND COALESCE(o.payment_due_at, o.created_at + make_interval(secs => $2)) <= NOW() + make_interval(secs => $1)
        LIMIT 100`,
-      [PAYMENT_REMINDER_HOURS_LEFT * 3600, windowHours * 3600]
+      [Math.max(...PAYMENT_REMINDER_HOURS) * 3600, windowHours * 3600]
     );
     for (const o of rows) {
-      if (await notificationService.alreadyNotified(o.buyer_id, 'payment_reminder', 'orderId', o.id)) {
+      const hoursLeft = (new Date(o.due_at).getTime() - Date.now()) / 3_600_000;
+      const due = PAYMENT_REMINDER_HOURS.find(h => hoursLeft <= h);
+      if (!due) continue;
+      const reminder = `${due}h`;
+      if (await notificationService.alreadyNotified(o.buyer_id, 'payment_reminder', 'orderId', o.id, reminder)) {
         continue;
       }
-      const hoursLeft = (new Date(o.due_at).getTime() - Date.now()) / 3_600_000;
       await notificationService.notifyPaymentReminder(
         o.buyer_id,
         o.id,
         o.order_number,
         o.title || 'your win',
         Number(o.total_amount),
-        hoursLeft
+        hoursLeft,
+        reminder
       );
     }
   } catch (error) {

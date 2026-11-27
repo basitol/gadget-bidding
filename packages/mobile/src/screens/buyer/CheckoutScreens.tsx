@@ -3,7 +3,17 @@ import { View, Text, Image, Pressable, ScrollView, StyleSheet, ActivityIndicator
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BID_PAYMENT_DEADLINE_HOURS } from '@gadget-bidding/shared';
-import { G, GlassScreen, GlassHeader, GlassCard, PrimaryButton, useNow } from '../../components/glass';
+import {
+  G,
+  GlassScreen,
+  GlassHeader,
+  GlassCard,
+  PrimaryButton,
+  TextButton,
+  DueBanner,
+  FooterBar,
+  useNow,
+} from '../../components/glass';
 import { fonts } from '../../constants';
 import { addressService, api, orderService } from '../../services';
 import { meService, SavedCard } from '../../services/me.service';
@@ -53,8 +63,9 @@ const leftLabel = (ms: number) => {
 };
 const titleOf = (o: any) => o?.gadget?.title ?? 'your gadget';
 const shortTitle = (o: any) => titleOf(o).split(' · ')[0];
+/** "Verified seller CV-1042 · Grade A": buyers only ever see the seller's code (the API sends it as full_name). */
 const sellerLine = (o: any) =>
-  [o?.seller?.full_name ? `Seller ${o.seller.full_name}` : null, GRADE[o?.gadget?.condition] ?? null]
+  [o?.seller?.full_name ? `Verified seller ${o.seller.full_name}` : null, GRADE[o?.gadget?.condition] ?? null]
     .filter(Boolean)
     .join(' · ');
 
@@ -170,12 +181,7 @@ export const YouWonScreen: React.FC<{ navigation: any; route: any }> = ({ naviga
             {expired ? 'The time to pay has passed.' : `Pay within ${BID_PAYMENT_DEADLINE_HOURS} hours to secure it.`}
           </Text>
         </View>
-        {!expired ? (
-          <View style={styles.timer}>
-            <Text style={styles.timerLabel}>Time left to pay</Text>
-            <Text style={styles.timerValue}>{leftLabel(left)}</Text>
-          </View>
-        ) : null}
+        {!expired ? <DueBanner label="Time left to pay" value={leftLabel(left)} style={styles.due} /> : null}
         <ProductMini order={order} />
         <Text style={styles.h2}>What happens next</Text>
         <Timeline
@@ -187,13 +193,13 @@ export const YouWonScreen: React.FC<{ navigation: any; route: any }> = ({ naviga
           ]}
         />
       </ScrollView>
-      <View style={styles.bottom}>
+      <FooterBar>
         <PrimaryButton
           label={expired ? 'Payment window closed' : 'Pay now'}
           disabled={expired}
           onPress={() => navigation.navigate('Checkout', { orderId })}
         />
-      </View>
+      </FooterBar>
     </GlassScreen>
   );
 };
@@ -268,9 +274,9 @@ export const CheckoutScreen: React.FC<{ navigation: any; route: any }> = ({ navi
           Pay within <Text style={styles.footStrong}>{leftLabel(deadline(order) - now)}</Text> or it goes to the next bidder.
         </Text>
       </ScrollView>
-      <View style={styles.bottom}>
+      <FooterBar>
         <PrimaryButton label={busy ? 'Saving…' : 'Continue'} onPress={next} disabled={busy} />
-      </View>
+      </FooterBar>
     </GlassScreen>
   );
 };
@@ -354,7 +360,7 @@ export const CheckoutAddressScreen: React.FC<{ navigation: any; route: any }> = 
                 key={a.id}
                 on={picked === a.id}
                 title={a.label || 'Delivery address'}
-                sub={[[a.address_line1, a.city].filter(Boolean).join(', '), maskPhone(a.phone_number)].filter(Boolean).join(' • ')}
+                sub={[[a.address_line1, a.city].filter(Boolean).join(', '), maskPhone(a.phone_number)].filter(Boolean).join(' · ')}
                 onPress={() => setPicked(a.id)}
               />
             ))}
@@ -368,9 +374,9 @@ export const CheckoutAddressScreen: React.FC<{ navigation: any; route: any }> = 
           </View>
         )}
       </ScrollView>
-      <View style={styles.bottom}>
+      <FooterBar>
         <PrimaryButton label={busy ? 'Saving…' : 'Use this address'} onPress={use} disabled={!picked || busy} />
-      </View>
+      </FooterBar>
     </GlassScreen>
   );
 };
@@ -468,16 +474,16 @@ export const CheckoutPaymentScreen: React.FC<{ navigation: any; route: any }> = 
             sub="One-time account number"
             onPress={() => setChoice({ kind: 'bank_transfer' })}
           />
-          <Option on={on('ussd')} title="USSD" sub="GTBank, Zenith or UBA" onPress={() => setChoice({ kind: 'ussd' })} />
+          <Option on={on('ussd')} title="USSD" sub="Pay with your bank's USSD code" onPress={() => setChoice({ kind: 'ussd' })} />
         </View>
         <View style={styles.secure}>
           <Ionicons name="lock-closed-outline" size={13} color={G.muted} />
           <Text style={styles.secureText}>Payments are processed securely by Paystack</Text>
         </View>
       </ScrollView>
-      <View style={styles.bottom}>
+      <FooterBar>
         <PrimaryButton label={busy ? 'Paying…' : 'Pay now'} onPress={pay} disabled={busy} />
-      </View>
+      </FooterBar>
     </GlassScreen>
   );
 };
@@ -530,7 +536,7 @@ export const PaidScreen: React.FC<{ navigation: any; route: any }> = ({ navigati
           ]}
         />
       </ScrollView>
-      <View style={styles.bottom}>
+      <FooterBar>
         {/* Checkout is finished: don't leave its screens on the back stack. */}
         <PrimaryButton
           label="Track my order"
@@ -538,14 +544,8 @@ export const PaidScreen: React.FC<{ navigation: any; route: any }> = ({ navigati
             navigation.reset({ index: 1, routes: [{ name: 'MainTabs' }, { name: 'OrderDetail', params: { orderId } }] })
           }
         />
-        <Pressable
-          onPress={() => navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] })}
-          style={styles.link}
-          accessibilityRole="button"
-        >
-          <Text style={styles.linkText}>Keep browsing</Text>
-        </Pressable>
-      </View>
+        <TextButton label="Keep browsing" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] })} />
+      </FooterBar>
     </GlassScreen>
   );
 };
@@ -556,27 +556,14 @@ const styles = StyleSheet.create({
   loader: { marginTop: 60 },
   pressed: { opacity: 0.7 },
   gap10: { gap: 10 },
-  bottom: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28 },
-  link: { alignItems: 'center', paddingVertical: 12 },
-  linkText: { color: G.slate, fontSize: 14, fontFamily: fonts.medium },
 
   hero: { alignItems: 'center', marginTop: 4, marginBottom: 18 },
-  heroIcon: { width: 84, height: 84, borderRadius: 24, backgroundColor: '#E9F7EE', alignItems: 'center', justifyContent: 'center' },
+  heroIcon: { width: 84, height: 84, borderRadius: 24, backgroundColor: '#EEF9F2', alignItems: 'center', justifyContent: 'center' },
   heroImg: { width: 56, height: 56, resizeMode: 'contain' },
   heroTitle: { color: G.ink, fontSize: 22, fontFamily: fonts.medium, marginTop: 16, textAlign: 'center' },
   heroSub: { color: G.muted, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, marginTop: 6, textAlign: 'center', paddingHorizontal: 10 },
 
-  timer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: '#FFF4E8',
-    marginBottom: 10,
-  },
-  timerLabel: { color: G.orangeInk, fontSize: 13, fontFamily: fonts.regular },
-  timerValue: { color: G.orangeInk, fontSize: 20, fontFamily: fonts.medium, fontVariant: ['tabular-nums'] },
+  due: { marginBottom: 12 },
 
   mini: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
   miniImage: { width: 52, height: 52, borderRadius: 12, backgroundColor: G.tile, alignItems: 'center', justifyContent: 'center' },
@@ -591,7 +578,7 @@ const styles = StyleSheet.create({
   tlRow: { flexDirection: 'row', gap: 12 },
   tlRail: { alignItems: 'center', width: 14 },
   tlDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5, borderColor: '#CED3DF', backgroundColor: 'transparent', marginTop: 3 },
-  tlDone: { backgroundColor: G.green, borderColor: G.green },
+  tlDone: { backgroundColor: '#2E9E5E', borderColor: '#2E9E5E' },
   tlNow: { borderColor: G.blue, borderWidth: 3 },
   tlLine: { flex: 1, width: 1.5, backgroundColor: 'rgba(28,31,42,0.08)', marginVertical: 2 },
   tlBody: { flex: 1, paddingBottom: 14 },

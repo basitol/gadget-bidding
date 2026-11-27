@@ -145,7 +145,7 @@ export const BuyerNotificationsScreen: React.FC<{ navigation: any }> = ({ naviga
           ? {
               icon: ICONS.tag,
               open: () => d.orderId && navigation.navigate('SecondChance', { orderId: d.orderId }),
-              action: { label: 'See offer', primary: true, go: () => d.orderId && navigation.navigate('SecondChance', { orderId: d.orderId }) },
+              action: { label: 'See offer', primary: false, go: () => d.orderId && navigation.navigate('SecondChance', { orderId: d.orderId }) },
             }
           : {
               icon: ICONS.shield,
@@ -335,7 +335,7 @@ export const BuyerNotificationsScreen: React.FC<{ navigation: any }> = ({ naviga
           )
         }
         ListFooterComponent={
-          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.footer} accessibilityRole="link">
+          <Pressable onPress={() => navigation.navigate('NotificationSettings')} style={styles.footer} accessibilityRole="link">
             <Text style={styles.footerText}>Notification settings</Text>
           </Pressable>
         }

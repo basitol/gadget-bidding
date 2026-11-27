@@ -283,7 +283,7 @@ export const SecondChanceScreen: React.FC<{ navigation: any; route: any }> = ({ 
       <ScrollView contentContainerStyle={styles.content}>
         <Hero
           icon={require('../../../assets/icons/tag.png')}
-          tint="#FFF6EE"
+          tint="#F5F2FF"
           title={live ? 'It can still be yours' : 'This offer has ended'}
           sub={
             live

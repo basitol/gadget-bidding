@@ -27,11 +27,11 @@ export const A = {
   ink: '#1C1F2A',
   slate: '#5C6273',
   muted: '#7C8293',
-  faint: '#A9AEBC',
+  faint: '#A9AEBB',
   line: '#E3E6EE',
-  green: '#22A55B',
+  green: '#2E9E5E',
   red: '#D9536A',
-  disabled: '#E6E9F1',
+  disabled: '#EDEFF4',
 };
 
 /** Blob background, safe area, keyboard avoidance and the header (back · title). */

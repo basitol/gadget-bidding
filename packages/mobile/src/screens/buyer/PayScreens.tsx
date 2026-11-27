@@ -28,7 +28,6 @@ const toast = (m: string, t: 'success' | 'error' = 'error') => useToastStore.get
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Clipboard: { setString(value: string): void } = require('react-native/Libraries/Components/Clipboard/Clipboard').default;
 const errText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
-const SUPPORT_EMAIL = 'support@gadgetbid.ng';
 
 /** "29:45" */
 const mmss = (ms: number) => {
@@ -357,7 +356,7 @@ export const UssdScreen: React.FC<{ navigation: any; route: any }> = ({ navigati
           style={styles.checks}
           items={[
             'Your bank may charge its usual USSD fee',
-            'Follow the prompts and enter your PIN on your phone, never in this app',
+            'Follow the prompts and enter your PIN on your phone — never in this app',
             'Come back here when your bank confirms',
           ]}
         />
@@ -481,7 +480,7 @@ export const PaymentFailedScreen: React.FC<{ navigation: any; route: any }> = ({
             <View style={[styles.option, styles.optionOff]} accessibilityState={{ disabled: true }}>
               <View style={styles.radio} />
               <View style={styles.flex}>
-                <Text style={styles.optionTitle}>{failedCard.label}</Text>
+                <Text style={styles.optionTitle}>Card ending {failedCard.last4}</Text>
                 <Text style={styles.optionSub}>
                   {failedCard.brand.charAt(0).toUpperCase() + failedCard.brand.slice(1)} · expires {failedCard.exp_month}/
                   {failedCard.exp_year.slice(-2)}
@@ -497,7 +496,7 @@ export const PaymentFailedScreen: React.FC<{ navigation: any; route: any }> = ({
           ))}
           <Option on={on('card')} title="Another card" sub="Debit or credit card, via Paystack" onPress={() => setChoice({ kind: 'card' })} />
           <Option on={on('bank_transfer')} title="Bank transfer" sub="Pay to a one-time account number" onPress={() => setChoice({ kind: 'bank_transfer' })} />
-          <Option on={on('ussd')} title="USSD" sub="GTBank, Zenith or UBA" onPress={() => setChoice({ kind: 'ussd' })} />
+          <Option on={on('ussd')} title="USSD" sub="Pay with your bank's USSD code" onPress={() => setChoice({ kind: 'ussd' })} />
         </View>
 
         <GlassCard style={styles.summary}>
@@ -511,13 +510,10 @@ export const PaymentFailedScreen: React.FC<{ navigation: any; route: any }> = ({
       </ScrollView>
       <FooterBar>
         <PrimaryButton label={busy ? 'Paying…' : label} onPress={pay} disabled={busy || left <= 0} />
+        {/* Support chat about this order, same as the order page's "Get help". */}
         <TextButton
           label="Get help with payment"
-          onPress={() =>
-            Linking.openURL(
-              `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Payment help for order ${order.order_number}`)}`
-            ).catch(() => toast(`Email ${SUPPORT_EMAIL} and mention order ${order.order_number}.`))
-          }
+          onPress={() => navigation.navigate('SupportChat', { orderId: order.id, orderNumber: order.order_number })}
         />
       </FooterBar>
     </GlassScreen>

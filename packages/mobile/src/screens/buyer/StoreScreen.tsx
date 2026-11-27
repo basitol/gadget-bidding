@@ -131,7 +131,7 @@ export const StoreScreen: React.FC<{ navigation: any; route: any }> = ({ navigat
           <Text style={styles.note}>
             Seller names are kept private.{' '}
             {store.badges.verified_business
-              ? "Every verified seller is a registered business we've checked."
+              ? "Every seller is a registered business we've checked."
               : "This seller's business checks aren't finished yet."}
           </Text>
           {store.badges.verified_business || store.badges.top_seller ? (
@@ -295,7 +295,7 @@ const About: React.FC<{ store: Store }> = ({ store }) => (
 );
 
 const Badge: React.FC<{ label: string; tone: 'blue' | 'purple' | 'green' }> = ({ label, tone }) => {
-  const c = { blue: [G.blueTint, '#3E6AF0'], purple: ['#F1ECFE', '#6D4AE0'], green: ['#E7F6EC', G.green] }[tone];
+  const c = { blue: [G.blueTint, '#3E6AF0'], purple: ['#F5F2FF', '#7C68E8'], green: [G.greenTint, G.green] }[tone];
   return (
     <View style={[styles.badge, { backgroundColor: c[0] }]}>
       <Text style={[styles.badgeText, { color: c[1] }]}>{label}</Text>

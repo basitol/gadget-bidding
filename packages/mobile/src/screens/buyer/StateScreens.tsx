@@ -1,25 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   G,
   GlassScreen,
   GlassHeader,
   GlassCard,
-  GadgetImage,
   PrimaryButton,
   CheckList,
   FooterBar,
-  SectionLabel,
 } from '../../components/glass';
 import { fonts } from '../../constants';
 import { meService, MissedPayment, StrikeSummary } from '../../services/me.service';
 import { useToastStore } from '../../store/toastStore';
-import { formatCurrency } from '../../utils';
 
 const SUPPORT_EMAIL = 'support@gadgetbid.ng';
+/** Failed · Outbid status pair from the design guide. */
+const RED = '#D9536A';
+const RED_TINT = '#FDF0F2';
 const toast = (m: string) => useToastStore.getState().show(m, 'error');
 const dayMonth = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+/** "Dec 26, 2026" */
+const fullDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** Bidding is paused after too many missed payments: why, until when, and what still works. */
 export const AccountPausedScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
@@ -56,15 +59,20 @@ export const AccountPausedScreen: React.FC<{ navigation: any }> = ({ navigation 
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.hero}>
           <View style={styles.tile}>
-            <Ionicons name="pause" size={36} color={G.orangeInk} />
+            <Ionicons name="lock-closed-outline" size={36} color={RED} />
           </View>
           <Text style={styles.title} accessibilityRole="header">
             {until ? 'Your account is paused' : 'Bidding is back on'}
           </Text>
           <Text style={styles.sub}>
-            {until
-              ? `You missed ${data.strikes} payment deadline${data.strikes === 1 ? '' : 's'} in ${data.lookback_days} days, so bidding is paused until ${dayMonth(until)}.`
-              : 'Your pause has ended. Pay within the deadline on every win to keep bidding.'}
+            {until ? (
+              <>
+                {`You missed ${data.strikes} payment deadline${data.strikes === 1 ? '' : 's'} in ${data.lookback_days} days, so bidding is paused until `}
+                <Text style={styles.subStrong}>{fullDate(until)}</Text>.
+              </>
+            ) : (
+              'Your pause has ended. Pay within the deadline on every win to keep bidding.'
+            )}
           </Text>
         </View>
 
@@ -72,49 +80,44 @@ export const AccountPausedScreen: React.FC<{ navigation: any }> = ({ navigation 
           <Text style={styles.cardTitle}>You can still</Text>
           <CheckList
             style={styles.cardList}
-            items={[
-              'Browse and watch auctions',
-              "Pay for and track orders you've already won",
-              'Sell your own gadgets',
-            ]}
+            items={['See your orders and track deliveries', 'Pay for anything already won', 'Report a problem with an order']}
           />
         </GlassCard>
 
         {recent.length ? (
-          <>
-            <View style={styles.section}>
-              <SectionLabel>{`Missed in the last ${data.lookback_days} days`}</SectionLabel>
-            </View>
-            <GlassCard>
-              {recent.map((m, i) => (
-                <View key={m.id} style={[styles.row, i > 0 && styles.rowLine]}>
-                  <GadgetImage uri={m.gadget_image} size={44} style={styles.thumb} />
-                  <View style={styles.flex}>
-                    <Text style={styles.rowTitle} numberOfLines={1}>
+          <GlassCard style={styles.missedCard}>
+            {recent.map((m, i) => (
+              <View key={m.id} style={[styles.row, i > 0 && styles.rowLine]}>
+                <View style={styles.flex}>
+                  <View style={styles.rowHead}>
+                    <Text style={[styles.rowTitle, styles.shrink]} numberOfLines={1}>
                       {m.gadget_title}
                     </Text>
-                    <Text style={styles.rowSub}>
-                      {formatCurrency(m.winning_bid)} · {dayMonth(m.auction_ended_at ?? m.created_at)}
-                    </Text>
+                    {m.order_number ? <Text style={styles.rowTitle}>{` · ${m.order_number}`}</Text> : null}
                   </View>
-                  <View style={styles.missed}>
-                    <Text style={styles.missedText}>Missed</Text>
-                  </View>
+                  <Text style={styles.rowSub}>{dayMonth(m.auction_ended_at ?? m.created_at)}</Text>
                 </View>
-              ))}
-            </GlassCard>
-          </>
+                <View style={styles.missed}>
+                  <Text style={styles.missedText}>Missed</Text>
+                </View>
+              </View>
+            ))}
+          </GlassCard>
         ) : null}
-
-        <Text style={styles.appeal}>
-          Think this is a mistake?{' '}
-          <Text style={styles.appealLink} onPress={appeal} accessibilityRole="link">
-            Appeal
-          </Text>
-        </Text>
       </ScrollView>
       <FooterBar>
         <PrimaryButton label="See my orders" onPress={() => navigation.navigate('Orders')} />
+        <Pressable
+          onPress={appeal}
+          style={styles.appealButton}
+          hitSlop={6}
+          accessibilityRole="link"
+          accessibilityLabel="Think this is a mistake? Appeal"
+        >
+          <Text style={styles.appeal}>
+            Think this is a mistake? <Text style={styles.appealLink}>Appeal</Text>
+          </Text>
+        </Pressable>
       </FooterBar>
     </GlassScreen>
   );
@@ -129,7 +132,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 26,
-    backgroundColor: '#FFF4EA',
+    backgroundColor: RED_TINT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -143,17 +146,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 8,
   },
+  subStrong: { color: G.ink, fontFamily: fonts.medium },
   card: { padding: 16 },
   cardTitle: { color: G.ink, fontSize: 15, fontFamily: fonts.medium },
   cardList: { marginTop: 10 },
-  section: { marginTop: 28 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
+  missedCard: { marginTop: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
   rowLine: { borderTopWidth: 1, borderTopColor: G.line },
-  thumb: { width: 44, height: 44, borderRadius: 10 },
-  rowTitle: { color: G.ink, fontSize: 15, fontFamily: fonts.medium },
+  rowHead: { flexDirection: 'row', alignItems: 'center' },
+  shrink: { flexShrink: 1 },
+  rowTitle: { color: G.ink, fontSize: 15, fontFamily: fonts.medium, fontVariant: ['tabular-nums'] },
   rowSub: { color: G.muted, fontSize: 13, fontFamily: fonts.regular, marginTop: 2, fontVariant: ['tabular-nums'] },
-  missed: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: G.redTint },
-  missedText: { color: G.red, fontSize: 12, fontFamily: fonts.medium },
-  appeal: { color: G.muted, fontSize: 14, fontFamily: fonts.regular, textAlign: 'center', marginTop: 24 },
+  missed: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: RED_TINT },
+  missedText: { color: RED, fontSize: 13, fontFamily: fonts.medium },
+  appealButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  appeal: { color: G.slate, fontSize: 14, fontFamily: fonts.regular, textAlign: 'center' },
   appealLink: { color: G.blue600, fontFamily: fonts.medium },
 });

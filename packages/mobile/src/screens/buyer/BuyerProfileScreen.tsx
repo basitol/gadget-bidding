@@ -87,10 +87,7 @@ export const BuyerProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
           {[
             { value: s ? String(s.stats.won) : '–', label: 'Won' },
             { value: s ? String(s.stats.bidding) : '–', label: 'Bidding' },
-            {
-              value: s?.stats.rating != null ? s.stats.rating.toFixed(1) : '–',
-              label: s?.stats.rating_count ? `Rating (${s.stats.rating_count})` : 'Rating',
-            },
+            { value: s?.stats.rating != null ? s.stats.rating.toFixed(1) : '–', label: 'Rating' },
           ].map(st => (
             <GlassCard key={st.label} style={styles.stat}>
               <Text style={styles.statValue}>{st.value}</Text>

@@ -12,13 +12,15 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
+  Keyboard,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { FadeInView, PopIn, useShake } from '../../components';
+import { PasswordField, TextField } from '../../components/auth/GlassAuthKit';
 import { fonts } from '../../constants';
 import { authService } from '../../services';
 import { registerForPush } from '../../services/pushNotifications';
@@ -36,11 +38,11 @@ const C = {
   ink: '#1C1F2A',
   slate: '#5C6273',
   muted: '#7C8293',
-  faint: '#A9AEBC',
+  faint: '#A9AEBB',
   line: '#E3E6EE',
-  green: '#22A55B',
-  red: '#E5484D',
-  disabled: '#E6E9F1',
+  green: '#2E9E5E',
+  red: '#D9536A',
+  disabled: '#EDEFF4',
 };
 const MONO = 'Satoshi-Medium';
 
@@ -69,6 +71,20 @@ const ALERTS = [
 
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 
+/** True while the keyboard is up, so the footer can drop its home-indicator padding. */
+const useKeyboardOpen = () => {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setOpen(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setOpen(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return open;
+};
+
 /** Email-first buyer sign-up: email → code → password → name → interests → notifications. */
 export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
   const [step, setStep] = useState(0); // 0–4 = steps, 5 = welcome
@@ -80,10 +96,10 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
   const [code, setCode] = useState('');
   const [resendIn, setResendIn] = useState(RESEND_SECONDS);
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
+  const [usernameFocused, setUsernameFocused] = useState(false);
   const [usernameTaken, setUsernameTaken] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [budget, setBudget] = useState<string | null>(null);
@@ -91,6 +107,10 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
 
   const { shakeStyle, shake } = useShake(10);
   const codeInput = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
+  const keyboardOpen = useKeyboardOpen();
+  // Footer is a frosted bar that runs under the home indicator (design guide: Layout).
+  const footerInset = { paddingBottom: keyboardOpen ? 8 : insets.bottom + 8 };
 
   // Resend countdown on the code step
   useEffect(() => {
@@ -236,7 +256,7 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.root}>
         <StatusBar style="dark" />
         <Image source={require('../../../assets/backgrounds/glass-bg.jpg')} style={styles.bg} />
-        <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <SafeAreaView style={styles.safe} edges={['top']}>
           <View style={styles.welcome}>
             <PopIn>
               <View style={styles.bellTile}>
@@ -261,7 +281,7 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
               ))}
             </FadeInView>
           </View>
-          <View style={styles.footer}>
+          <View style={[styles.footer, footerInset]}>
             <Pressable
               onPress={() => enterApp(true)}
               disabled={busy}
@@ -301,7 +321,7 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
     <View style={styles.root}>
       <StatusBar style="dark" />
       <Image source={require('../../../assets/backgrounds/glass-bg.jpg')} style={styles.bg} />
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.header}>
             <Pressable
@@ -362,14 +382,13 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
               <Animated.View style={[styles.body, shakeStyle]}>
                 {step === 0 && (
                   <Field label="Email">
-                    <TextInput
+                    <TextField
                       value={email}
                       onChangeText={t => {
                         setEmail(t);
                         setError(null);
                       }}
                       placeholder="you@example.com"
-                      placeholderTextColor={C.faint}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -379,7 +398,7 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
                       autoFocus
                       returnKeyType="send"
                       onSubmitEditing={submit}
-                      style={styles.input}
+                      invalid={!!error}
                     />
                   </Field>
                 )}
@@ -430,29 +449,15 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
                 {step === 2 && (
                   <>
                     <Field label="Password">
-                      <View style={styles.inputRow}>
-                        <TextInput
-                          value={password}
-                          onChangeText={setPassword}
-                          placeholder="At least 8 characters"
-                          placeholderTextColor={C.faint}
-                          secureTextEntry={!showPassword}
-                          autoCapitalize="none"
-                          autoComplete="password-new"
-                          textContentType="newPassword"
-                          autoFocus
-                          onSubmitEditing={submit}
-                          style={[styles.input, styles.inputFlex]}
-                        />
-                        <Pressable
-                          onPress={() => setShowPassword(s => !s)}
-                          hitSlop={10}
-                          style={styles.eye}
-                          accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                        >
-                          <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={C.muted} />
-                        </Pressable>
-                      </View>
+                      <PasswordField
+                        value={password}
+                        onChangeText={setPassword}
+                        placeholder="At least 8 characters"
+                        autoComplete="password-new"
+                        textContentType="newPassword"
+                        autoFocus
+                        onSubmitEditing={submit}
+                      />
                     </Field>
                     <View style={styles.rules}>
                       <Rule ok={pw.length} label="8 characters or more" />
@@ -466,38 +471,45 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
                   <>
                     <View style={styles.nameRow}>
                       <Field label="First name" style={styles.flex}>
-                        <TextInput
+                        <TextField
                           value={firstName}
                           onChangeText={setFirstName}
                           autoCapitalize="words"
                           autoComplete="given-name"
                           textContentType="givenName"
                           autoFocus
-                          style={styles.input}
                         />
                       </Field>
                       <Field label="Last name" style={styles.flex}>
-                        <TextInput
+                        <TextField
                           value={lastName}
                           onChangeText={setLastName}
                           autoCapitalize="words"
                           autoComplete="family-name"
                           textContentType="familyName"
-                          style={styles.input}
                         />
                       </Field>
                     </View>
                     <Field label="Username">
-                      <View style={styles.inputRow}>
+                      <View
+                        style={[
+                          styles.inputRow,
+                          usernameFocused && styles.inputFocused,
+                          usernameTaken && styles.inputInvalid,
+                        ]}
+                      >
                         <Text style={styles.at}>@</Text>
                         <TextInput
                           value={username}
                           onChangeText={t => setUsername(t.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20))}
+                          onFocus={() => setUsernameFocused(true)}
+                          onBlur={() => setUsernameFocused(false)}
                           autoCapitalize="none"
                           autoCorrect={false}
                           autoComplete="username-new"
                           textContentType="username"
                           style={[styles.input, styles.inputFlex, styles.inputAt]}
+                          accessibilityLabel="Username"
                         />
                       </View>
                     </Field>
@@ -564,7 +576,7 @@ export const SignUpFlowScreen: React.FC<Props> = ({ navigation }) => {
             </FadeInView>
           </ScrollView>
 
-          <View style={styles.footer}>
+          <View style={[styles.footer, footerInset]}>
             <Pressable
               onPress={submit}
               disabled={!canContinue || busy}
@@ -638,7 +650,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: C.ink, fontSize: 17, fontFamily: fonts.medium },
   headerSpacer: { width: 44 },
 
-  progress: { flexDirection: 'row', gap: 6, paddingHorizontal: 20, marginTop: 12 },
+  progress: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginTop: 12 },
   segment: { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.75)' },
   segmentOn: { backgroundColor: C.blue },
 
@@ -668,11 +680,19 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: C.ink,
   },
-  inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 14 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  inputFocused: { borderColor: C.blue },
+  inputInvalid: { borderColor: C.red },
   inputFlex: { flex: 1, backgroundColor: 'transparent' },
   inputAt: { paddingLeft: 2 },
   at: { color: C.faint, fontSize: 16, fontFamily: fonts.regular, paddingLeft: 16 },
-  eye: { paddingHorizontal: 16, height: 52, justifyContent: 'center' },
 
   codeRow: { flexDirection: 'row', gap: 8 },
   codeBox: {
@@ -735,6 +755,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.8)',
   },
   primary: {
     height: 52,

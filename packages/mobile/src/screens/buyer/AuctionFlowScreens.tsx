@@ -50,6 +50,11 @@ import { AuctionNotFound } from '../../components/states';
 const toast = (msg: string, type: 'success' | 'error' = 'error') =>
   useToastStore.getState().show(msg, type);
 
+/** Design guide "Seller" status colours (seller identity). */
+const SELLER_TINT = '#F5F2FF';
+const SELLER_INK = '#7C68E8';
+const bidsLabel = (n: number) => `${n} bid${n === 1 ? '' : 's'}`;
+
 const GRADE: Record<string, { label: string; tone: 'green' | 'blue' }> = {
   new: { label: 'New · sealed', tone: 'green' },
   like_new: { label: 'Grade A · like new', tone: 'green' },
@@ -353,7 +358,7 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
             <Text style={styles.pairLabel}>
               {scheduled
                 ? 'Starting price'
-                : `Current bid · ${auction.bid_count ?? auction.total_bids ?? 0} bids`}
+                : `Current bid · ${bidsLabel(auction.bid_count ?? auction.total_bids ?? 0)}`}
             </Text>
             <Text style={styles.bigValue}>
               {formatCurrency(auction.current_price)}
@@ -392,7 +397,7 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
                 <Ionicons
                   name="shield-checkmark-outline"
                   size={18}
-                  color={G.blue}
+                  color={SELLER_INK}
                 />
               </View>
               <View style={styles.flex}>
@@ -540,10 +545,11 @@ const Tag: React.FC<{ label: string; tone: 'green' | 'blue' | 'purple' }> = ({
   label,
   tone,
 }) => {
+  // Status tints from the design guide: tint + dark text.
   const c = {
-    green: ['#E7F6EC', G.green],
-    blue: [G.blueTint, G.blue],
-    purple: ['#F1ECFE', '#6D4AE0'],
+    green: ['#EEF9F2', '#2E9E5E'],
+    blue: ['#F1F5FF', G.blue600],
+    purple: [SELLER_TINT, SELLER_INK],
   }[tone];
   return (
     <View style={[styles.tag, { backgroundColor: c[0] }]}>
@@ -922,9 +928,6 @@ export const OutbidScreen: React.FC<{ navigation: any; route: any }> = ({
                 </Pressable>
               ))}
             </View>
-            <Text style={styles.helpCenter}>
-              A bid is a promise to buy if you win.
-            </Text>
           </>
         ) : null}
       </ScrollView>
@@ -1051,7 +1054,7 @@ export const AutoBidScreen: React.FC<{ navigation: any; route: any }> = ({
                   <Text style={styles.miniStrong}>
                     {formatCurrency(auction.current_price)}
                   </Text>{' '}
-                  · {auction.bid_count ?? auction.total_bids ?? 0} bids
+                  · {bidsLabel(auction.bid_count ?? auction.total_bids ?? 0)}
                 </Text>
                 <Text style={styles.miniSub}>
                   Ends in {timeLeft(auction.end_time, now)}
@@ -1239,8 +1242,8 @@ const styles = StyleSheet.create({
   sellerIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
-    backgroundColor: G.blueTint,
+    borderRadius: 12,
+    backgroundColor: SELLER_TINT,
     alignItems: 'center',
     justifyContent: 'center',
   },

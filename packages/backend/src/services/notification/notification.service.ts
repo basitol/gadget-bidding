@@ -721,14 +721,19 @@ export const notifyAuctionEndingSoon = async (
   auctionId: string,
   gadgetTitle: string,
   minutesRemaining: number,
-  watching = false
+  watching = false,
+  reminder?: string
 ): Promise<void> => {
+  const left =
+    minutesRemaining >= 55
+      ? 'about an hour'
+      : `${minutesRemaining} minute${minutesRemaining === 1 ? '' : 's'}`;
   await createNotification(
     userId,
     'auction_ending_soon',
     watching ? 'Ending soon on your watchlist' : 'Ending soon',
-    `${gadgetTitle} ends in ${minutesRemaining} minute${minutesRemaining === 1 ? '' : 's'}.`,
-    { auctionId, minutesRemaining },
+    `${gadgetTitle} ends in ${left}.`,
+    { auctionId, minutesRemaining, ...(reminder && { reminder }) },
     ['push']
   );
 };
@@ -880,13 +885,16 @@ export const alreadyNotified = async (
   userId: string,
   type: NotificationType,
   key: 'auctionId' | 'orderId',
-  value: string
+  value: string,
+  /** For staged reminders ('1h', '15m', '12h', '2h'): only that stage counts. */
+  reminder?: string
 ): Promise<boolean> => {
   const rows = await query(
     `SELECT 1 FROM notifications
      WHERE user_id = $1 AND notification_type = $2 AND data->>'${key}' = $3
+       AND ($4::text IS NULL OR data->>'reminder' = $4)
      LIMIT 1`,
-    [userId, type, value]
+    [userId, type, value, reminder ?? null]
   );
   return rows.length > 0;
 };
@@ -900,7 +908,8 @@ export const notifyPaymentReminder = async (
   orderNumber: string,
   gadgetTitle: string,
   amount: number,
-  hoursLeft: number
+  hoursLeft: number,
+  reminder?: string
 ): Promise<void> => {
   const left = hoursLeft <= 1 ? 'less than an hour' : `about ${Math.round(hoursLeft)} hours`;
   await createNotification(
@@ -908,7 +917,7 @@ export const notifyPaymentReminder = async (
     'payment_reminder',
     `Time to pay for ${gadgetTitle}`,
     `You have ${left} to pay ₦${amount.toLocaleString()} for order #${orderNumber}, or it goes to the next bidder.`,
-    { orderId, orderNumber },
+    { orderId, orderNumber, ...(reminder && { reminder }) },
     ['push']
   );
 };

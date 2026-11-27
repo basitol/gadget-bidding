@@ -51,7 +51,7 @@ export const OfflineOverlay: React.FC = () => {
               style={styles.cardList}
               items={[
                 "Bids and payments only go through when you're back online",
-                'Auto-bids keep working. They run on our side',
+                'Auto-bids keep working — they run on our side',
                 "We'll show any outbids as soon as you reconnect",
               ]}
             />
@@ -79,7 +79,7 @@ export const ErrorState: React.FC<{ code: string; onRetry: () => void; onBack?: 
         icon={<Ionicons name="warning-outline" size={40} color="#D9536A" />}
         tint="#FDF0F2"
         title="Something went wrong"
-        sub="That's on us, not you. Your bids and money are safe. Nothing was lost."
+        sub="That's on us, not you. Your bids and money are safe — nothing was lost."
       />
       <View style={styles.code}>
         <Text style={styles.codeText} selectable>
@@ -217,7 +217,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingBottom: 12,
   },
-  pickImage: { height: 110 },
+  // Photo sits on its own inset tile inside the card.
+  pickImage: { height: 88, margin: 12, marginBottom: 0, borderRadius: 12 },
   pickTitle: { color: G.ink, fontSize: 13, fontFamily: fonts.medium, marginTop: 10, paddingHorizontal: 12 },
   pickPrice: { color: G.ink, fontSize: 15, fontFamily: fonts.medium, marginTop: 4, paddingHorizontal: 12, fontVariant: ['tabular-nums'] },
 });

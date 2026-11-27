@@ -86,14 +86,14 @@ export const SkeletonRow: React.FC = () => (
       <View style={styles.rowBody}>
         <Bone w="70%" h={14} r={7} tone="card" />
         <Bone w="45%" h={12} r={6} tone="card" />
-        <Bone w={64} h={20} r={10} tone="card" />
+        <Bone w={52} h={18} r={8} tone="card" />
       </View>
-      <Bone w={72} h={16} r={8} tone="card" />
+      <Bone w={64} h={14} r={7} tone="card" />
     </View>
   </GlassCard>
 );
 
-/** Home while the first auctions load. */
+/** Home while the first auctions load: header, title, search, chips, featured card, three tiles, rows. */
 export const HomeSkeleton: React.FC = () => (
   <SkeletonGroup>
     <View style={styles.spread}>
@@ -106,15 +106,18 @@ export const HomeSkeleton: React.FC = () => (
     <Bone w="82%" h={26} r={10} style={styles.mt20} />
     <Bone w="58%" h={26} r={10} style={styles.mt8} />
     <Bone h={48} r={14} style={styles.mt16} />
-    <View style={[styles.inline, styles.mt14]}>
-      {[78, 84, 70, 88].map((w, i) => (
-        <Bone key={i} w={w} h={34} r={10} />
+    <View style={[styles.inline, styles.mt16]}>
+      {[72, 72, 72, 72].map((w, i) => (
+        <Bone key={i} w={w} h={36} r={10} />
       ))}
     </View>
-    <Bone h={52} r={16} style={styles.mt14} />
-    <Bone h={300} r={22} style={styles.mt14} />
-    <Bone h={86} r={18} style={styles.mt14} />
-    <View style={[styles.list, styles.mt16]}>
+    <Bone h={228} r={18} style={styles.mt16} />
+    <View style={[styles.tiles, styles.mt16]}>
+      <Bone h={68} r={14} style={styles.flex} />
+      <Bone h={68} r={14} style={styles.flex} />
+      <Bone h={68} r={14} style={styles.flex} />
+    </View>
+    <View style={[styles.listLoose, styles.mt16]}>
       <SkeletonRow />
       <SkeletonRow />
     </View>
@@ -124,12 +127,12 @@ export const HomeSkeleton: React.FC = () => (
 /** Auction detail while it loads: photo, title, chips, price card, seller card, description. */
 export const AuctionDetailSkeleton: React.FC = () => (
   <SkeletonGroup>
-    <Bone h={320} r={24} />
-    <Bone w="74%" h={28} r={12} style={styles.mt20} />
-    <View style={[styles.inline, styles.mt16]}>
-      <Bone w={112} h={32} r={12} />
-      <Bone w={104} h={32} r={12} />
-      <Bone w={92} h={32} r={12} />
+    <Bone h={248} r={24} />
+    <Bone w="74%" h={24} r={10} style={styles.mt20} />
+    <View style={[styles.tiles, styles.mt16]}>
+      <Bone w={108} h={24} r={8} />
+      <Bone w={88} h={24} r={8} />
+      <Bone w={76} h={24} r={8} />
     </View>
     <GlassCard style={[styles.cardPad, styles.mt16]}>
       <View style={styles.inline}>
@@ -143,7 +146,7 @@ export const AuctionDetailSkeleton: React.FC = () => (
         </View>
       </View>
     </GlassCard>
-    <GlassCard style={[styles.cardPad, styles.mt14]}>
+    <GlassCard style={[styles.cardPad, styles.mt16]}>
       <View style={styles.row}>
         <Bone w={48} h={48} r={14} tone="card" />
         <View style={styles.rowBody}>
@@ -152,10 +155,10 @@ export const AuctionDetailSkeleton: React.FC = () => (
         </View>
       </View>
     </GlassCard>
-    <View style={[styles.stackLoose, styles.mt20]}>
+    <View style={[styles.stackLoose, styles.mt16]}>
       <Bone h={14} r={7} />
       <Bone h={14} r={7} />
-      <Bone w="70%" h={14} r={7} />
+      <Bone h={14} r={7} />
     </View>
   </SkeletonGroup>
 );
@@ -172,10 +175,10 @@ export const FooterSkeleton: React.FC = () => (
 export const BidsSkeleton: React.FC<{ tabs?: boolean }> = ({ tabs }) => (
   <SkeletonGroup>
     {tabs ? (
-      <View style={[styles.inline, styles.mb14]}>
-        <Bone w={104} h={40} r={12} />
-        <Bone w={88} h={40} r={12} />
-        <Bone w={88} h={40} r={12} />
+      <View style={[styles.tiles, styles.mb14]}>
+        <Bone w={84} h={36} r={10} />
+        <Bone w={84} h={36} r={10} />
+        <Bone w={84} h={36} r={10} />
       </View>
     ) : null}
     <View style={styles.list}>
@@ -189,20 +192,23 @@ export const BidsSkeleton: React.FC<{ tabs?: boolean }> = ({ tabs }) => (
 
 const styles = StyleSheet.create({
   bone: { overflow: 'hidden' },
-  onBg: { backgroundColor: 'rgba(255,255,255,0.55)' },
-  inCard: { backgroundColor: 'rgba(28,31,42,0.05)' },
+  // Bones are the same quiet grey (Line) on the page and inside cards.
+  onBg: { backgroundColor: '#EDEFF4' },
+  inCard: { backgroundColor: '#EDEFF4' },
   band: { position: 'absolute', top: 0, bottom: 0, left: 0 },
 
   flex: { flex: 1 },
   flexSmall: { flex: 0.6 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  tiles: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   spread: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  list: { gap: 10 },
+  list: { gap: 12 },
+  listLoose: { gap: 16 },
   stack: { gap: 8 },
   stackLoose: { gap: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  rowBody: { flex: 1, gap: 7 },
-  rowCard: { padding: 10 },
+  rowBody: { flex: 1, gap: 8 },
+  rowCard: { padding: 16 },
   cardPad: { padding: 16 },
 
   mt8: { marginTop: 8 },

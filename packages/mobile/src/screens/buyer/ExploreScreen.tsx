@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  ScrollView,
   FlatList,
   StyleSheet,
   ActivityIndicator,
@@ -137,15 +136,15 @@ export const ExploreScreen: React.FC<{ navigation: any; route: any }> = ({ navig
           ) : null}
         </View>
         <Pressable onPress={() => setSortOpen(true)} style={styles.filter} accessibilityRole="button" accessibilityLabel="Sort">
-          <Ionicons name="options-outline" size={18} color={G.ink} />
+          <Ionicons name="filter-outline" size={18} color={G.ink} />
         </Pressable>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      <View style={styles.chips}>
         {CATEGORY_CHIPS.map(c => (
           <Chip key={c.label} label={c.label} selected={category === c.slug} onPress={() => setCategory(c.slug)} />
         ))}
-      </ScrollView>
+      </View>
 
       {recent.length && !query ? (
         <View style={styles.recent}>
@@ -256,7 +255,7 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, color: G.ink, fontSize: 14, fontFamily: fonts.regular },
   filter: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
-  chips: { gap: 8, paddingVertical: 14 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 16 },
   recent: { marginBottom: 12 },
   recentChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   count: { color: G.muted, fontSize: 13, fontFamily: fonts.regular, marginBottom: 10 },

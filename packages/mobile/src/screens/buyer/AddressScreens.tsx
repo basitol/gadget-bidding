@@ -188,7 +188,7 @@ export const DeliveryAddressesScreen: React.FC<{ navigation: any }> = ({ navigat
                   </Pressable>
                 </View>
                 <Text style={styles.cardLine}>{addressLine(a)}</Text>
-                <Text style={styles.cardMeta}>{[a.address_line2, maskPhone(a.phone_number)].filter(Boolean).join(' • ')}</Text>
+                <Text style={styles.cardMeta}>{[a.address_line2, maskPhone(a.phone_number)].filter(Boolean).join(' · ')}</Text>
                 <View style={[styles.cardActions, !a.is_default && styles.cardActionsRule]}>
                   {a.is_default ? null : (
                     <SmallButton label="Set as default" onPress={() => makeDefault(a)} disabled={busy === a.id} />

@@ -178,16 +178,17 @@ export const HelpCategoryScreen: React.FC<{ navigation: any; route: any }> = ({ 
 
 /* ================= Help article ================= */
 
-/** Green filled dots for done, blue ring for the current (last) step. */
+/** Green filled dots for done, blue ring for the current (last) step; the line into it stays faint. */
 const Timeline: React.FC<{ steps: HelpStep[] }> = ({ steps }) => (
   <GlassCard style={styles.timeline}>
     {steps.map((s, i) => {
       const last = i === steps.length - 1;
+      const intoCurrent = i === steps.length - 2;
       return (
         <View key={s.title} style={styles.step} accessibilityLabel={`${s.title}. ${s.sub}${last ? '. This is the step you do.' : ''}`}>
           <View style={styles.rail}>
             <View style={last ? styles.dotCurrent : styles.dotDone} />
-            {!last ? <View style={styles.railLine} /> : null}
+            {!last ? <View style={[styles.railLine, intoCurrent && styles.railLineNext]} /> : null}
           </View>
           <View style={[styles.flex, !last && styles.stepGap]}>
             <Text style={[styles.stepTitle, last && styles.stepTitleCurrent]}>{s.title}</Text>
@@ -510,6 +511,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   railLine: { flex: 1, width: 2, backgroundColor: '#2E9E5E', marginTop: 4, marginBottom: -4 },
+  railLineNext: { backgroundColor: '#EDEFF4' },
   stepGap: { paddingBottom: 16 },
   stepTitle: { color: G.ink, fontSize: 16, lineHeight: 20, fontFamily: fonts.medium },
   stepTitleCurrent: { color: G.blue600 },

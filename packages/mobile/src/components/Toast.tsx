@@ -8,8 +8,8 @@ import { useToastStore } from '../store/toastStore';
 
 /** Toast design: white card, soft shadow, icon on a pale round badge, dark medium text. */
 const TONES: Record<string, { icon: keyof typeof Ionicons.glyphMap; fg: string; bg: string }> = {
-  success: { icon: 'checkmark', fg: '#15803D', bg: '#E7F6EC' },
-  error: { icon: 'alert', fg: '#E5484D', bg: '#FDECEC' },
+  success: { icon: 'checkmark', fg: '#2E9E5E', bg: '#EEF9F2' },
+  error: { icon: 'alert', fg: '#D9536A', bg: '#FDF0F2' },
   info: { icon: 'information', fg: '#4F7BFF', bg: '#EEF2FF' },
 };
 
