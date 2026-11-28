@@ -17,3 +17,7 @@
 ## Design Guide (mandatory)
 
 All UI work must follow `docs/DESIGN_GUIDE.md` exactly. Read it before touching any UI. `design/amber-ledger.md` is superseded.
+
+## Project context docs
+
+Start with `docs/ai/HANDOVER.md` and `docs/ai/CONSTRAINTS.md`. The rest of `docs/ai/` covers architecture, flows, decisions, approved dependencies, env vars, the verification checklist, bugs, roadmap and rollback recipes.

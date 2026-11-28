@@ -95,3 +95,24 @@ All UI work — mobile, admin dashboard, web, emails — MUST follow
 corner radii, glass rules, components, voice, motion, accessibility). Read it
 before touching any UI. Do not invent tokens or components not in the guide.
 `design/amber-ledger.md` is superseded.
+
+## Project context docs (`docs/ai/`)
+
+Read `docs/ai/HANDOVER.md` at the start of every session, then what the task needs:
+
+| File | Use it for |
+| --- | --- |
+| `MENTAL-MODEL.md` | Plain-English system logic — start here if new |
+| `CONSTRAINTS.md` | Files, actions and logic you must never touch — **check before every change** |
+| `ARCHITECTURE.md` | Stack, routes, models, jobs, sockets, app structure |
+| `FLOW.md` | Auth, bidding, payment, escrow, payout and case sequences |
+| `DECISIONS.md` | Why things are the way they are — don't re-litigate |
+| `DEPENDENCIES.md` | Approved packages — ask before adding anything |
+| `ENV.md` | Every env var in plain English (no values) |
+| `CHECKLIST.md` | Verification steps before calling a change done |
+| `BUGS.md` | Open risks, past regressions, recurring patterns |
+| `ROADMAP.md` | Atomic task queue — one task per session |
+| `ROLLBACK.md` | Safe git / migration / deploy recovery recipes |
+
+Keep them current: update `HANDOVER.md` before stopping; add non-obvious choices to
+`DECISIONS.md` (as well as `record_decision`) and regressions to `BUGS.md`.
