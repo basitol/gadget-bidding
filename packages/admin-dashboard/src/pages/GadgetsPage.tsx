@@ -5,6 +5,8 @@ import { adminApi } from '@/api';
 import { mediaUrl } from '@/lib/media';
 import { label, when } from '@/lib/format';
 import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
+import { ListingReviewSheet } from '@/components/ListingReviewSheet';
+import { Chip } from '@/components/SellerApplicationPanel';
 import {
   Badge,
   Empty,
@@ -49,6 +51,9 @@ export function GadgetsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selected, setSelected] = useState<any | null>(null);
+  /** Listing-flow listings (with a device profile) open the full review sheet. */
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const open = (g: any) => (g.profile ? setReviewId(g.id) : setSelected(g));
 
   const query = useMemo(
     () => ({ status, search: appliedSearch, page, limit }),
@@ -88,6 +93,7 @@ export function GadgetsPage() {
     try {
       await adminApi.approveGadget(id);
       setSelected(null);
+      setReviewId(null);
       await load();
       toast.success('Listing approved');
     } catch (err: any) {
@@ -98,8 +104,11 @@ export function GadgetsPage() {
   };
 
   const reject = async (id: string) => {
-    const reason = await prompt('Rejection reason', 'Does not meet guidelines', {
-      title: 'Reject listing',
+    const reason = await prompt('What should the seller fix?', '', {
+      title: 'Send this listing back?',
+      description: 'The seller sees your note, fixes the listing and sends it again. It goes back in this queue.',
+      placeholder: 'e.g. Add a clear photo of the About screen showing the IMEI.',
+      confirmLabel: 'Send back to the seller',
       required: true,
     });
     if (!reason) return;
@@ -107,6 +116,7 @@ export function GadgetsPage() {
     try {
       await adminApi.rejectGadget(id, reason);
       setSelected(null);
+      setReviewId(null);
       await load();
       toast.success('Listing rejected');
     } catch (err: any) {
@@ -171,7 +181,7 @@ export function GadgetsPage() {
                     <Button
                       variant="ghost"
                       className="h-auto justify-start gap-3 px-0 py-1"
-                      onClick={() => setSelected(g)}
+                      onClick={() => open(g)}
                     >
                       {g.images?.[0] ? (
                         <img
@@ -186,6 +196,7 @@ export function GadgetsPage() {
                         <div className="font-medium">{g.title}</div>
                         <div className="text-sm font-normal text-muted-foreground">
                           {[
+                            g.profile_label,
                             g.brand,
                             g.model,
                             g.condition && label(g.condition),
@@ -204,7 +215,10 @@ export function GadgetsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge tone={statusTone(g.status)}>{label(g.status)}</Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={statusTone(g.status)}>{label(g.status)}</Badge>
+                      {g.duplicate ? <Chip tone="danger">Duplicate</Chip> : null}
+                    </div>
                     {g.auction ? (
                       <div className="mt-1.5 text-sm text-muted-foreground">
                         Auction: {label(g.auction.status)}
@@ -237,7 +251,7 @@ export function GadgetsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setSelected(g)}
+                        onClick={() => open(g)}
                       >
                         View
                       </Button>
@@ -260,6 +274,14 @@ export function GadgetsPage() {
           }}
         />
       </Panel>
+
+      <ListingReviewSheet
+        gadgetId={reviewId}
+        busy={!!reviewId && busyId === reviewId}
+        onClose={() => setReviewId(null)}
+        onApprove={approve}
+        onReject={reject}
+      />
 
       <Modal
         open={Boolean(selected)}

@@ -331,12 +331,7 @@ export const loginUser = async (
     throw new Error('Invalid email/phone number or password');
   }
 
-  // Check if user is active
-  if (!user.isActive) {
-    throw new Error('Account has been deactivated. Please contact support');
-  }
-
-  // Verify password
+  // Verify password (before saying anything about the account, so a wrong password learns nothing)
   const isPasswordValid = await comparePassword(
     data.password,
     user.passwordHash
@@ -346,12 +341,35 @@ export const loginUser = async (
     throw new Error('Invalid email/phone number or password');
   }
 
+  // Switched off. Team members see who paused them, when and why.
+  if (!user.isActive) {
+    if (user.role === 'admin') throw new AccountPausedError(await pauseDetailsFor(user));
+    // Suspended by our team: say until when, and how to appeal.
+    const suspension = await prisma.accountRestriction.findFirst({
+      where: { userId: user.id, kind: 'suspend', status: 'active' },
+      select: { until: true },
+    });
+    if (suspension) {
+      const until = suspension.until
+        ? ` until ${suspension.until.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' })}`
+        : '';
+      throw new Error(`Your account is suspended${until}. Check your email for why, or reply to it to appeal.`);
+    }
+    throw new Error('Account has been deactivated. Please contact support');
+  }
+
+  // A seller who closed their store can't log in (they're still paid what's due). Our team reopens it.
+  if (user.storeClosedAt) {
+    throw new Error('This store is closed. Contact us to reopen it.');
+  }
+
   // Check if user is verified
   if (!user.isVerified) {
     throw new Error('Please verify your account first');
   }
 
   assertAccountTypeAccess(data.account_type, user.role);
+  await assertStaffOnTeam(user);
 
   // 2-step sign-in: password was right; now ask for a code, unless this phone already passed.
   const method = liveTwoFactorMethod(user);
@@ -367,6 +385,42 @@ export const loginUser = async (
   logger.info(`User logged in: ${user.id} (${user.phoneNumber})`);
 
   return { access_token, refresh_token, user: toPublicUser(user) };
+};
+
+/** A paused team account: when, and the reason the admin who paused it gave. */
+export type PauseDetails = { email: string | null; paused_at: string | null; reason: string | null };
+
+export class AccountPausedError extends Error {
+  readonly code = 'ADMIN_PAUSED';
+  constructor(public details: PauseDetails) {
+    super('Your admin access is paused.');
+  }
+}
+
+/** From the audit log entry that switched the account off (PATCH /admin/users/:id with a reason). */
+export const pauseDetailsFor = async (user: { id: string; email: string | null }): Promise<PauseDetails> => {
+  const entry = await prisma.auditLog.findFirst({
+    where: { action: 'user_update', resourceType: 'user', resourceId: user.id, changes: { path: ['is_active'], equals: false } },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true, changes: true },
+  });
+  const changes = (entry?.changes ?? {}) as { reason?: unknown };
+  return {
+    email: user.email,
+    paused_at: entry?.createdAt?.toISOString() ?? null,
+    reason: typeof changes.reason === 'string' ? changes.reason : null,
+  };
+};
+
+/** Store staff sign in only while they're on a team and the store is open. */
+const assertStaffOnTeam = async (user: { id: string; role: string }) => {
+  if (user.role !== 'staff') return;
+  const team = await prisma.storeStaff.findUnique({
+    where: { userId: user.id },
+    select: { seller: { select: { storeClosedAt: true } } },
+  });
+  if (!team) throw new Error("You're no longer on a store team. Ask the store owner to add you again.");
+  if (team.seller.storeClosedAt) throw new Error('This store is closed, so staff sign-in is off.');
 };
 
 /* ---------------- 2-step sign-in ---------------- */
@@ -849,7 +903,17 @@ export const startEmailSignup = async (
   if (await emailTaken(email)) {
     throw new Error('An account with this email already exists. Log in instead.');
   }
+  return issueSignupCode(email);
+};
 
+/**
+ * Email a 6-digit code to confirm an address before an account is made for it. The caller decides
+ * who may use the address (sign-up: nobody has it; store staff: they were invited with it).
+ * Confirm with verifyEmailSignup / resendEmailSignup.
+ */
+export const issueSignupCode = async (
+  email: string
+): Promise<{ verification_id: string; email: string; expires_in: number }> => {
   const otp = generateOTP();
   const verification = await prisma.userVerification.create({
     data: {

@@ -81,6 +81,7 @@ export function SectionCard({
   icon,
   title,
   meta,
+  description,
   right,
   children,
   className,
@@ -88,18 +89,30 @@ export function SectionCard({
   icon: React.ReactNode;
   title: string;
   meta?: string;
+  /** One line under the title. */
+  description?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
+  const heading = (
+    <h2 className="text-[19px] font-medium tracking-[-0.01em] text-ink">
+      {title}
+      {meta ? <span className="font-normal text-hint"> · {meta}</span> : null}
+    </h2>
+  );
   return (
     <section className={cn('gb-elev overflow-hidden rounded-[24px] border border-white/80 bg-white/90', className)}>
       <header className="flex flex-wrap items-center gap-3 border-b border-line px-6 py-4">
-        <span className="grid size-10 place-items-center rounded-[12px] bg-fill">{icon}</span>
-        <h2 className="text-[19px] font-medium tracking-[-0.01em] text-ink">
-          {title}
-          {meta ? <span className="font-normal text-hint"> · {meta}</span> : null}
-        </h2>
+        <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-fill">{icon}</span>
+        {description ? (
+          <div className="min-w-0 flex-1">
+            {heading}
+            <p className="mt-0.5 text-[14px] text-slate">{description}</p>
+          </div>
+        ) : (
+          heading
+        )}
         {right ? <div className="ml-auto">{right}</div> : null}
       </header>
       {children}

@@ -1,18 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useIsFocused } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../hooks';
-import { TabIcon } from './TabIcon';
-import { tabBarStyles as styles } from './tabStyles';
+import { GlassTabBar } from './GlassTabBar';
+import { OfflineOverlay } from '../components/states';
+import { useNetworkStore } from '../store/networkStore';
+import { SellerHomeScreen } from '../screens/sell/tabs/SellerHomeScreen';
+import { MyListingsScreen } from '../screens/sell/tabs/MyListingsScreen';
+import { SellerOrdersScreen } from '../screens/sell/tabs/SellerOrdersScreen';
+import { caseScreens } from '../screens/sell/case';
+import { storeExtraScreens } from '../screens/sell/store/extra';
+import { SellerNotificationsScreen } from '../screens/sell/tabs/SellerNotificationsScreen';
+import { PayoutsScreen } from '../screens/sell/tabs/PayoutsScreen';
+import { SellerStoreScreen } from '../screens/sell/tabs/SellerStoreScreen';
+import { storeScreens } from '../screens/sell/store';
+import { moneyScreens } from '../screens/sell/money';
 
 import {
   SellScreen,
-  CreateGadgetScreen,
   TwoStepSetupScreen,
   PayoutAccountScreen,
 } from '../screens/sell';
+import { ListGadgetScreen } from '../screens/sell/listing/ListGadgetScreen';
+import { ListingSubmittedScreen } from '../screens/sell/listing/ListingSubmittedScreen';
 import { SellerSignUpScreen } from '../screens/sell/onboarding/SellerSignUpScreen';
 import { SellerStatusScreen } from '../screens/sell/onboarding/SellerStatusScreen';
 import { sellerApplicationService } from '../services/sellerApplication.service';
@@ -30,8 +41,7 @@ import {
 import { AuctionDetailScreen } from '../screens/auction';
 import { WalletScreen } from '../screens/wallet';
 import { PaymentScreen } from '../screens/payment';
-import { SupportChatScreen } from '../screens/support';
-import { NotificationsScreen } from '../screens/notifications';
+import { SupportScreen } from '../screens/buyer/SupportScreen';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -42,98 +52,31 @@ const stackScreenOptions = {
   gestureEnabled: true,
 };
 
-/** Placeholder — the + tab only triggers CreateGadget. */
-const SellTabPlaceholder = () => <View style={{ flex: 1 }} />;
-
-/** Bottom tabs only — each destination is a standalone root screen. */
-const SellerTabs: React.FC = () => {
-  const { colors: themeColors, mode } = useTheme();
-
+/** The glass tab bar, with the offline screen drawn just under it (same as the buyer app). */
+const SellerTabBar: React.FC<BottomTabBarProps> = props => {
+  const focused = useIsFocused();
+  useEffect(() => {
+    useNetworkStore.setState({ tabsShowOffline: focused });
+    return () => useNetworkStore.setState({ tabsShowOffline: false });
+  }, [focused]);
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: [
-          styles.tabBar,
-          {
-            backgroundColor:
-              mode === 'dark'
-                ? themeColors.surface
-                : themeColors.backgroundLight,
-            borderColor: themeColors.border,
-          },
-        ],
-        tabBarActiveTintColor: themeColors.primary,
-        tabBarInactiveTintColor: themeColors.textMuted,
-        tabBarLabelStyle: styles.tabLabel,
-      }}
-    >
-      <Tab.Screen
-        name="Listings"
-        component={SellScreen as any}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="storefront-outline" focused={focused} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Auctions"
-        component={MyAuctionsScreen as any}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="pricetag-outline" focused={focused} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Sell"
-        component={SellTabPlaceholder}
-        listeners={({ navigation }) => ({
-          tabPress: e => {
-            e.preventDefault();
-            navigation.getParent()?.navigate('CreateGadget');
-          },
-        })}
-        options={{
-          tabBarIcon: () => (
-            <View
-              style={[
-                styles.sellButton,
-                {
-                  backgroundColor: themeColors.primary,
-                  shadowColor: themeColors.primary,
-                },
-              ]}
-            >
-              <Ionicons name="add" size={28} color="#FFFFFF" />
-            </View>
-          ),
-          tabBarLabel: () => null,
-        }}
-      />
-      <Tab.Screen
-        name="Sales"
-        component={OrdersScreen as any}
-        initialParams={{ initialTab: 'sales' }}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="bag-outline" focused={focused} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen as any}
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="person-outline" focused={focused} />
-          ),
-        }}
-      />
-    </Tab.Navigator>
+    <>
+      <OfflineOverlay inTabs />
+      <GlassTabBar {...props} />
+    </>
   );
 };
+
+/** Home · Listings · Orders · Payouts · Store */
+const SellerTabs: React.FC = () => (
+  <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={props => <SellerTabBar {...props} />}>
+    <Tab.Screen name="Home" component={SellerHomeScreen as any} />
+    <Tab.Screen name="Listings" component={MyListingsScreen as any} />
+    <Tab.Screen name="Orders" component={SellerOrdersScreen as any} />
+    <Tab.Screen name="Payouts" component={PayoutsScreen as any} />
+    <Tab.Screen name="Store" component={SellerStoreScreen as any} />
+  </Tab.Navigator>
+);
 
 /**
  * Where a seller lands: their application until it's sent, then where it stands
@@ -195,11 +138,13 @@ export const SellerNavigator: React.FC = () => {
       />
       <RootStack.Screen name="SellerStatus" component={SellerStatusScreen as any} options={{ gestureEnabled: false }} />
       <RootStack.Screen name="TwoStepSetup" component={TwoStepSetupScreen as any} />
+      {[...storeScreens, ...storeExtraScreens, ...moneyScreens, ...caseScreens].map(sc => (
+        <RootStack.Screen key={sc.name} name={sc.name} component={sc.component as any} />
+      ))}
       <RootStack.Screen name="PayoutAccount" component={PayoutAccountScreen as any} />
-      <RootStack.Screen
-        name="CreateGadget"
-        component={CreateGadgetScreen as any}
-      />
+      {/* "List a gadget" (also opens a listing that needs changes, with { gadget }). Back steps through it. */}
+      <RootStack.Screen name="CreateGadget" component={ListGadgetScreen as any} options={{ gestureEnabled: false }} />
+      <RootStack.Screen name="ListingSubmitted" component={ListingSubmittedScreen as any} options={{ gestureEnabled: false }} />
       <RootStack.Screen
         name="AuctionDetail"
         component={AuctionDetailScreen as any}
@@ -214,10 +159,7 @@ export const SellerNavigator: React.FC = () => {
         component={ShippingAddressScreen as any}
       />
       <RootStack.Screen name="Wallet" component={WalletScreen as any} />
-      <RootStack.Screen
-        name="Notifications"
-        component={NotificationsScreen as any}
-      />
+      <RootStack.Screen name="Notifications" component={SellerNotificationsScreen as any} />
       <RootStack.Screen name="Settings" component={SettingsScreen as any} />
       <RootStack.Screen name="Policy" component={PolicyScreen as any} />
       <RootStack.Screen
@@ -226,7 +168,7 @@ export const SellerNavigator: React.FC = () => {
       />
       <RootStack.Screen
         name="SupportChat"
-        component={SupportChatScreen as any}
+        component={SupportScreen as any}
       />
     </RootStack.Navigator>
   );

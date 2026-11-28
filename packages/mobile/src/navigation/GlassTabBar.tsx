@@ -21,6 +21,11 @@ const ICONS: Record<string, [keyof typeof Ionicons.glyphMap, string]> = {
   Watchlist: ['heart-outline', 'Watchlist'],
   Bids: ['hammer-outline', 'My bids'],
   Profile: ['person-outline', 'Profile'],
+  // Seller app
+  Listings: ['list-outline', 'Listings'],
+  Orders: ['cube-outline', 'Orders'],
+  Payouts: ['wallet-outline', 'Payouts'],
+  Store: ['storefront-outline', 'Store'],
 };
 
 const ACTIVE = '#3E6AF0';

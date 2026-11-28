@@ -216,6 +216,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) =
           <>
             <AuthButton label="Log in" onPress={handleLogin} disabled={!canSubmit} busy={isLoading && !challenge} />
             <TextLink label="New here? Apply to sell" muted onPress={() => navigation.navigate('SellWithUs')} style={styles.apply} />
+            <TextLink
+              label="Added to a store team? Set up your sign-in"
+              muted
+              onPress={() => navigation.navigate('StaffJoin', identifier.includes('@') ? { email: identifier.trim() } : undefined)}
+              style={styles.team}
+            />
           </>
         }
       >
@@ -225,7 +231,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation, route }) =
             <Text style={styles.chipText}>Seller account</Text>
           </View>
         </View>
-        <AuthTitle title="Welcome back" sub="Log in with your business email." />
+        <AuthTitle title="Welcome back" sub="Log in with your business email, or the email your store added you with." />
         {emailField}
         {passwordField}
         {forgot}
@@ -292,6 +298,7 @@ const styles = StyleSheet.create({
   noteText: { color: A.slate, fontSize: 14, lineHeight: 21, fontFamily: fonts.regular },
   noteLink: { color: A.blue600, fontFamily: fonts.medium },
   apply: { alignSelf: 'center', marginTop: 16, marginBottom: 4 },
+  team: { alignSelf: 'center', marginTop: 12, marginBottom: 4 },
   codeTitle: { color: A.ink, fontSize: 19, fontFamily: fonts.medium },
   codeSub: { color: A.muted, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, marginTop: 6, marginBottom: 16 },
   codeButton: { marginTop: 20 },

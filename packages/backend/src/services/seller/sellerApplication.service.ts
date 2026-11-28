@@ -1,4 +1,5 @@
 import fs from 'fs';
+import zlib from 'zlib';
 import prisma from '../../config/prisma';
 import { Prisma } from '../../generated/prisma';
 import { isSellerRole } from '@gadget-bidding/shared';
@@ -15,6 +16,7 @@ import {
 import { sellerCode } from '../buyer/sellerSummary.service';
 import { createNotification, notifyAdmins } from '../notification/notification.service';
 import { deletePrivateFile, privateFileUrl, storePrivateFile } from './privateFiles.service';
+import { proofOfAddressStatus } from './listingGate.service';
 
 /* ------------------------------------------------------------------ */
 /* What a seller application is made of                                */
@@ -56,6 +58,8 @@ type DocEntry = {
   name: string;
   mime: string;
   size: number;
+  /** PDFs: how many pages (counted on upload). */
+  pages?: number | null;
   uploaded_at: string;
   status: DocStatus;
   note?: string | null;
@@ -160,6 +164,12 @@ const getOrCreate = async (userId: string): Promise<Application> => {
   return prisma.sellerApplication.create({ data: { userId } });
 };
 
+/** When our team accepted this file (documents accepted before we kept the time use the approval). */
+const checkedAt = (app: Pick<Application, 'decidedAt' | 'status'>, d: DocEntry | undefined) =>
+  d?.status !== 'accepted'
+    ? null
+    : d.reviewed_at ?? (app.status === 'approved' ? app.decidedAt?.toISOString() ?? null : null);
+
 const forSeller = (app: Application) => {
   const docs = docsOf(app);
   const reapplyAt =
@@ -178,7 +188,11 @@ const forSeller = (app: Application) => {
     categories: app.categories,
     registration_type: app.registrationType,
     registration_number: app.registrationNumber,
+    /** "RC 1873402" */
+    registration: registrationLabel(app.registrationType, app.registrationNumber),
     number_check: app.numberCheck,
+    /** When we approved the business ("Business verified · Since Nov 12, 2024"). */
+    approved_at: app.status === 'approved' ? app.decidedAt?.toISOString() ?? null : null,
     documents: DOCUMENT_KINDS.map(kind => {
       const d = docs[kind];
       return {
@@ -187,11 +201,16 @@ const forSeller = (app: Application) => {
         uploaded: !!d,
         name: d?.name ?? null,
         mime: d?.mime ?? null,
+        size: d?.size ?? null,
+        pages: d?.pages ?? null,
         uploaded_at: d?.uploaded_at ?? null,
         status: d?.status ?? null,
         note: d?.status === 'needs_fix' ? d.note ?? null : null,
+        checked_at: checkedAt(app, d),
       };
     }),
+    /** Proof of shop address lasts 12 months, then there's a grace period to upload a new one. */
+    proof_of_address: proofOfAddressStatus(app.documents),
     rules_accepted_at: app.rulesAcceptedAt?.toISOString() ?? null,
     submitted_at: app.submittedAt?.toISOString() ?? null,
     resubmitted_at: app.resubmittedAt?.toISOString() ?? null,
@@ -300,7 +319,52 @@ export const updateMyApplication = async (
   return forSeller(updated);
 };
 
-/** Step 5: one file per document. Photo or PDF. While we need info, only the documents we flagged. */
+/** Page objects in a PDF ("/Type /Page", not "/Pages"). */
+const PAGE_RE = /\/Type\s*\/Page(?![A-Za-z])/g;
+
+/**
+ * How many pages a PDF has, read from the file before it goes to storage (so it works for Cloudinary
+ * and local files alike). Counts page objects, including ones packed in compressed object streams
+ * (PDF 1.5+); falls back to the page tree's /Count. Null when it can't tell.
+ */
+export const countPdfPages = async (filePath: string): Promise<number | null> => {
+  try {
+    const buf = await fs.promises.readFile(filePath);
+    const text = buf.toString('latin1');
+    let pages = (text.match(PAGE_RE) ?? []).length;
+    const objStm = /\/Type\s*\/ObjStm/g;
+    for (let m = objStm.exec(text); m; m = objStm.exec(text)) {
+      const kw = text.indexOf('stream', m.index);
+      if (kw < 0) break;
+      let from = kw + 'stream'.length;
+      if (text[from] === '\r') from++;
+      if (text[from] === '\n') from++;
+      const to = text.indexOf('endstream', from);
+      if (to < 0) break;
+      try {
+        const inner = zlib.inflateSync(buf.subarray(from, to), { finishFlush: zlib.constants.Z_SYNC_FLUSH });
+        pages += (inner.toString('latin1').match(PAGE_RE) ?? []).length;
+      } catch {
+        // Not deflated (or damaged): skip it.
+      }
+      objStm.lastIndex = to;
+    }
+    if (!pages) {
+      const counts = [...text.matchAll(/\/Count\s+(\d+)/g)].map(c => Number(c[1]));
+      pages = counts.length ? Math.max(...counts) : 0;
+    }
+    return pages > 0 && pages < 10_000 ? pages : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Step 5: one file per document. Photo or PDF. While we need info, only the documents we flagged.
+ * Once approved, the seller can replace any document (a renewed ID, a recent proof of address, or
+ * one our team asked for). The new file goes to our team to check; the seller stays approved and
+ * keeps selling meanwhile.
+ */
 export const uploadMyDocument = async (
   userId: string,
   kind: DocumentKind,
@@ -310,8 +374,10 @@ export const uploadMyDocument = async (
   const mode = editableNow(app);
   const docs = docsOf(app);
   const current = docs[kind];
-  const refusal =
-    mode === 'none'
+  const afterApproval = app.status === 'approved';
+  const refusal = afterApproval
+    ? null
+    : mode === 'none'
       ? 'Your application is with our team, so documents can’t be changed right now.'
       : mode === 'fixes' && current?.status !== 'needs_fix'
         ? 'This document was already accepted.'
@@ -321,6 +387,8 @@ export const uploadMyDocument = async (
     throw new Error(refusal);
   }
 
+  const isPdf = file.mimetype === 'application/pdf';
+  const pages = isPdf ? await countPdfPages(file.path) : null;
   const stored = await storePrivateFile(file.path, file.mimetype, 'seller-docs');
   // Read again: the seller may have uploaded from two places at once.
   const fresh = await prisma.sellerApplication.findUniqueOrThrow({ where: { id: app.id } });
@@ -331,6 +399,7 @@ export const uploadMyDocument = async (
     name: file.originalname.slice(0, 120) || DOCUMENT_LABELS[kind],
     mime: file.mimetype,
     size: file.size,
+    pages,
     uploaded_at: new Date().toISOString(),
     status: 'submitted',
     // Keep what we asked for, so the team sees it next to the new file.
@@ -342,7 +411,53 @@ export const uploadMyDocument = async (
     data: { documents: freshDocs as Prisma.InputJsonValue },
   });
   if (previous?.file && previous.file !== stored) deletePrivateFile(previous.file);
+  if (afterApproval) {
+    const asked = previous?.status === 'needs_fix';
+    notifyAdmins(
+      'seller_application',
+      asked ? 'Seller sent a new document' : 'Seller replaced a document',
+      `${app.businessName ?? sellerCode(app.userId)} · ${DOCUMENT_LABELS[kind]} · check the new copy`,
+      { application_id: app.id, route: `/sellers?application=${app.id}` }
+    ).catch(err => logger.error('Notify admins of replaced document failed:', err));
+  }
   return forSeller(updated);
+};
+
+/** Signed links from privateFileUrl work for 10 minutes. */
+const LINK_TTL_MS = 10 * 60_000;
+
+/**
+ * One of the seller's own documents, to view in the app: short-lived signed links plus the details
+ * under it (file, pages, size, when it was uploaded and checked). Only ever the caller's own file.
+ */
+export const getMyDocumentLink = async (userId: string, kind: DocumentKind) => {
+  const app = await prisma.sellerApplication.findUnique({ where: { userId } });
+  const d = app ? docsOf(app)[kind] : undefined;
+  if (!app || !d) throw new Error(`You haven’t uploaded ${DOCUMENT_PHRASES[kind]} yet.`);
+  const url = privateFileUrl(d.file);
+  if (!url) throw new Error('This file can’t be opened right now. Try again in a few minutes.');
+  const checked = checkedAt(app, d);
+  return {
+    kind,
+    label: DOCUMENT_LABELS[kind],
+    url,
+    /** Page 1 of a PDF, or a HEIC photo, as a JPG (the same file for local storage). */
+    preview_url: privateFileUrl(d.file, { asImage: true }),
+    // A little early, so the app asks for a fresh link before this one stops working.
+    expires_at: new Date(Date.now() + LINK_TTL_MS - 30_000).toISOString(),
+    name: d.name,
+    mime: d.mime,
+    is_pdf: d.mime === 'application/pdf',
+    size: d.size ?? null,
+    pages: d.mime === 'application/pdf' ? d.pages ?? null : 1,
+    uploaded_at: d.uploaded_at,
+    status: d.status,
+    note: d.status === 'needs_fix' ? d.note ?? null : null,
+    checked_at: checked,
+    checked_by: checked ? 'Verification team' : null,
+    /** Proof of shop address past 12 months: a recent one is due ("Update needed"). */
+    update_due: kind === 'shop_address' && ['expiring', 'expired'].includes(proofOfAddressStatus(app.documents).state),
+  };
 };
 
 const missingForSubmit = (app: Application) => {
@@ -511,6 +626,138 @@ export const markApprovalSeen = async (userId: string) => {
 
 export type TeamStatusFilter = 'in_review' | 'needs_info' | 'approved' | 'rejected' | 'draft' | 'all';
 
+/** How long our team takes to review. The seller app promises "1–2 working days". */
+export const REVIEW_WORKING_DAYS = 2;
+const LAGOS_OFFSET_MS = 3_600_000;
+
+/** Adds working days (Monday to Friday, Lagos time), keeping the time of day. */
+const addWorkingDays = (from: Date, days: number) => {
+  let t = from.getTime();
+  let left = days;
+  while (left > 0) {
+    t += 86_400_000;
+    const weekday = new Date(t + LAGOS_OFFSET_MS).getUTCDay();
+    if (weekday !== 0 && weekday !== 6) left--;
+  }
+  return new Date(t);
+};
+
+type QueueTimes = Pick<Application, 'status' | 'submittedAt' | 'resubmittedAt' | 'secondReviewRequestedAt'>;
+
+/** When it last came into the queue: sent, the fix sent, or a second review asked for. */
+const queuedAt = (a: QueueTimes) => {
+  const times = [a.submittedAt, a.resubmittedAt, a.secondReviewRequestedAt].filter((t): t is Date => !!t);
+  return times.length ? new Date(Math.max(...times.map(t => t.getTime()))) : null;
+};
+
+/** Review it by this time (only while it's waiting for us). */
+const reviewDueAt = (a: QueueTimes) => {
+  const from = a.status === 'in_review' ? queuedAt(a) : null;
+  return from ? addWorkingDays(from, REVIEW_WORKING_DAYS) : null;
+};
+
+type DuplicateSource = Pick<Application, 'userId' | 'businessPhone' | 'registrationType' | 'registrationNumber'>;
+export type DuplicateMatch = {
+  seller_code: string;
+  business_name: string | null;
+  status: string;
+  /** What it shares with this application. */
+  same: ('registration' | 'phone')[];
+};
+
+/**
+ * Other seller accounts that use the same business phone or RC/BN number. A shared number is
+ * blocked when the application is sent, so this mostly catches the phone and older accounts.
+ */
+const findDuplicates = async (apps: DuplicateSource[]): Promise<Map<string, DuplicateMatch[]>> => {
+  const phones = [...new Set(apps.map(a => a.businessPhone).filter((v): v is string => !!v))];
+  const numbers = [...new Set(apps.map(a => a.registrationNumber).filter((v): v is string => !!v))];
+  const result = new Map<string, DuplicateMatch[]>(apps.map(a => [a.userId, []]));
+  if (!phones.length && !numbers.length) return result;
+  const others = await prisma.sellerApplication.findMany({
+    where: {
+      OR: [
+        ...(phones.length ? [{ businessPhone: { in: phones } }] : []),
+        ...(numbers.length ? [{ registrationNumber: { in: numbers } }] : []),
+      ],
+    },
+    select: { userId: true, businessName: true, status: true, businessPhone: true, registrationType: true, registrationNumber: true },
+  });
+  for (const a of apps) {
+    const matches: DuplicateMatch[] = [];
+    for (const o of others) {
+      if (o.userId === a.userId) continue;
+      const same: DuplicateMatch['same'] = [];
+      if (a.registrationNumber && o.registrationNumber === a.registrationNumber && o.registrationType === a.registrationType) {
+        same.push('registration');
+      }
+      if (a.businessPhone && o.businessPhone === a.businessPhone) same.push('phone');
+      if (same.length) matches.push({ seller_code: sellerCode(o.userId), business_name: o.businessName, status: o.status, same });
+    }
+    result.set(a.userId, matches);
+  }
+  return result;
+};
+
+export type CheckState = 'passed' | 'review' | 'failed';
+export type TeamCheck = { key: string; label: string; state: CheckState; sub: string };
+
+const DUPLICATE_STATUS: Record<string, string> = {
+  draft: 'not sent yet',
+  in_review: 'waiting for review',
+  needs_info: 'sent back',
+  approved: 'approved',
+  rejected: 'turned down',
+};
+
+/**
+ * What our team has to be happy with before approving: the RC/BN number (looked up by hand on the
+ * CAC register), each document, and an automatic look for the same details on another seller.
+ */
+const teamChecks = (app: Application, duplicates: DuplicateMatch[]): TeamCheck[] => {
+  const docs = docsOf(app);
+  const reg = registrationLabel(app.registrationType, app.registrationNumber);
+  const business = app.businessName ? `“${app.businessName}”` : 'this business';
+  const number: TeamCheck = {
+    key: 'registration',
+    label: 'Registration number on the CAC register',
+    ...(app.numberCheck === 'matched'
+      ? { state: 'passed' as const, sub: `${reg ?? 'The number'} belongs to ${business}` }
+      : app.numberCheck === 'not_matched'
+        ? { state: 'failed' as const, sub: `${reg ?? 'The number'} doesn’t belong to ${business}` }
+        : { state: 'review' as const, sub: reg ? `Look up ${reg} and check it belongs to ${business}` : 'No number given' }),
+  };
+  const documents: TeamCheck[] = DOCUMENT_KINDS.map(kind => {
+    const d = docs[kind];
+    const label = DOCUMENT_LABELS[kind];
+    if (!d) return { key: kind, label, state: 'failed', sub: 'Not uploaded' };
+    if (d.status === 'accepted') return { key: kind, label, state: 'passed', sub: 'Accepted' };
+    if (d.status === 'needs_fix') return { key: kind, label, state: 'failed', sub: d.note ? `New one asked for: “${d.note}”` : 'New one asked for' };
+    return { key: kind, label, state: 'review', sub: d.note ? 'New file after we asked for one · not checked yet' : 'Not checked yet' };
+  });
+  const first = duplicates[0];
+  const what = (m: DuplicateMatch) =>
+    m.same.length === 2 ? 'Phone and registration number' : m.same[0] === 'phone' ? 'Business phone' : 'Registration number';
+  const dupes: TeamCheck = first
+    ? {
+        key: 'duplicates',
+        label: 'Same details on another seller',
+        state: 'review',
+        sub:
+          `${what(first)} also on ${first.business_name || 'another business'} (${first.seller_code}, ${DUPLICATE_STATUS[first.status] ?? first.status})` +
+          (duplicates.length > 1 ? ` and ${duplicates.length - 1} more` : ''),
+      }
+    : { key: 'duplicates', label: 'Same details on another seller', state: 'passed', sub: 'No other seller uses this phone or registration number' };
+  return [number, ...documents, dupes];
+};
+
+const checkCounts = (checks: TeamCheck[]) => ({
+  total: checks.length,
+  passed: checks.filter(c => c.state === 'passed').length,
+  review: checks.filter(c => c.state === 'review').length,
+  failed: checks.filter(c => c.state === 'failed').length,
+});
+
 export const listForTeam = async (opts: { status: TeamStatusFilter; search?: string; page: number; limit: number }) => {
   const search = opts.search?.trim();
   const digits = search?.replace(/\D/g, '');
@@ -527,24 +774,34 @@ export const listForTeam = async (opts: { status: TeamStatusFilter; search?: str
         }
       : {}),
   };
-  const [rows, total, grouped] = await Promise.all([
+  // Waiting for us: the one due soonest first (a fix or a second review comes back with a new clock).
+  // That order isn't a column, so the queue is sorted here; it's small.
+  const byDue = opts.status === 'in_review';
+  const [found, total, grouped] = await Promise.all([
     prisma.sellerApplication.findMany({
       where,
       include: { user: { select: { email: true } } },
-      // The oldest first while it waits; the latest first once decided.
-      orderBy: ['in_review', 'needs_info'].includes(opts.status)
-        ? [{ submittedAt: 'asc' }]
-        : [{ updatedAt: 'desc' }],
-      skip: (opts.page - 1) * opts.limit,
-      take: opts.limit,
+      // The oldest first while it's with the seller; the latest first once decided.
+      orderBy: byDue || opts.status === 'needs_info' ? [{ submittedAt: 'asc' }] : [{ updatedAt: 'desc' }],
+      skip: byDue ? 0 : (opts.page - 1) * opts.limit,
+      take: byDue ? 1000 : opts.limit,
     }),
     prisma.sellerApplication.count({ where }),
     prisma.sellerApplication.groupBy({ by: ['status'], _count: { _all: true } }),
   ]);
+  const rows = byDue
+    ? found
+        .map(a => ({ a, due: reviewDueAt(a)?.getTime() ?? Infinity }))
+        .sort((x, y) => x.due - y.due)
+        .map(x => x.a)
+        .slice((opts.page - 1) * opts.limit, opts.page * opts.limit)
+    : found;
+  const duplicates = await findDuplicates(rows);
   const counts = Object.fromEntries(grouped.map(g => [g.status, g._count._all])) as Record<string, number>;
   return {
     items: rows.map(a => {
       const docs = docsOf(a);
+      const checks = teamChecks(a, duplicates.get(a.userId) ?? []);
       return {
         id: a.id,
         user_id: a.userId,
@@ -564,6 +821,12 @@ export const listForTeam = async (opts: { status: TeamStatusFilter; search?: str
         resubmitted_at: a.resubmittedAt?.toISOString() ?? null,
         second_review: !!a.secondReviewRequestedAt,
         decided_at: a.decidedAt?.toISOString() ?? null,
+        registration_type: a.registrationType,
+        plaza: a.plaza,
+        /** When it last came into the queue, and when we should have reviewed it by. */
+        queued_at: queuedAt(a)?.toISOString() ?? null,
+        review_due_at: reviewDueAt(a)?.toISOString() ?? null,
+        checks: checkCounts(checks),
       };
     }),
     total,
@@ -589,7 +852,7 @@ const findForTeam = async (id: string) => {
   return app;
 };
 
-const forTeam = (app: Awaited<ReturnType<typeof findForTeam>>) => {
+const forTeam = (app: Awaited<ReturnType<typeof findForTeam>>, duplicates: DuplicateMatch[]) => {
   const docs = docsOf(app);
   return {
     id: app.id,
@@ -621,16 +884,21 @@ const forTeam = (app: Awaited<ReturnType<typeof findForTeam>>) => {
         name: d?.name ?? null,
         mime: d?.mime ?? null,
         size: d?.size ?? null,
+        pages: d?.pages ?? null,
         uploaded_at: d?.uploaded_at ?? null,
         status: d?.status ?? null,
         note: d?.note ?? null,
         reviewed_at: d?.reviewed_at ?? null,
+        /** An approved seller sent a new copy; it waits for a check (they keep selling meanwhile). */
+        new_copy: app.status === 'approved' && d?.status === 'submitted',
         is_pdf: isPdf,
         // Links last 10 minutes; reopen the application for fresh ones.
         url: d ? privateFileUrl(d.file) : null,
         preview_url: d ? privateFileUrl(d.file, { asImage: true }) : null,
       };
     }),
+    /** Proof of shop address lasts 12 months from upload, then a grace period to send a new one. */
+    proof_of_address: proofOfAddressStatus(app.documents),
     rules_accepted_at: app.rulesAcceptedAt?.toISOString() ?? null,
     submitted_at: app.submittedAt?.toISOString() ?? null,
     resubmitted_at: app.resubmittedAt?.toISOString() ?? null,
@@ -639,10 +907,18 @@ const forTeam = (app: Awaited<ReturnType<typeof findForTeam>>) => {
     team_note: app.teamNote,
     reject_reason: app.rejectReason,
     second_review_requested_at: app.secondReviewRequestedAt?.toISOString() ?? null,
+    queued_at: queuedAt(app)?.toISOString() ?? null,
+    review_due_at: reviewDueAt(app)?.toISOString() ?? null,
+    /** Registration number, each document, and the same details on another seller. */
+    checks: teamChecks(app, duplicates),
+    duplicates,
   };
 };
 
-export const getForTeam = async (id: string) => forTeam(await findForTeam(id));
+const viewForTeam = async (app: Awaited<ReturnType<typeof findForTeam>>) =>
+  forTeam(app, (await findDuplicates([app])).get(app.userId) ?? []);
+
+export const getForTeam = async (id: string) => viewForTeam(await findForTeam(id));
 
 const mustBeInReview = (app: { status: string }) => {
   if (app.status !== 'in_review') throw new Error('Only applications waiting for review can be changed.');
@@ -659,7 +935,10 @@ export const setNumberCheck = async (adminId: string, id: string, result: 'match
   return getForTeam(id);
 };
 
-/** Accept a document, or ask for a new one with a note the seller sees. */
+/**
+ * Accept a document, or ask for a new one with a note the seller sees. On an approved seller this
+ * asks for an update (an expired ID, say) or accepts the replacement; they stay approved throughout.
+ */
 export const reviewDocument = async (
   adminId: string,
   id: string,
@@ -667,7 +946,8 @@ export const reviewDocument = async (
   input: { status: 'accepted' | 'needs_fix'; note?: string }
 ) => {
   const app = await findForTeam(id);
-  mustBeInReview(app);
+  const afterApproval = app.status === 'approved';
+  if (!afterApproval) mustBeInReview(app);
   const docs = docsOf(app);
   const d = docs[kind];
   if (!d) throw new Error(`There's no ${DOCUMENT_LABELS[kind]} to review.`);
@@ -681,10 +961,22 @@ export const reviewDocument = async (
     note: input.status === 'needs_fix' ? note : null,
     reviewed_at: new Date().toISOString(),
   };
+  const wasFlagged = d.status === 'needs_fix';
   await prisma.sellerApplication.update({
     where: { id },
-    data: { documents: docs as Prisma.InputJsonValue, reviewedById: adminId },
+    // An approved application's decision stays with whoever approved it.
+    data: { documents: docs as Prisma.InputJsonValue, ...(afterApproval ? {} : { reviewedById: adminId }) },
   });
+  if (afterApproval && input.status === 'needs_fix' && !(wasFlagged && d.note === note)) {
+    createNotification(
+      app.userId,
+      'seller_application',
+      `Update your ${DOCUMENT_LABELS[kind]}`,
+      `Our team asked for a new one: ${note!.replace(/[.!?]?$/, '.')} You can keep selling while we check it.`,
+      { route: 'BusinessDocuments', kind },
+      ['push', 'email']
+    ).catch(err => logger.error('Document update notification failed:', err));
+  }
   return getForTeam(id);
 };
 

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import * as gadgetController from '../controllers/gadget.controller';
+import * as listingController from '../controllers/listing.controller';
 import * as gadgetValidator from '../validators/gadget.validator';
 import { handleValidationErrors } from '../middlewares/validation.middleware';
 import {
@@ -7,10 +8,12 @@ import {
   sellerOnly,
   adminOnly,
   requireSellerKyb,
+  optionalAuth,
 } from '../middlewares/auth.middleware';
 import { uploadGadgetImages } from '../middlewares/upload.middleware';
-import { uploadRateLimiter } from '../middlewares/security.middleware';
+import { uploadRateLimiter, deviceCheckRateLimiter } from '../middlewares/security.middleware';
 import { sendError } from '../../utils/response';
+import config from '../../config';
 
 const router: Router = Router();
 
@@ -41,14 +44,45 @@ router.post(
       if (uploadError.code === 'LIMIT_FILE_SIZE') {
         return sendError(res, 'Each image must be 5MB or smaller', 400);
       }
-      if (uploadError.code === 'LIMIT_FILE_COUNT') {
-        return sendError(res, 'Too many images uploaded', 400);
+      // multer reports one image over .array('images', max) as LIMIT_UNEXPECTED_FILE.
+      if (uploadError.code === 'LIMIT_FILE_COUNT' || uploadError.code === 'LIMIT_UNEXPECTED_FILE') {
+        return sendError(res, `Add up to ${config.maxImagesPerGadget} photos at a time.`, 400);
       }
       return sendError(res, uploadError.message || 'Image upload failed', 400);
     });
   },
   gadgetController.uploadImages
 );
+
+/* ---- "List a gadget" flow (declared before /:id) ---- */
+
+/**
+ * @route   GET /api/v1/gadgets/listing-config
+ * @desc    Fee, auction lengths, photo limit, minimum start price, whether serial lookup is on
+ * @access  Private (Sellers only)
+ */
+router.get('/listing-config', authenticate, sellerOnly, listingController.getListingConfig);
+
+/**
+ * @route   GET /api/v1/gadgets/models?q=&category=
+ * @desc    Model search for step 1 (best matches first, max 12)
+ * @access  Private (Sellers only)
+ */
+router.get('/models', authenticate, sellerOnly, listingController.getModels);
+
+/**
+ * @route   POST /api/v1/gadgets/device-check
+ * @desc    Check an IMEI / serial: valid, already listed or sold, and (when a provider is set) look it up
+ * @access  Private (Sellers only)
+ */
+router.post('/device-check', authenticate, sellerOnly, deviceCheckRateLimiter, listingController.deviceCheck);
+
+/**
+ * @route   GET /api/v1/gadgets/price-hint?profile=&model=&storage=
+ * @desc    "Similar items sold for" from our own sales in the last 180 days
+ * @access  Private (Sellers only)
+ */
+router.get('/price-hint', authenticate, sellerOnly, listingController.getPriceHint);
 
 /**
  * @route   GET /api/v1/gadgets/my-listings
@@ -71,11 +105,13 @@ router.get(
 
 /**
  * @route   GET /api/v1/gadgets/:id
- * @desc    Get gadget by ID
- * @access  Public
+ * @desc    Get gadget by ID. Approved / listed / sold: anyone. Pending / rejected: only its seller and admins.
+ *          Never includes the IMEI / serial; the hidden lowest price only for its seller and admins.
+ * @access  Public (optional auth)
  */
 router.get(
   '/:id',
+  optionalAuth, // the seller (and our team) can open their own pending / sent-back listing ("Fix listing")
   gadgetValidator.validateGadgetId,
   handleValidationErrors,
   gadgetController.getGadgetById
@@ -83,7 +119,8 @@ router.get(
 
 /**
  * @route   POST /api/v1/gadgets
- * @desc    Create a new gadget
+ * @desc    Create a new gadget. A body with `profile` is the listing flow (listing.service.ts);
+ *          without it, the old body and validators.
  * @access  Private (Sellers only)
  */
 router.post(
@@ -91,8 +128,7 @@ router.post(
   authenticate,
   sellerOnly,
   requireSellerKyb,
-  gadgetValidator.validateCreateGadget,
-  handleValidationErrors,
+  gadgetValidator.forLegacyBody(gadgetValidator.validateCreateGadget),
   gadgetController.createGadget
 );
 
@@ -105,8 +141,9 @@ router.put(
   '/:id',
   authenticate,
   sellerOnly,
-  gadgetValidator.validateUpdateGadget,
+  gadgetValidator.validateGadgetId,
   handleValidationErrors,
+  gadgetValidator.forLegacyBody(gadgetValidator.validateUpdateGadget),
   gadgetController.updateGadget
 );
 

@@ -8,7 +8,7 @@ import {
   ShippingAddress,
   FulfillmentStatus,
   PaymentStatusType,
-  PLATFORM_FEE_PERCENTAGE,
+  platformFeeFor,
   PaystackInitializeResponse,
 } from '@gadget-bidding/shared';
 import * as paystackService from '../payment/paystack.service';
@@ -308,8 +308,8 @@ export const createOrderFromAuction = async (
       return transformOrder(existingOrder);
     }
 
-    // Calculate fees
-    const platformFee = (finalPrice * PLATFORM_FEE_PERCENTAGE) / 100;
+    // Fee by price band (seller agreement): taken from the seller's payout.
+    const platformFee = platformFeeFor(finalPrice);
     const sellerPayout = finalPrice - platformFee;
 
     // Create order: winning bid + flat delivery (delivery goes to the platform, not the seller)
@@ -577,7 +577,7 @@ const reassignToNextBidder = async (tx: any, orderId: string) => {
   if (!nextBid?.bidderId || !nextBid.bidder) throw new Error('No second-place bidder is available');
 
   const amount = toNumber(nextBid.amount);
-  const platformFee = (amount * PLATFORM_FEE_PERCENTAGE) / 100;
+  const platformFee = platformFeeFor(amount);
 
   // Void the previous buyer's pending payment references so they can never settle this order.
   await tx.paymentTransaction.updateMany({
@@ -847,6 +847,7 @@ export const confirmPayment = async (orderId: string): Promise<Order> => {
         error
       );
     });
+  import('../seller/sellerAlerts').then(a => a.notifySellerSold(updated.id)).catch(() => {});
 
   return updated;
 };
@@ -941,7 +942,8 @@ export const adminUpdateOrder = async (
   }
 ): Promise<Order> => {
   const allowedPayment = ['pending', 'paid', 'refunded'];
-  const allowedPayout = ['pending', 'ready', 'held', 'paid'];
+  // 'sending' only as "unchanged": the 6 pm payout run sets it (services/seller/payouts.service.ts).
+  const allowedPayout = ['pending', 'ready', 'held', 'sending', 'paid'];
   const allowedFulfillment = [
     'pending',
     'processing',
@@ -979,6 +981,28 @@ export const adminUpdateOrder = async (
     const nextPayment = updates.payment_status ?? prevPayment;
     const prevPayout = order.payoutStatus || 'pending';
     const nextPayout = updates.payout_status ?? prevPayout;
+
+    // An order in a 6 pm payout is paid (or not) with that payout, never on its own here,
+    // so it can't be paid twice. Edits that leave the payout as it is still go through.
+    const payoutChanged =
+      nextPayout !== prevPayout ||
+      (updates.payout_reference !== undefined &&
+        (updates.payout_reference || null) !== (order.payoutReference || null));
+    if (order.payoutBatchId && payoutChanged) {
+      const batch = await tx.sellerPayout.findUnique({
+        where: { id: order.payoutBatchId },
+        select: { reference: true, status: true },
+      });
+      const ref = batch?.reference ?? 'a seller payout';
+      throw new Error(
+        batch?.status === 'paid'
+          ? `This order was paid out in ${ref}. Its payout can't be changed here.`
+          : `This order is in payout ${ref}, which is on its way. Mark that payout paid or failed in Payouts › Seller payouts.`
+      );
+    }
+    if (nextPayout === 'sending' && prevPayout !== 'sending') {
+      throw new Error('Payouts are sent by the 6 pm run. Mark the order ready instead.');
+    }
     let nextFulfillment =
       (updates.fulfillment_status as FulfillmentStatus) ?? prevFulfillment;
 
@@ -1141,6 +1165,12 @@ export const adminUpdateOrder = async (
     );
 
     return transformOrder(finalOrder);
+  }).then(result => {
+    // Marked paid by our team: the seller hears it sold, same as any payment.
+    if (updates.payment_status === 'paid' && result.payment_status === 'paid') {
+      import('../seller/sellerAlerts').then(a => a.notifySellerSold(orderId)).catch(() => {});
+    }
+    return result;
   });
 };
 
@@ -1274,6 +1304,7 @@ export const createDispute = async (
     .catch(error => {
       logger.error('Failed to notify backoffice about dispute:', error);
     });
+  import('../seller/sellerAlerts').then(a => a.notifySellerCaseOpened(result.dispute.id)).catch(() => {});
 
   riskService.recordDisputeOpened(userId, result.dispute.id).catch(error => {
     logger.error('Failed to record dispute risk:', error);
@@ -1642,12 +1673,8 @@ export const processOrderPayment = async (
           ['push']
         );
 
-        // Notify seller
-        await notificationService.notifyPaymentReceived(
-          order.sellerId!,
-          order.orderNumber,
-          amount
-        );
+        // Tell the seller it sold (once per order). Lazy import: the alerts read this file.
+        await import('../seller/sellerAlerts').then(a => a.notifySellerSold(orderId));
 
         await notificationService.notifyBackofficeOrderPaid(
           orderId,

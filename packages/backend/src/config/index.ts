@@ -133,7 +133,11 @@ interface Config {
   // File Upload
   maxFileSizeMB: number;
   allowedImageTypes: string[];
+  /** Photos one listing (and one upload request) can carry. Never below 12 (the listing flow's limit). */
   maxImagesPerGadget: number;
+
+  /** Serial / IMEI lookup adapter (services/gadget/deviceLookup.service.ts). 'none' = off. */
+  deviceLookupProvider: string;
 
   // Logging
   logLevel: string;
@@ -318,7 +322,9 @@ const config: Config = {
   allowedImageTypes: (
     process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp'
   ).split(','),
-  maxImagesPerGadget: parseInt(process.env.MAX_IMAGES_PER_GADGET || '5', 10),
+  maxImagesPerGadget: Math.max(12, parseInt(process.env.MAX_IMAGES_PER_GADGET || '12', 10) || 12),
+
+  deviceLookupProvider: (process.env.DEVICE_LOOKUP_PROVIDER || 'none').trim().toLowerCase(),
 
   // Logging
   logLevel: process.env.LOG_LEVEL || 'info',

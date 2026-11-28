@@ -12,6 +12,7 @@ import {
 import { PolicyScreen } from '../screens/profile';
 import { SellWithUsScreen } from '../screens/sell/onboarding/SellWithUsScreen';
 import { SellerSignUpScreen } from '../screens/sell/onboarding/SellerSignUpScreen';
+import { StaffJoinScreen } from '../screens/sell/onboarding/StaffJoinScreen';
 import { AppInterfaceType } from '../utils/roles';
 
 export type AuthStackParamList = {
@@ -32,6 +33,8 @@ export type AuthStackParamList = {
   /** Seller onboarding: who can sell, then the six-step sign-up. */
   SellWithUs: undefined;
   SellerSignUp: undefined;
+  /** Store staff set up their sign-in from the owner's invite. */
+  StaffJoin: { email?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -66,6 +69,7 @@ export const AuthNavigator: React.FC = () => {
         component={SellerSignUpScreen as any}
         options={{ gestureEnabled: false }}
       />
+      <Stack.Screen name="StaffJoin" component={StaffJoinScreen as any} />
     </Stack.Navigator>
   );
 };

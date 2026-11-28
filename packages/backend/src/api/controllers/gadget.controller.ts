@@ -3,6 +3,11 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as gadgetService from '../../services/gadget/gadget.service';
 import logger from '../../utils/logger';
 import { safeErrorMessage } from '../../utils/errors';
+import * as listingService from '../../services/gadget/listing.service';
+import { sendListingError } from './listing.controller';
+
+/** A listing-flow body names its device profile; the old body doesn't. */
+const isListingFlow = (body: unknown) => !!body && typeof body === 'object' && (body as any).profile !== undefined;
 
 const PUBLIC_GADGET_STATUSES = ['approved', 'listed', 'sold'] as const;
 
@@ -18,6 +23,13 @@ function canViewGadget(
   return gadget.seller_id === user.user_id;
 }
 
+/** The hidden lowest price (reserve) is for the seller and our team only. */
+const forViewer = <T extends Record<string, any>>(gadget: T, user?: { user_id: string; role: string }): T => {
+  if (user && (user.role === 'admin' || gadget.seller_id === user.user_id)) return gadget;
+  const { auction_reserve_price: _reserve, ...rest } = gadget;
+  return rest as unknown as T;
+};
+
 /**
  * Create a new gadget
  * POST /api/v1/gadgets
@@ -26,6 +38,16 @@ export const createGadget = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       return sendError(res, 'User not authenticated', 401);
+    }
+
+    if (isListingFlow(req.body)) {
+      try {
+        const id = await listingService.createListing(req.user.user_id, req.body);
+        const created = await gadgetService.getGadgetById(id);
+        return sendSuccess(res, created, 'Sent for review. Our team checks listings within a day.', 201);
+      } catch (error) {
+        return sendListingError(res, error, 'Couldn’t send your listing. Try again.');
+      }
     }
 
     const gadgetData = req.body;
@@ -60,7 +82,7 @@ export const getGadgetById = async (req: Request, res: Response) => {
       return sendError(res, 'Gadget not found', 404);
     }
 
-    sendSuccess(res, gadget);
+    sendSuccess(res, forViewer(gadget as any, req.user));
   } catch (error: unknown) {
     logger.error('Get gadget error:', error);
     sendError(res, safeErrorMessage(error, 'Failed to get gadget'), 500);
@@ -90,7 +112,7 @@ export const getGadgets = async (req: Request, res: Response) => {
 
     const { gadgets, total } = await gadgetService.getGadgets(filters);
 
-    sendPaginated(res, gadgets, filters.page, filters.limit, total);
+    sendPaginated(res, gadgets.map(g => forViewer(g as any, req.user)), filters.page, filters.limit, total);
   } catch (error: any) {
     logger.error('Get gadgets error:', error);
     sendError(res, error.message || 'Failed to get gadgets', 500);
@@ -109,6 +131,16 @@ export const updateGadget = async (req: Request, res: Response) => {
 
     const { id } = req.params;
     const updates = req.body;
+
+    if (isListingFlow(updates)) {
+      try {
+        await listingService.updateListing(id as string, req.user.user_id, updates);
+        const updated = await gadgetService.getGadgetById(id as string);
+        return sendSuccess(res, updated, 'Sent for review again. Our team checks listings within a day.');
+      } catch (error) {
+        return sendListingError(res, error, 'Couldn’t save your changes. Try again.');
+      }
+    }
 
     const gadget = await gadgetService.updateGadget(id, req.user.user_id, updates);
 

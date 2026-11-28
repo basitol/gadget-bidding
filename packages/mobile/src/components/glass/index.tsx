@@ -9,8 +9,9 @@ import {
   StyleProp,
   Platform,
   ImageSourcePropType,
+  KeyboardAvoidingView,
 } from 'react-native';
-import { SafeAreaView, Edge } from 'react-native-safe-area-context';
+import { SafeAreaView, Edge, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts } from '../../constants';
@@ -73,6 +74,27 @@ export const GlassScreen: React.FC<{
     </SafeAreaView>
   </View>
 );
+
+/**
+ * Keeps a screen's content and footer above the keyboard inside GlassScreen. GlassScreen pads the
+ * top safe area, so a plain KeyboardAvoidingView under-measures by that much and the footer button
+ * ends up behind the keyboard.
+ */
+export const GlassKeyboardView: React.FC<{ children: React.ReactNode; style?: StyleProp<ViewStyle> }> = ({
+  children,
+  style,
+}) => {
+  const insets = useSafeAreaInsets();
+  return (
+    <KeyboardAvoidingView
+      style={[styles.flex, style]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={insets.top}
+    >
+      {children}
+    </KeyboardAvoidingView>
+  );
+};
 
 /** Centered screen title row, optional back button and right action. */
 export const GlassHeader: React.FC<{

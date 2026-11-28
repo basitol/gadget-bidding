@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, ChevronRight, LogOut, Menu, Search, Settings, Users } from 'lucide-react';
+import { Bell, ChevronDown, ChevronRight, LogOut, Menu, Search, SearchX, Settings, Users } from 'lucide-react';
 import { clearSession, getStoredUser } from '@/api';
 import { useQueues } from '@/hooks/useQueues';
 import { NAV, SUB_NAV, TINTS, activeItem, crumbsFor, type NavItem } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 import { Icon3d, LogoMark, type Icon3dName } from '@/components/shell/Icon3d';
 import { SearchDialog } from '@/components/shell/SearchDialog';
+import { OfflineBanner, PageCrumbProvider, PageStatusProvider, useNetState, type PageStatus } from '@/components/states';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import {
   DropdownMenu,
@@ -277,8 +278,24 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const active = useMemo(() => activeItem(location.pathname, location.search), [location.pathname, location.search]);
-  const crumbs = crumbsFor(location.pathname, location.search);
+  const matched = useMemo(() => activeItem(location.pathname, location.search), [location.pathname, location.search]);
+  const net = useNetState();
+  const [pageStatus, setPageStatus] = useState<PageStatus>(null);
+  const [pageCrumb, setPageCrumb] = useState<string | null>(null);
+  // Bumped when the connection comes back: the page mounts again and loads fresh data.
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => setReloadKey(k => k + 1), []);
+  const notFound = pageStatus === 'Not found';
+  // An unknown address (an old /orders/… link, say) can start like a real page: don't light that page up.
+  const active = notFound ? undefined : matched;
+  const status = net.down ? 'Offline' : notFound ? null : pageStatus;
+  const crumbs = notFound
+    ? ['Not found', ...(status ? [status] : [])]
+    : [
+        ...crumbsFor(location.pathname, location.search),
+        ...(pageCrumb ? [pageCrumb] : []),
+        ...(status ? [status] : []),
+      ];
   const ActiveIcon = active?.icon;
 
   useEffect(() => {
@@ -313,7 +330,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-blue-brand">
               <ActiveIcon className="size-4 text-white" strokeWidth={2} />
             </span>
-          ) : null}
+          ) : (
+            <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-slate">
+              <SearchX className="size-4 text-white" strokeWidth={2} />
+            </span>
+          )}
           <nav aria-label="Breadcrumb" className="min-w-0">
             <ol className="flex items-center gap-1.5 text-[18px]">
               {crumbs.map((c, i) => (
@@ -342,13 +363,18 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </div>
         </header>
         <div className="flex-1 px-6 pb-8">
-          <SubNav pathname={location.pathname} search={location.search} />
-          {children}
+          <OfflineBanner onBack={reload} />
+          {notFound ? null : <SubNav pathname={location.pathname} search={location.search} />}
+          <PageStatusProvider value={setPageStatus}>
+            <PageCrumbProvider value={setPageCrumb}>
+              <Fragment key={reloadKey}>{children}</Fragment>
+            </PageCrumbProvider>
+          </PageStatusProvider>
         </div>
       </main>
 
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-        <SheetContent side="left" className="gb-canvas w-[288px] p-4">
+        <SheetContent side="left" className="gb-canvas p-4 data-[side=left]:w-[288px]">
           <SheetTitle className="sr-only">Menu</SheetTitle>
           <SidebarBody active={active} onNavigate={() => setMenuOpen(false)} />
         </SheetContent>

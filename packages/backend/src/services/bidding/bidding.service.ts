@@ -38,7 +38,7 @@ export const placeBid = async (
   data: PlaceBidRequest,
   opts: { isAutoBid?: boolean } = {}
 ): Promise<{ bid: Bid; previousHighBidderId?: string }> => {
-  return prisma.$transaction(async tx => {
+  const result = await prisma.$transaction(async tx => {
     // Maintenance pauses all bidding (REST, socket and auto-bids all come through here).
     await assertBiddingOpen(tx);
 
@@ -69,7 +69,11 @@ export const placeBid = async (
     }
 
     // After repeated missed payments, bidding pauses for a while.
-    const bidder = await tx.user.findUnique({ where: { id: bidderId }, select: { biddingPausedUntil: true } });
+    const bidder = await tx.user.findUnique({ where: { id: bidderId }, select: { biddingPausedUntil: true, role: true } });
+    // Store staff accounts can't bid (it would let a store bid up its own listings).
+    if (bidder?.role === 'staff') {
+      throw new Error("Store staff accounts can't bid.");
+    }
     if (bidder?.biddingPausedUntil && bidder.biddingPausedUntil > now) {
       const until = bidder.biddingPausedUntil.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
       throw new Error(`Bidding is paused on your account until ${until} because of missed payments.`);
@@ -238,6 +242,11 @@ export const placeBid = async (
 
     return { bid: transformBid(bid), previousHighBidderId };
   });
+  // Tell the seller (one alert per listing, kept up to date). Lazy import: alerts read auctions.
+  import('../seller/sellerAlerts')
+    .then(a => a.notifySellerNewBid(data.auction_id))
+    .catch(err => logger.error('Seller new-bid alert failed:', err));
+  return result;
 };
 
 /**

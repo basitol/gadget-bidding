@@ -41,7 +41,9 @@ export const AuthShell: React.FC<{
   progress?: { step: number; of: number };
   footer?: React.ReactNode;
   children: React.ReactNode;
-}> = ({ title, onBack, progress, footer, children }) => (
+  /** To scroll back to the top when the step changes (List a gadget). */
+  scrollRef?: React.Ref<ScrollView>;
+}> = ({ title, onBack, progress, footer, children, scrollRef }) => (
   <View style={styles.root}>
     <StatusBar style="dark" />
     <Image source={require('../../../assets/backgrounds/glass-bg.jpg')} style={styles.bg} />
@@ -67,7 +69,7 @@ export const AuthShell: React.FC<{
             ))}
           </View>
         ) : null}
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {children}
         </ScrollView>
         {footer ? <View style={styles.footer}>{footer}</View> : null}

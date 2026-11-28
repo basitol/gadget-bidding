@@ -113,6 +113,9 @@ export const login = async (req: Request, res: Response) => {
       .catch(err => {
         logger.error('Failed to record login audit:', err);
       });
+    if (error instanceof authService.AccountPausedError) {
+      return res.status(403).json({ success: false, error: error.message, code: error.code, data: error.details });
+    }
     sendError(res, error.message || 'Login failed', 401);
   }
 };

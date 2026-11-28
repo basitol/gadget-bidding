@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import { getStoredUser } from './api';
 import { AdminShell } from './components/shell/AdminShell';
 import { ConfirmDialogProvider } from './components/ConfirmDialogProvider';
+import { PageSkeleton } from './components/states';
 import { LocalBusinessJsonLd } from './components/Seo';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -34,17 +35,23 @@ const SettingsPage = lazy(() =>
 const GadgetsPage = lazy(() =>
   import('./pages/GadgetsPage').then(m => ({ default: m.GadgetsPage }))
 );
+const DeviceModelsPage = lazy(() =>
+  import('./pages/DeviceModelsPage').then(m => ({ default: m.DeviceModelsPage }))
+);
 const OrdersPage = lazy(() =>
   import('./pages/OrdersPage').then(m => ({ default: m.OrdersPage }))
 );
 const BackofficePage = lazy(() =>
   import('./pages/BackofficePage').then(m => ({ default: m.BackofficePage }))
 );
-const BuyersPage = lazy(() =>
-  import('./pages/UsersPage').then(m => ({ default: m.BuyersPage }))
+const PeoplePage = lazy(() =>
+  import('./pages/people/PeoplePage').then(m => ({ default: m.PeoplePage }))
 );
-const SellersPage = lazy(() =>
-  import('./pages/UsersPage').then(m => ({ default: m.SellersPage }))
+const BuyerDetailPage = lazy(() =>
+  import('./pages/people/BuyerDetailPage').then(m => ({ default: m.BuyerDetailPage }))
+);
+const SellerDetailPage = lazy(() =>
+  import('./pages/people/SellerDetailPage').then(m => ({ default: m.SellerDetailPage }))
 );
 const AdminsPage = lazy(() =>
   import('./pages/UsersPage').then(m => ({ default: m.AdminsPage }))
@@ -76,12 +83,14 @@ const NotFoundPage = lazy(() =>
   import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage }))
 );
 
+/** While a page's code loads: placeholders shaped like a page (inside the shell, "› Loading"). */
 function PageFallback() {
-  return (
-    <div className="grid min-h-[40vh] place-items-center text-sm text-muted-foreground">
-      Loading…
-    </div>
-  );
+  return <PageSkeleton />;
+}
+
+/** Outside the shell (sign-in, 404 when signed out): nothing to shape yet. */
+function BareFallback() {
+  return <div className="min-h-svh" aria-busy aria-label="Loading" />;
 }
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
@@ -94,18 +103,42 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * /sellers is the seller accounts list. Admin notifications (/sellers?application=<id>) and the old
- * Seller KYB queue (/sellers?kyb=pending&seller=<user id>) open Seller applications instead.
+ * Users › Buyers (/buyers), Sellers (/sellers) and Suspended (/users/suspended). All three routes render
+ * this same element, so switching tabs keeps the page (stats, tabs, search) and only the table changes.
+ * On /sellers, admin notifications (?application=<id>) and the old Seller KYB queue (?kyb=pending&seller=<user id>)
+ * open Seller applications instead; ?seller=<id> opens that seller.
  */
-function SellersEntry() {
+function PeopleEntry() {
+  const { pathname } = useLocation();
   const [params] = useSearchParams();
-  const application = params.get('application');
-  if (!application && params.get('kyb') !== 'pending') return <SellersPage />;
-  const next = new URLSearchParams();
-  if (application) next.set('application', application);
-  else if (params.get('seller')) next.set('seller', params.get('seller')!);
-  const qs = next.toString();
-  return <Navigate to={`/sellers/applications${qs ? `?${qs}` : ''}`} replace />;
+  if (pathname === '/sellers') {
+    const application = params.get('application');
+    const kyb = params.get('kyb') === 'pending';
+    const seller = params.get('seller');
+    if (!application && !kyb && seller) return <Navigate to={`/sellers/${encodeURIComponent(seller)}`} replace />;
+    if (application || kyb) {
+      const next = new URLSearchParams();
+      if (application) next.set('application', application);
+      else if (seller) next.set('seller', seller);
+      const qs = next.toString();
+      return <Navigate to={`/sellers/applications${qs ? `?${qs}` : ''}`} replace />;
+    }
+  }
+  const tab = pathname === '/sellers' ? 'sellers' : pathname === '/users/suspended' ? 'suspended' : 'buyers';
+  return <PeoplePage tab={tab} />;
+}
+
+/** Signed in: the 404 sits in the dashboard with a search. Signed out: a plain page that points to sign-in. */
+function NotFoundEntry() {
+  const user = getStoredUser();
+  if (user?.role === 'admin' && localStorage.getItem('gb_admin_token')) {
+    return (
+      <Guard>
+        <NotFoundPage />
+      </Guard>
+    );
+  }
+  return <NotFoundPage signedOut />;
 }
 
 function Guard({ children }: { children: React.ReactNode }) {
@@ -123,7 +156,7 @@ export function App() {
     <TooltipProvider>
       <ConfirmDialogProvider>
         <LocalBusinessJsonLd />
-        <Suspense fallback={<PageFallback />}>
+        <Suspense fallback={<BareFallback />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -132,6 +165,7 @@ export function App() {
             <Route path="/sellers/applications" element={<Guard><SellerApplicationsPage /></Guard>} />
             <Route path="/rules" element={<Guard><RulesPage /></Guard>} />
             <Route path="/settings" element={<Guard><SettingsPage /></Guard>} />
+            <Route path="/device-models" element={<Guard><DeviceModelsPage /></Guard>} />
             <Route
               path="/"
               element={
@@ -172,22 +206,11 @@ export function App() {
                 </Guard>
               }
             />
-            <Route
-              path="/buyers"
-              element={
-                <Guard>
-                  <BuyersPage />
-                </Guard>
-              }
-            />
-            <Route
-              path="/sellers"
-              element={
-                <Guard>
-                  <SellersEntry />
-                </Guard>
-              }
-            />
+            <Route path="/buyers" element={<Guard><PeopleEntry /></Guard>} />
+            <Route path="/buyers/:id" element={<Guard><BuyerDetailPage /></Guard>} />
+            <Route path="/sellers/:id" element={<Guard><SellerDetailPage /></Guard>} />
+            <Route path="/users/suspended" element={<Guard><PeopleEntry /></Guard>} />
+            <Route path="/sellers" element={<Guard><PeopleEntry /></Guard>} />
             <Route
               path="/admins"
               element={
@@ -245,8 +268,8 @@ export function App() {
                 </Guard>
               }
             />
-            <Route path="/404" element={<NotFoundPage />} />
-            <Route path="*" element={<NotFoundPage />} />
+            <Route path="/404" element={<NotFoundEntry />} />
+            <Route path="*" element={<NotFoundEntry />} />
           </Routes>
         </Suspense>
       </ConfirmDialogProvider>

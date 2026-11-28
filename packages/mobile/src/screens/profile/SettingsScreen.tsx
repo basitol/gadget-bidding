@@ -317,7 +317,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 title="My auctions"
                 subtitle="Manage live and ended listings"
                 onPress={() =>
-                  navigation.navigate('MainTabs', { screen: 'Auctions' })
+                  navigation.navigate('MainTabs', { screen: 'Listings' })
                 }
               />
               <View style={styles.divider} />
@@ -335,7 +335,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 title="Sales orders"
                 subtitle="Shipments and buyer fulfillment"
                 onPress={() =>
-                  navigation.navigate('MainTabs', { screen: 'Sales' })
+                  navigation.navigate('MainTabs', { screen: 'Orders' })
                 }
               />
             </View>

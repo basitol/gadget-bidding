@@ -19,12 +19,28 @@ type Store = {
   live_count: number;
   following: boolean;
   is_me: boolean;
+  /** What the seller wrote, and opening hours (null when not set). */
+  about?: string | null;
+  hours?: Record<string, { open: string; close: string } | null> | null;
+  /** "Open Mon–Sat, 9:00 am–6:00 pm" */
+  hours_line?: string | null;
+  /** The seller is away: no new listings for now; live auctions still run. */
+  away?: boolean;
 };
 type Reviews = {
   average: number | null;
   count: number;
   breakdown: { score: number; count: number }[];
-  reviews: { id: string; score: number; comment: string | null; item: string | null; buyer: string; created_at: string }[];
+  reviews: {
+    id: string;
+    score: number;
+    comment: string | null;
+    item: string | null;
+    buyer: string;
+    created_at: string;
+    /** The seller's public reply. */
+    reply?: { text: string; at: string } | null;
+  }[];
 };
 type Tab = 'live' | 'reviews' | 'about';
 
@@ -128,14 +144,19 @@ export const StoreScreen: React.FC<{ navigation: any; route: any }> = ({ navigat
           <Text style={styles.meta}>
             {store.location} · selling since {monthYear(store.selling_since)}
           </Text>
+          {store.hours_line ? <Text style={styles.meta}>{store.hours_line}</Text> : null}
           <Text style={styles.note}>
             Seller names are kept private.{' '}
             {store.badges.verified_business
               ? "Every seller is a registered business we've checked."
               : "This seller's business checks aren't finished yet."}
           </Text>
-          {store.badges.verified_business || store.badges.top_seller ? (
+          {store.away ? (
+            <Text style={styles.awayNote}>Away for now. Their live auctions still run.</Text>
+          ) : null}
+          {store.badges.verified_business || store.badges.top_seller || store.away ? (
             <View style={styles.badges}>
+              {store.away ? <Badge tone="amber" label="Away" /> : null}
               {store.badges.verified_business ? <Badge tone="blue" label="Verified business" /> : null}
               {store.badges.cac_registered ? <Badge tone="purple" label="CAC registered" /> : null}
               {store.badges.top_seller ? <Badge tone="green" label="Top seller" /> : null}
@@ -258,6 +279,12 @@ export const StoreScreen: React.FC<{ navigation: any; route: any }> = ({ navigat
             </View>
             {item.comment ? <Text style={styles.reviewText}>{item.comment}</Text> : null}
             <Text style={styles.reviewMeta}>{[item.buyer, item.item].filter(Boolean).join(' · ')}</Text>
+            {item.reply ? (
+              <View style={styles.reply}>
+                <Text style={styles.replyLabel}>Reply from the seller</Text>
+                <Text style={styles.replyText}>{item.reply.text}</Text>
+              </View>
+            ) : null}
           </GlassCard>
         )}
         ListEmptyComponent={
@@ -275,12 +302,14 @@ export const StoreScreen: React.FC<{ navigation: any; route: any }> = ({ navigat
 
 const About: React.FC<{ store: Store }> = ({ store }) => (
   <GlassCard style={styles.aboutCard}>
+    {store.about ? <Text style={[styles.aboutText, styles.divider]}>{store.about}</Text> : null}
     {[
       ['Location', store.location],
       ['Selling since', monthYear(store.selling_since)],
       ['Business checks', store.badges.verified_business ? 'Passed' : 'In progress'],
       ['CAC registration', store.badges.cac_registered ? 'Verified' : 'Not verified yet'],
       ['Completed sales', shortCount(store.stats.sales)],
+      ...(store.hours_line ? [['Hours', store.away ? `Away for now · ${store.hours_line}` : store.hours_line]] : []),
     ].map(([k, v], i, arr) => (
       <View key={k} style={[styles.aboutRow, i < arr.length - 1 && styles.divider]}>
         <Text style={styles.aboutKey}>{k}</Text>
@@ -294,8 +323,13 @@ const About: React.FC<{ store: Store }> = ({ store }) => (
   </GlassCard>
 );
 
-const Badge: React.FC<{ label: string; tone: 'blue' | 'purple' | 'green' }> = ({ label, tone }) => {
-  const c = { blue: [G.blueTint, '#3E6AF0'], purple: ['#F5F2FF', '#7C68E8'], green: [G.greenTint, G.green] }[tone];
+const Badge: React.FC<{ label: string; tone: 'blue' | 'purple' | 'green' | 'amber' }> = ({ label, tone }) => {
+  const c = {
+    blue: [G.blueTint, '#3E6AF0'],
+    purple: ['#F5F2FF', '#7C68E8'],
+    green: [G.greenTint, G.green],
+    amber: ['#FFF6EE', G.orangeInk],
+  }[tone];
   return (
     <View style={[styles.badge, { backgroundColor: c[0] }]}>
       <Text style={[styles.badgeText, { color: c[1] }]}>{label}</Text>
@@ -377,12 +411,17 @@ const styles = StyleSheet.create({
   reviewDate: { color: G.muted, fontSize: 12, fontFamily: fonts.regular },
   reviewText: { color: G.ink, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, marginTop: 8 },
   reviewMeta: { color: G.muted, fontSize: 12, fontFamily: fonts.regular, marginTop: 8 },
+  reply: { backgroundColor: '#F1F5FF', borderRadius: 12, padding: 12, marginTop: 10 },
+  replyLabel: { color: G.blue600, fontSize: 13, fontFamily: fonts.medium },
+  replyText: { color: G.slate, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, marginTop: 4 },
+  awayNote: { color: G.slate, fontSize: 13, lineHeight: 19, fontFamily: fonts.regular, marginTop: 8 },
 
   aboutCard: { overflow: 'hidden' },
   aboutRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 13, paddingHorizontal: 14 },
   divider: { borderBottomWidth: 1, borderBottomColor: 'rgba(28,31,42,0.05)' },
   aboutKey: { color: G.muted, fontSize: 14, fontFamily: fonts.regular },
-  aboutVal: { color: G.ink, fontSize: 14, fontFamily: fonts.medium },
+  aboutVal: { color: G.ink, fontSize: 14, lineHeight: 20, fontFamily: fonts.medium, textAlign: 'right', flexShrink: 1 },
+  aboutText: { color: G.ink, fontSize: 15, lineHeight: 22, fontFamily: fonts.regular, padding: 14 },
   aboutNote: { color: G.slate, fontSize: 13, lineHeight: 19, fontFamily: fonts.regular, padding: 14, paddingTop: 4 },
 
   empty: { alignItems: 'center', padding: 20, gap: 6 },

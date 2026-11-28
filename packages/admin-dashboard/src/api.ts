@@ -157,6 +157,75 @@ function isAuthPath(path: string) {
   );
 }
 
+/* ---------------- Errors, connection and paused accounts ---------------- */
+
+/** A request that didn't work: the HTTP status (0 when the server couldn't be reached) and our error code. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+    public data?: any
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Whether the dashboard can reach the API. "offline": this computer has no connection;
+ * "server": it has one but our API didn't answer. lastOkAt: the last answer we got, for
+ * "Showing data from 10:42 am".
+ */
+export type NetState = { down: false } | { down: true; reason: 'offline' | 'server'; lastOkAt: number | null };
+let netState: NetState = { down: false };
+let lastOkAt: number | null = null;
+const netListeners = new Set<(s: NetState) => void>();
+
+export const getNetState = () => netState;
+export function onNetChange(fn: (s: NetState) => void) {
+  netListeners.add(fn);
+  return () => {
+    netListeners.delete(fn);
+  };
+}
+function setNet(next: NetState) {
+  if (next.down === netState.down && (!next.down || (netState.down && next.reason === netState.reason))) return;
+  netState = next;
+  netListeners.forEach(fn => fn(netState));
+}
+function markReachable() {
+  lastOkAt = Date.now();
+  setNet({ down: false });
+}
+function markUnreachable() {
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  setNet({ down: true, reason: offline ? 'offline' : 'server', lastOkAt });
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('offline', markUnreachable);
+}
+
+const UNREACHABLE = "We can't reach Gadgets Bidding right now. Check your connection, then try again.";
+
+/** Asks the API if it's there (public, cheap). True clears the offline banner. */
+export async function checkConnection(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/app-config`, { cache: 'no-store' });
+    if (res.ok) {
+      markReachable();
+      return true;
+    }
+  } catch {
+    // still down
+  }
+  markUnreachable();
+  return false;
+}
+
+/** Set when a session was paused mid-use; the sign-in page shows why. */
+export const PAUSED_KEY = 'gb_admin_paused';
+export type PauseDetails = { email: string | null; paused_at: string | null; reason: string | null };
+
 function redirectToLogin() {
   if (window.location.pathname === '/login') return;
   window.location.replace('/login');
@@ -272,9 +341,21 @@ async function fetchJson<T>(
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  const json = await res.json().catch(() => ({}));
-  return { res, json };
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch {
+    markUnreachable();
+    throw new ApiError(UNREACHABLE, 0, 'NETWORK');
+  }
+  const json = await res.json().catch(() => null);
+  // Our API always answers in JSON. No JSON with a gateway error means the API itself is down.
+  if (!json && res.status >= 500) {
+    markUnreachable();
+    throw new ApiError(UNREACHABLE, res.status, 'NETWORK');
+  }
+  markReachable();
+  return { res, json: json ?? {} };
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -296,9 +377,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       clearSession();
       redirectToLogin();
     }
-    throw new Error(
-      json.error || json.message || `Request failed (${res.status})`
-    );
+    // Paused while signed in: sign out and show why on the sign-in page.
+    if (res.status === 403 && json.code === 'ACCOUNT_PAUSED') {
+      sessionStorage.setItem(PAUSED_KEY, JSON.stringify(json.data ?? {}));
+      clearSession();
+      window.location.replace('/login?paused=1');
+    }
+    throw new ApiError(json.error || json.message || `Request failed (${res.status})`, res.status, json.code, json.data);
   }
   return json as T;
 }
@@ -418,6 +503,81 @@ export const reportsApi = {
     }),
 };
 
+/** A listing as our team reviews it (GET /admin/gadgets/:id). Only staff ever see device_identifier. */
+export type ListingReview = {
+  id: string;
+  title: string;
+  description: string;
+  brand: string | null;
+  model: string | null;
+  condition: string;
+  images: string[];
+  status: string | null;
+  rejection_reason: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  category_name: string | null;
+  category_slug: string | null;
+  specifications: Record<string, any>;
+  /** Made with the 8-step listing flow (specifications.profile is set). */
+  is_listing_flow: boolean;
+  profile: string | null;
+  profile_label: string | null;
+  identifier_kind: 'imei' | 'serial' | 'none' | null;
+  device_identifier: string | null;
+  /** Same IMEI / serial on another seller's waiting or live listing, or on a sale in the last 90 days. */
+  duplicate: boolean;
+  identifier_matches: Array<{
+    gadget_id: string;
+    title: string;
+    status: string | null;
+    created_at: string;
+    seller_id: string | null;
+    seller_name: string | null;
+    same_seller: boolean;
+    sold_at: string | null;
+    counts_as_duplicate: boolean;
+  }>;
+  disclosures: Array<{ label: string; tone: 'amber' | 'blue' | 'red' | 'neutral' }>;
+  seller_note: string | null;
+  seller_attested_at: string | null;
+  auction_settings: {
+    starting_price: number | null;
+    reserve_price: number | null;
+    buy_now_price: number | null;
+    bid_increment: number | null;
+    duration_hours: number | null;
+    start_now: boolean;
+  };
+  seller: { id: string; full_name: string; phone_number: string; email: string | null; seller_code: string } | null;
+  auction: { id: string; status: string | null; current_price: number } | null;
+};
+
+export type DeviceModel = {
+  id: string;
+  name: string;
+  brand: string;
+  profile: string;
+  profile_label: string | null;
+  category: string;
+  category_label: string | null;
+  aliases: string[];
+  is_active: boolean;
+  created_at: string;
+  added_by: { id: string; full_name: string | null } | null;
+  /** Listings that used this model name. */
+  listings: number;
+};
+
+export const deviceModelsApi = {
+  list: (params: { search?: string; category?: string; status?: 'active' | 'inactive' | 'all'; page?: number; limit?: number }) =>
+    request<PageResult<DeviceModel>>(`/admin/device-models${qs({ ...params, status: params.status === 'all' ? undefined : params.status })}`),
+  add: (body: { name: string; brand: string; profile: string; aliases: string[] }) =>
+    request<{ data: DeviceModel; message?: string }>('/admin/device-models', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: Partial<{ name: string; brand: string; profile: string; aliases: string[]; is_active: boolean }>) =>
+    request<{ data: DeviceModel; message?: string }>(`/admin/device-models/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
 export type SellerApplicationStatus = 'draft' | 'in_review' | 'needs_info' | 'approved' | 'rejected';
 /** "all" means everything that was sent (drafts are left out). */
 export type SellerApplicationFilter = SellerApplicationStatus | 'all';
@@ -442,6 +602,25 @@ export type SellerApplicationRow = {
   resubmitted_at: string | null;
   second_review: boolean;
   decided_at: string | null;
+  registration_type: 'rc' | 'bn' | null;
+  plaza: string | null;
+  /** When it last came into the queue (sent, fix sent, or second review asked for). */
+  queued_at: string | null;
+  /** Review it by this time: 2 working days after it came into the queue. Null once decided. */
+  review_due_at: string | null;
+  checks: SellerCheckCounts;
+};
+
+export type SellerCheckState = 'passed' | 'review' | 'failed';
+/** Registration number, each document, and the same details on another seller. */
+export type SellerCheck = { key: string; label: string; state: SellerCheckState; sub: string };
+export type SellerCheckCounts = { total: number; passed: number; review: number; failed: number };
+/** Another seller account with the same business phone or RC/BN number. */
+export type SellerDuplicate = {
+  seller_code: string;
+  business_name: string | null;
+  status: SellerApplicationStatus;
+  same: ('registration' | 'phone')[];
 };
 
 export type SellerApplicationCounts = Record<SellerApplicationStatus, number>;
@@ -453,16 +632,28 @@ export type SellerApplicationDocument = {
   name: string | null;
   mime: string | null;
   size: number | null;
+  /** PDFs: page count (counted on upload). */
+  pages?: number | null;
   uploaded_at: string | null;
   status: SellerDocumentStatus | null;
   /** What we asked the seller to fix (kept next to the new file after they upload it). */
   note: string | null;
   reviewed_at: string | null;
+  /** An approved seller sent a new copy; it waits for a check (they keep selling meanwhile). */
+  new_copy?: boolean;
   is_pdf: boolean;
   /** Signed links that stop working 10 minutes after the application was loaded. */
   url: string | null;
   /** Page 1 of a PDF, or a HEIC photo, as a JPG. */
   preview_url: string | null;
+};
+
+export type ProofOfAddressStatus = {
+  state: 'missing' | 'valid' | 'expiring' | 'expired';
+  expires_at: string | null;
+  /** End of the grace period; new listings pause after it. */
+  deadline: string | null;
+  days_left?: number;
 };
 
 /** The full application, as our verification team sees it. */
@@ -487,6 +678,8 @@ export type SellerApplication = {
   number_check: NumberCheck;
   number_checked_at: string | null;
   documents: SellerApplicationDocument[];
+  /** Proof of shop address: 12 months from upload, then a grace period before listings pause. */
+  proof_of_address?: ProofOfAddressStatus;
   rules_accepted_at: string | null;
   submitted_at: string | null;
   resubmitted_at: string | null;
@@ -495,6 +688,10 @@ export type SellerApplication = {
   team_note: string | null;
   reject_reason: string | null;
   second_review_requested_at: string | null;
+  queued_at: string | null;
+  review_due_at: string | null;
+  checks: SellerCheck[];
+  duplicates: SellerDuplicate[];
 };
 
 type ApplicationResult = { success: boolean; data: SellerApplication; message?: string };
@@ -529,6 +726,81 @@ export const sellerApplicationsApi = {
     }),
   reject: (id: string, reason: string) =>
     request<ApplicationResult>(`/admin/seller-applications/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason.trim() }),
+    }),
+};
+
+export type SellerPayoutStatus = 'sending' | 'paid' | 'failed';
+export type SellerPayoutFilter = SellerPayoutStatus | 'all';
+
+/** One 6 pm payout: a seller's ready orders, sent as one transfer. */
+export type SellerPayoutRow = {
+  id: string;
+  /** PO-20261127-7F3A2C */
+  reference: string;
+  status: SellerPayoutStatus;
+  amount: number;
+  order_count: number;
+  /** The 6 pm run it belongs to. */
+  scheduled_for: string;
+  created_at: string;
+  paid_at: string | null;
+  failure_reason: string | null;
+  via_paystack: boolean;
+  /** While sending through Paystack. */
+  transfer_state: 'queued' | 'starting' | 'sent' | null;
+  transfer_code: string | null;
+  /** What our team typed when they marked it paid by hand. */
+  bank_reference: string | null;
+  marked_by: { id: string; name: string } | null;
+  bank_name: string | null;
+  account_last4: string | null;
+  account_name: string | null;
+  seller: {
+    id: string;
+    code: string;
+    business_name: string | null;
+    name: string;
+    email: string | null;
+    phone: string | null;
+  };
+  /** Empty once a payout failed (its orders went back to ready). */
+  orders: Array<{
+    id: string;
+    order_number: string;
+    amount: number;
+    payout_status: string | null;
+    title: string | null;
+    open_case: boolean;
+  }>;
+};
+
+type SellerPayoutResult = { success: boolean; data: SellerPayoutRow; message?: string };
+
+/** The 6 pm seller payouts. Not live: our team sends them by hand and marks them here. */
+export const sellerPayoutsApi = {
+  list: (params: { status: SellerPayoutFilter; search?: string; page?: number; limit?: number }) => {
+    const sp = new URLSearchParams({ status: params.status });
+    if (params.search?.trim()) sp.set('search', params.search.trim());
+    if (params.page && params.page > 1) sp.set('page', String(params.page));
+    if (params.limit) sp.set('limit', String(params.limit));
+    return request<
+      PageResult<SellerPayoutRow> & {
+        counts: Record<SellerPayoutStatus, number>;
+        sending_amount: number;
+        automatic: boolean;
+        next_run_at: string;
+      }
+    >(`/admin/seller-payouts?${sp}`);
+  },
+  markPaid: (id: string, bankReference: string) =>
+    request<SellerPayoutResult>(`/admin/seller-payouts/${id}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify({ bank_reference: bankReference.trim() }),
+    }),
+  markFailed: (id: string, reason: string) =>
+    request<SellerPayoutResult>(`/admin/seller-payouts/${id}/mark-failed`, {
       method: 'POST',
       body: JSON.stringify({ reason: reason.trim() }),
     }),
@@ -626,7 +898,303 @@ export type AppConfigAdmin = {
   history: MaintenanceWindow[];
 };
 
+/** One search across orders, people (email, name, phone, seller ID) and listings. */
+export type SearchHit = { id: string; path: string };
+export type AdminSearchResult = {
+  query: string;
+  orders: (SearchHit & { order_number: string; title: string | null; status: string | null })[];
+  users: (SearchHit & { name: string; email: string | null; role: string; seller_code: string | null })[];
+  listings: (SearchHit & { title: string; status: string | null })[];
+};
+
+/** A page couldn't load: record it in the audit log under its reference. False when that didn't work either. */
+export async function reportPageError(body: { reference: string; page: string; status: number; message: string }) {
+  try {
+    await request<{ data: { logged: boolean } }>('/admin/client-errors', { method: 'POST', body: JSON.stringify(body) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* ---------------- People (Users: buyers, sellers, suspended) ---------------- */
+
+/**
+ * active · suspended (team suspended the account) · listings_paused (team paused a seller's listings)
+ * · store_closed · bidding_paused (3 missed payments in 90 days, automatic) · pending_approval
+ * (a pause waiting for a second admin).
+ */
+export type PersonStatus =
+  | 'active'
+  | 'suspended'
+  | 'listings_paused'
+  | 'store_closed'
+  | 'bidding_paused'
+  | 'pending_approval';
+
+export type SuspendReason = 'missed_payments' | 'shill_bidding' | 'abusive' | 'fraud' | 'other';
+export type PauseReason = 'failed_inspections' | 'misleading' | 'stolen' | 'documents' | 'other';
+export type RestoreReason = 'served' | 'mistake' | 'appeal';
+export type SuspendDuration = '7d' | '30d' | 'permanent';
+export type PauseDuration = 'until_fixed' | '30d' | 'close_store';
+
+export type PeopleStats = {
+  buyers: number;
+  buyers_this_week: number;
+  verified_sellers: number;
+  /** Everyone in the Suspended tab (buyers and sellers). */
+  suspended: number;
+  /** Buyers with 3 missed payments in 90 days who aren't suspended. */
+  suggested: { count: number; first: { id: string; name: string; missed: number } | null };
+  tabs: { buyers: number; sellers: number; suspended: number };
+};
+
+export type BuyerRow = {
+  id: string;
+  name: string;
+  email: string | null;
+  avatar_url: string | null;
+  joined_at: string | null;
+  /** Paid orders. */
+  orders: number;
+  status: PersonStatus;
+  /** 3 missed payments in 90 days: suggested for suspension. */
+  suggested: boolean;
+  missed_90d: number;
+  /** Missed payments in 90 days that pause bidding (3). */
+  missed_limit: number;
+};
+
+export type SellerRow = {
+  id: string;
+  /** Business (store) name. */
+  name: string;
+  email: string | null;
+  joined_at: string | null;
+  sales: number;
+  /** Share of hub inspections passed (null before any). */
+  passed_percent: number | null;
+  rating: number | null;
+  kyb_verified: boolean;
+  /** No sales yet. */
+  is_new: boolean;
+  status: PersonStatus;
+};
+
+export type RestrictedRow = {
+  /** The person (user id). */
+  id: string;
+  restriction_id: string | null;
+  name: string;
+  email: string | null;
+  type: 'buyer' | 'seller';
+  /** "Missed payments", "Stolen IMEI flagged", … */
+  why: string;
+  until: string | null;
+  /** Admin's name, or null for automatic. */
+  by: string | null;
+  status: PersonStatus;
+  /** team: a suspension or pause from this page · automatic: missed payments · legacy: switched off before reasons */
+  source: 'team' | 'automatic' | 'legacy';
+  /** A suspension or a listings pause (null for older switch-offs and automatic bidding pauses). */
+  kind: 'suspend' | 'pause_listings' | null;
+  /** A pause waiting for a second admin: whether you (not the requester) can approve it. */
+  can_approve?: boolean;
+};
+
+export type RestrictionView = {
+  id: string;
+  kind: 'suspend' | 'pause_listings';
+  status: 'pending' | 'active';
+  reason: SuspendReason | PauseReason;
+  reason_label: string;
+  until: string | null;
+  close_store: boolean;
+  note: string | null;
+  by: string | null;
+  created_at: string;
+  /** Second admin asked to approve (pending), or who approved it. */
+  approver: string | null;
+};
+
+export type BuyerDetail = {
+  id: string;
+  name: string;
+  email: string | null;
+  /** "0803 ••• 1187" */
+  phone_masked: string | null;
+  avatar_url: string | null;
+  joined_at: string | null;
+  status: PersonStatus;
+  two_factor: boolean;
+  restriction: RestrictionView | null;
+  stats: {
+    orders: number;
+    spent: number;
+    live_bids: number;
+    disputes: number;
+    missed_90d: number;
+    missed_limit: number;
+    last_active_at: string | null;
+  };
+  counts: { orders: number; live_bids: number; disputes: number; notes: number };
+};
+
+export type BuyerOrder = {
+  id: string;
+  order_number: string;
+  created_at: string | null;
+  title: string;
+  image: string | null;
+  seller_code: string | null;
+  amount: number;
+  status: 'in_progress' | 'completed' | 'not_paid' | 'refunded' | 'cancelled';
+  status_label: string;
+};
+
+export type BuyerLiveBid = {
+  auction_id: string;
+  title: string;
+  image: string | null;
+  my_bid: number;
+  current_price: number;
+  leading: boolean;
+  ends_at: string;
+  bids: number;
+};
+
+export type PersonDispute = {
+  id: string;
+  case_number: string;
+  order_number: string | null;
+  title: string | null;
+  status: string;
+  status_label: string;
+  opened_at: string | null;
+};
+
+export type SellerDetail = {
+  id: string;
+  name: string;
+  owner_name: string | null;
+  /** "Shop 14, Otigba Tech Plaza, Computer Village" */
+  shop: string | null;
+  email: string | null;
+  seller_code: string;
+  joined_at: string | null;
+  status: PersonStatus;
+  kyb_status: string;
+  application_id: string | null;
+  restriction: RestrictionView | null;
+  stats: {
+    sales: number;
+    sold_value: number;
+    rating: number | null;
+    ratings: number;
+    passed_percent: number | null;
+    open_disputes: number;
+    /** Paid orders not paid out yet (escrow). */
+    on_hold: number;
+  };
+  counts: { listings: number; payouts: number; notes: number };
+};
+
+export type SellerListing = {
+  id: string;
+  auction_id: string | null;
+  title: string;
+  image: string | null;
+  price: number;
+  bids: number | null;
+  status: 'live' | 'scheduled' | 'in_review' | 'changes' | 'sold' | 'unsold' | 'paused' | 'rejected';
+  status_label: string;
+  /** "Ends in 24m", "Submitted 40m ago", "Case D-115 open" */
+  sub: string;
+  path: string;
+};
+
+export type SellerPayoutItem = {
+  id: string;
+  reference: string;
+  amount: number;
+  status: string;
+  status_label: string;
+  created_at: string;
+  orders: number;
+};
+
+export type PersonNote = {
+  id: string;
+  body: string;
+  author: string | null;
+  created_at: string;
+  /** note: typed here · suspend / pause / restore: the note left with that action */
+  kind: 'note' | 'suspend' | 'pause' | 'restore';
+};
+
+/** What suspending or pausing would do right now, for the sheet's "What happens". */
+export type RestrictionPreview = {
+  name: string;
+  email: string | null;
+  type: 'buyer' | 'seller';
+  joined_at: string | null;
+  live_bids: number;
+  live_auctions: number;
+  escrow: number;
+  /** Sellers with live auctions or money in escrow need a second admin. */
+  needs_second_admin: boolean;
+  approver: string | null;
+  suggested_reason: SuspendReason | null;
+  missed_90d: number;
+  restriction: RestrictionView | null;
+};
+
+export type EmailPreview = { subject: string; html: string; summary: string };
+
+export const peopleApi = {
+  stats: () => request<{ data: PeopleStats }>('/admin/people/stats'),
+  list: <T,>(tab: 'buyers' | 'sellers' | 'suspended', params: { search?: string; page?: number } = {}) =>
+    request<{ data: T[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+      `/admin/people${qs({ tab, search: params.search, page: params.page })}`
+    ),
+  buyer: (id: string) => request<{ data: BuyerDetail }>(`/admin/people/buyers/${id}`),
+  buyerOrders: (id: string) => request<{ data: BuyerOrder[] }>(`/admin/people/buyers/${id}/orders`),
+  buyerBids: (id: string) => request<{ data: BuyerLiveBid[] }>(`/admin/people/buyers/${id}/bids`),
+  buyerDisputes: (id: string) => request<{ data: PersonDispute[] }>(`/admin/people/buyers/${id}/disputes`),
+  seller: (id: string) => request<{ data: SellerDetail }>(`/admin/people/sellers/${id}`),
+  sellerListings: (id: string) => request<{ data: SellerListing[] }>(`/admin/people/sellers/${id}/listings`),
+  sellerPayouts: (id: string) => request<{ data: SellerPayoutItem[] }>(`/admin/people/sellers/${id}/payouts`),
+  notes: (id: string) => request<{ data: PersonNote[] }>(`/admin/people/${id}/notes`),
+  addNote: (id: string, body: string) =>
+    request<{ data: PersonNote }>(`/admin/people/${id}/notes`, { method: 'POST', body: JSON.stringify({ body }) }),
+  preview: (id: string, kind: 'suspend' | 'pause_listings') =>
+    request<{ data: RestrictionPreview }>(`/admin/people/${id}/restriction-preview?kind=${kind}`),
+  emailPreview: (
+    id: string,
+    params: { kind: 'suspend' | 'pause_listings' | 'restore'; reason: string; duration?: string }
+  ) => request<{ data: EmailPreview }>(`/admin/people/${id}/email-preview${qs(params)}`),
+  suspend: (id: string, body: { reason: SuspendReason; duration: SuspendDuration; note?: string }) =>
+    request<{ data: { status: 'active' | 'pending'; restriction: RestrictionView } }>(`/admin/people/${id}/suspend`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  pauseListings: (id: string, body: { reason: PauseReason; duration: PauseDuration; note?: string }) =>
+    request<{ data: { status: 'active' | 'pending'; restriction: RestrictionView } }>(
+      `/admin/people/${id}/pause-listings`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
+  restore: (id: string, body: { reason: RestoreReason; note?: string }) =>
+    request<{ data: { restored: true } }>(`/admin/people/${id}/restore`, { method: 'POST', body: JSON.stringify(body) }),
+  approve: (restrictionId: string) =>
+    request<{ data: RestrictionView }>(`/admin/restrictions/${restrictionId}/approve`, { method: 'POST' }),
+  decline: (restrictionId: string) =>
+    request<{ data: { declined: true } }>(`/admin/restrictions/${restrictionId}/decline`, { method: 'POST' }),
+  passwordReset: (id: string) =>
+    request<{ data: { sent_to: string } }>(`/admin/people/${id}/password-reset`, { method: 'POST' }),
+};
+
 export const adminApi = {
+  search: (q: string) => request<{ data: AdminSearchResult }>(`/admin/search?q=${encodeURIComponent(q)}`),
   overview: () => request<{ data: Overview }>('/admin/overview'),
   queues: () => request<{ data: QueueCounts }>('/admin/queues'),
   tasks: () => request<{ data: { total: number; items: AttentionItem[] } }>('/admin/tasks'),
@@ -648,6 +1216,9 @@ export const adminApi = {
 
   gadgets: (params: Record<string, any> = {}) =>
     request<PageResult<any>>(`/admin/gadgets${qs(params)}`),
+
+  gadgetReview: (id: string) =>
+    request<{ data: ListingReview }>(`/admin/gadgets/${id}`),
 
   approveGadget: (id: string) =>
     request(`/admin/gadgets/${id}/approve`, { method: 'POST' }),
@@ -727,6 +1298,8 @@ export const adminApi = {
       is_active?: boolean;
       is_verified?: boolean;
       wallet_locked?: boolean;
+      /** Why it's switched off (required for team accounts; they see it at sign-in). */
+      reason?: string;
     }
   ) =>
     request(`/admin/users/${id}`, {
@@ -775,6 +1348,17 @@ export const adminApi = {
 
   disputeReturnReceived: (id: string) =>
     request<any>(`/admin/disputes/${id}/return-received`, { method: 'POST' }),
+
+  /** "What our hub found" rows the seller and buyer see. An empty list clears them. */
+  disputeHubFindings: (id: string, rows: { label: string; value: string }[]) =>
+    request<any>(`/admin/disputes/${id}/hub-findings`, {
+      method: 'PUT',
+      body: JSON.stringify({ rows }),
+    }),
+
+  /** The returned item left the hub with the seller (collected, or our rider dropped it off). */
+  disputeReturnedToSeller: (id: string) =>
+    request<any>(`/admin/disputes/${id}/returned-to-seller`, { method: 'POST' }),
 
   payments: (params: Record<string, any> = {}) =>
     request<PageResult<any>>(`/admin/payments${qs(params)}`),
@@ -839,4 +1423,14 @@ export const adminApi = {
 
   markAllNotificationsRead: () =>
     request('/notifications/read-all', { method: 'PUT' }),
+};
+
+/** A seller's store: closed by the seller (Store › Close my store) or open. Our team can reopen it. */
+export const sellerStoreAdminApi = {
+  status: (sellerId: string) =>
+    request<{ success: boolean; data: { closed_at: string | null } }>(`/admin/sellers/${sellerId}/store`),
+  reopen: (sellerId: string) =>
+    request<{ success: boolean; data: { closed_at: null } }>(`/admin/sellers/${sellerId}/reopen-store`, {
+      method: 'POST',
+    }),
 };

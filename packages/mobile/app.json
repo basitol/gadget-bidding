@@ -72,7 +72,14 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow Gadgets Bidding to access your photos so you can list gadgets.",
-          "cameraPermission": "Allow Gadgets Bidding to use your camera so you can photograph gadgets."
+          "cameraPermission": "Allow Gadgets Bidding to use your camera to photograph gadgets and scan IMEI and serial numbers."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Gadgets Bidding to use your camera to photograph gadgets and scan IMEI and serial numbers.",
+          "recordAudioAndroid": false
         }
       ],
       [

@@ -49,6 +49,8 @@ router.get(
  */
 router.get(
   '/:id',
+  // Signed in or not; knowing who it is keeps the seller's own visits out of their view count.
+  optionalAuth,
   auctionValidator.validateAuctionId,
   handleValidationErrors,
   auctionController.getAuctionById

@@ -39,6 +39,17 @@ export function dueLabel(iso: string | null | undefined, now = Date.now()): { te
   return { text: due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ }), tone: 'ink' };
 }
 
+/** "Just now", "5m ago", "2h ago", "3d ago". */
+export function ago(iso?: string | null, now = Date.now()) {
+  if (!iso) return '—';
+  const m = Math.floor((now - new Date(iso).getTime()) / 60_000);
+  if (m < 1) return 'Just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 /** "Nov 24, 2026 · 6:00 pm", with Today / Yesterday when recent. */
 export function friendlyTime(iso?: string | null) {
   if (!iso) return '—';

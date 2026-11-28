@@ -7,6 +7,7 @@ import { registerForPush, routeForNotification } from '../services/pushNotificat
 import { AuthNavigator } from './AuthNavigator';
 import { BuyerNavigator } from './BuyerNavigator';
 import { SellerNavigator } from './SellerNavigator';
+import { StaffNavigator } from './StaffNavigator';
 import { useAuthStore } from '../store';
 import { colors } from '../constants';
 import { isSellerRole } from '../utils/roles';
@@ -91,7 +92,9 @@ export const RootNavigator: React.FC = () => {
   return (
     <NavigationContainer ref={navigationRef} linking={linking} onReady={openPending}>
       {isAuthenticated ? (
-        resolvedInterface === 'seller' ? (
+        user?.role === 'staff' ? (
+          <StaffNavigator />
+        ) : resolvedInterface === 'seller' ? (
           <SellerNavigator />
         ) : (
           <BuyerNavigator />

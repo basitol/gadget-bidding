@@ -91,6 +91,10 @@ router.put(
       'dispute_updates',
       'saved_search',
       'quiet_hours',
+      // Seller app
+      'sales',
+      'seller_bids',
+      'payouts',
     ].map(k => body(k).optional().isBoolean()),
     body('channels').optional().isObject(),
     body('channels.push').optional().isBoolean(),

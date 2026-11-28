@@ -79,6 +79,18 @@ router.post(
   }, 'Uploaded')
 );
 
+/** The seller's own document: signed links (10 minutes) and its details, for the document viewer. */
+router.get(
+  '/documents/:kind/link',
+  [param('kind').isIn([...applications.DOCUMENT_KINDS])],
+  handleValidationErrors,
+  (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    next();
+  },
+  run(req => applications.getMyDocumentLink(req.user!.user_id, req.params.kind as applications.DocumentKind))
+);
+
 router.post(
   '/submit',
   [body('rules').isArray({ min: 1, max: 10 })],

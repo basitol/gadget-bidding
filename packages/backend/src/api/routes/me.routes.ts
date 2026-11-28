@@ -213,9 +213,10 @@ router.post('/ratings', ...mutate,
     body('order_id').isUUID(),
     body('score').isInt({ min: 1, max: 5 }).withMessage('Pick 1 to 5 stars'),
     body('comment').optional().isString().isLength({ max: 500 }),
+    body('well_packed').optional({ nullable: true }).isBoolean({ strict: true }).withMessage('Answer yes or no'),
   ],
   handleValidationErrors,
-  handle((req, uid) => ratingService.rateOrder(uid, req.body.order_id, Number(req.body.score), req.body.comment),
+  handle((req, uid) => ratingService.rateOrder(uid, req.body.order_id, Number(req.body.score), req.body.comment, req.body.well_packed),
     'Thanks for rating'));
 
 /* ---- Missed payments (time to pay ran out) ---- */

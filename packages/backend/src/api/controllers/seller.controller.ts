@@ -139,17 +139,16 @@ export const getKybStatus = async (req: Request, res: Response) => {
  * The seller's payout account (masked), or null.
  * GET /api/v1/seller/payout-account
  * → { data: { bank_code, bank_name, account_number_last4, account_name, added_at } | null,
- *     meta: { business_name, two_step_enabled } }
+ *     meta: { business_name, two_step_enabled, hold_days, change_resumes_at,
+ *             payouts_paused_until, payouts_resume_at } }
  */
 export const getPayoutAccount = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       return sendError(res, 'User not authenticated', 401);
     }
-    const { account, business_name, two_step_enabled } = await payoutAccountService.getPayoutAccount(
-      req.user.user_id
-    );
-    res.status(200).json({ success: true, data: account, meta: { business_name, two_step_enabled } });
+    const { account, ...meta } = await payoutAccountService.getPayoutAccount(req.user.user_id);
+    res.status(200).json({ success: true, data: account, meta });
   } catch (error: any) {
     if (error instanceof payoutAccountService.PayoutAccountError) {
       return res.status(error.status).json({ success: false, error: error.message, code: error.code });
@@ -160,9 +159,35 @@ export const getPayoutAccount = async (req: Request, res: Response) => {
 };
 
 /**
+ * The name the bank has on an account, and whether it matches the business name. Saves nothing.
+ * GET /api/v1/seller/payout-account/check?bank_code&account_number
+ * → { bank_code, bank_name, account_name, matches, business_name }
+ */
+export const checkPayoutAccount = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return sendError(res, 'User not authenticated', 401);
+    }
+    const result = await payoutAccountService.checkPayoutAccount(req.user.user_id, {
+      bankCode: String(req.query.bank_code).trim(),
+      accountNumber: String(req.query.account_number).trim(),
+    });
+    sendSuccess(res, result);
+  } catch (error: any) {
+    if (error instanceof payoutAccountService.PayoutAccountError) {
+      return res.status(error.status).json({ success: false, error: error.message, code: error.code });
+    }
+    logger.error('Check payout account error:', error);
+    sendError(res, "We couldn't check that account. Try again.", 500);
+  }
+};
+
+/**
  * Add or change the payout account. Checks the password, resolves the name with the bank and
- * saves it only when it matches the registered business name.
+ * saves it only when it matches the registered business name. A change (not the first account)
+ * pauses payouts for 7 days.
  * PUT /api/v1/seller/payout-account { bank_code, account_number, password }
+ * → { bank_code, bank_name, account_number_last4, account_name, added_at, payouts_paused_until, payouts_resume_at }
  */
 export const setPayoutAccount = async (req: Request, res: Response) => {
   try {

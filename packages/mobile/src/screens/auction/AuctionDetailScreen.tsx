@@ -581,7 +581,7 @@ export const AuctionDetailScreen: React.FC<AuctionDetailScreenProps> = ({
               </View>
             </View>
 
-            {currentAuction.buy_now_price && isActive && (
+            {!!currentAuction.buy_now_price && isActive && (
               <View style={styles.buyNowRow}>
                 <Text style={styles.buyNowLabel}>Buy Now Price:</Text>
                 <Text style={styles.buyNowPrice}>

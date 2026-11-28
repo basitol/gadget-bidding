@@ -19,6 +19,7 @@ export const SellWithUsScreen: React.FC<{ navigation: any }> = ({ navigation }) 
           onPress={() => navigation.navigate('Login', { interfaceType: 'seller' })}
           style={styles.login}
         />
+        <TextLink label="I was added to a store team" muted onPress={() => navigation.navigate('StaffJoin')} style={styles.team} />
       </>
     }
   >
@@ -67,4 +68,5 @@ const styles = StyleSheet.create({
   card: { overflow: 'hidden' },
   note: { marginTop: 20 },
   login: { alignSelf: 'center', marginTop: 16, marginBottom: 4 },
+  team: { alignSelf: 'center', marginTop: 12, marginBottom: 4 },
 });

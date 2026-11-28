@@ -1,11 +1,15 @@
 import prisma from '../../config/prisma';
 
-/** Buyer and seller rate each other once per delivered order. */
+/**
+ * Buyer and seller rate each other once per delivered order. The buyer can also say whether it
+ * was well packed (optional; feeds the seller's "Well packed" figure).
+ */
 export const rateOrder = async (
   raterId: string,
   orderId: string,
   score: number,
-  comment?: string
+  comment?: string,
+  wellPacked?: boolean | null
 ) => {
   if (!Number.isInteger(score) || score < 1 || score > 5) throw new Error('Pick 1 to 5 stars');
   const order = await prisma.order.findUnique({
@@ -26,15 +30,24 @@ export const rateOrder = async (
   });
   if (existing) throw new Error("You've already rated this order");
 
+  const isBuyer = raterId === order.buyerId;
   const rating = await prisma.rating.create({
-    data: { orderId, raterId, rateeId, score, comment: comment?.trim().slice(0, 500) || null },
+    data: {
+      orderId,
+      raterId,
+      rateeId,
+      score,
+      comment: comment?.trim().slice(0, 500) || null,
+      // Only the buyer saw how it was packed.
+      wellPacked: isBuyer && typeof wellPacked === 'boolean' ? wellPacked : null,
+    },
   });
-  return { id: rating.id, score: rating.score, comment: rating.comment };
+  return { id: rating.id, score: rating.score, comment: rating.comment, well_packed: rating.wellPacked };
 };
 
 export const getMyRatingForOrder = async (raterId: string, orderId: string) => {
   const r = await prisma.rating.findUnique({ where: { orderId_raterId: { orderId, raterId } } });
-  return r ? { score: r.score, comment: r.comment } : null;
+  return r ? { score: r.score, comment: r.comment, well_packed: r.wellPacked } : null;
 };
 
 /** Average and count of ratings a user has received. */

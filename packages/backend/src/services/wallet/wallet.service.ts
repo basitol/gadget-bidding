@@ -370,11 +370,17 @@ export const createWithdrawalTransaction = async (
 /* ---------------- Seller payouts: wallet → saved payout account (Paystack transfer) ---------------- */
 
 /**
- * Live-mode switch. Seller payouts send real Paystack transfers; with test keys they always run.
- * Leave this off for live keys until the Paystack transfer webhooks call settleWithdrawal
- * (webhook.controller.ts handleTransferSuccess / handleTransferFailed, plus transfer.reversed).
+ * Live switch (env SELLER_PAYOUTS_LIVE=true; off unless set). When on, the 6 pm payouts
+ * (services/seller/payouts.service.ts) start one Paystack transfer per seller and the transfer
+ * webhooks settle them; when off, they wait for our team to send them by hand and mark them in
+ * admin. Old wallet withdrawals by sellers also need it with live keys (test keys always run).
+ * The transfer webhooks (webhook.controller.ts) settle both: payouts by PO- reference,
+ * withdrawals through settleWithdrawal.
  */
-const SELLER_PAYOUTS_LIVE = false;
+const SELLER_PAYOUTS_LIVE = process.env.SELLER_PAYOUTS_LIVE === 'true';
+
+/** Payouts go out by themselves (Paystack transfers), rather than by hand. */
+export const sellerPayoutsLive = (): boolean => SELLER_PAYOUTS_LIVE;
 
 export const sellerPayoutsOpen = (): boolean =>
   config.paystack.secretKey.startsWith('sk_test_') || SELLER_PAYOUTS_LIVE;
@@ -389,7 +395,7 @@ export type PayoutDestination = {
 };
 
 /** Paystack's own view of a transfer, by our reference. null = Paystack never got it. */
-const lookUpTransfer = async (reference: string): Promise<string | null> => {
+export const lookUpTransfer = async (reference: string): Promise<string | null> => {
   try {
     const res = await axios.get(`https://api.paystack.co/transfer/verify/${encodeURIComponent(reference)}`, {
       headers: { Authorization: `Bearer ${config.paystack.secretKey}` },

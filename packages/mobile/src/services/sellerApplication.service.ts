@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import api, { getErrorMessage } from './api';
-import { STORAGE_KEYS } from '../constants';
+import { API_BASE_URL, STORAGE_KEYS } from '../constants';
 import type { User } from '../types';
 
 /** A business's application to sell. Our team reviews it by hand. */
@@ -15,10 +15,46 @@ export interface ApplicationDocument {
   uploaded: boolean;
   name: string | null;
   mime: string | null;
+  /** Bytes. */
+  size?: number | null;
+  /** PDFs: page count. */
+  pages?: number | null;
   uploaded_at: string | null;
   status: 'submitted' | 'accepted' | 'needs_fix' | null;
   /** What our team asked for, when the status is needs_fix. */
   note: string | null;
+  /** When our team accepted it. */
+  checked_at?: string | null;
+}
+
+/** Proof of shop address: 12 months from upload, then a grace period ("expiring") before listings stop. */
+export interface ProofOfAddress {
+  state: 'missing' | 'valid' | 'expiring' | 'expired';
+  expires_at: string | null;
+  deadline: string | null;
+  days_left?: number;
+}
+
+/** One of the seller's own documents, to view: signed links that stop working at expires_at. */
+export interface DocumentLink {
+  kind: DocumentKind;
+  label: string;
+  url: string;
+  /** Page 1 of a PDF (or a HEIC photo) as a JPG. */
+  preview_url: string | null;
+  expires_at: string;
+  name: string;
+  mime: string;
+  is_pdf: boolean;
+  size: number | null;
+  pages: number | null;
+  uploaded_at: string;
+  status: 'submitted' | 'accepted' | 'needs_fix';
+  note: string | null;
+  checked_at: string | null;
+  checked_by: string | null;
+  /** Proof of shop address past 12 months: a recent one is due. */
+  update_due?: boolean;
 }
 
 export interface SellerApplication {
@@ -34,8 +70,13 @@ export interface SellerApplication {
   categories: string[];
   registration_type: 'rc' | 'bn' | null;
   registration_number: string | null;
+  /** "RC 1873402" */
+  registration?: string | null;
   number_check: 'pending' | 'matched' | 'not_matched';
+  /** When we approved the business. */
+  approved_at?: string | null;
   documents: ApplicationDocument[];
+  proof_of_address?: ProofOfAddress;
   rules_accepted_at: string | null;
   submitted_at: string | null;
   resubmitted_at: string | null;
@@ -80,6 +121,13 @@ const call = async <T,>(p: Promise<{ data: { data: T } }>): Promise<T> => {
   } catch (error) {
     throw new Error(getErrorMessage(error));
   }
+};
+
+/** Files kept on our server come back as /api/v1/files/private/…; point them at the API. */
+const absolute = (url: string | null) => {
+  if (!url || !url.startsWith('/')) return url;
+  const origin = API_BASE_URL.match(/^https?:\/\/[^/]+/)?.[0] ?? '';
+  return `${origin}${url}`;
 };
 
 const tooBig = (size?: number | null) => !!size && size > DOCUMENT_MAX_MB * 1024 * 1024;
@@ -159,6 +207,11 @@ export const sellerApplicationService = {
     return call<SellerApplication>(
       api.post(`/seller/application/documents/${kind}`, form, { transformRequest: d => d, timeout: 2 * 60_000 })
     );
+  },
+  /** Fresh signed links to one of your documents (they last about 10 minutes). */
+  documentLink: async (kind: DocumentKind): Promise<DocumentLink> => {
+    const link = await call<DocumentLink>(api.get(`/seller/application/documents/${kind}/link`));
+    return { ...link, url: absolute(link.url) ?? link.url, preview_url: absolute(link.preview_url) };
   },
   submit: () => call<SellerApplication>(api.post('/seller/application/submit', { rules: [...SELLER_RULE_KEYS] })),
   resubmit: () => call<SellerApplication>(api.post('/seller/application/resubmit')),

@@ -1,0 +1,278 @@
+-- The seller's 8-step "List a gadget" flow (shared/src/deviceProfiles.ts).
+
+-- Categories the new flow files listings under. Existing slugs stay as they are (buyers browse by slug).
+INSERT INTO "gadget_categories" ("name", "slug", "description", "is_active") VALUES
+  ('Desktops', 'desktops', 'Gaming and desktop PCs', true),
+  ('VR & glasses', 'vr-glasses', 'VR headsets and smart glasses', true),
+  ('Other', 'other', 'Gadgets that don''t fit another category', true)
+ON CONFLICT ("slug") DO NOTHING;
+UPDATE "gadget_categories" SET "name" = 'Cameras & drones' WHERE "slug" = 'cameras';
+
+-- The private IMEI / serial. Staff only: never in a buyer or seller response (buyers see
+-- specifications.identifier_masked). The hash finds the same device on another listing or sale.
+ALTER TABLE "gadgets" ADD COLUMN "device_identifier" VARCHAR(40);
+ALTER TABLE "gadgets" ADD COLUMN "device_identifier_hash" VARCHAR(64);
+-- "This item is mine to sell, and the details are true."
+ALTER TABLE "gadgets" ADD COLUMN "seller_attested_at" TIMESTAMP(6);
+CREATE INDEX "idx_gadgets_device_identifier_hash" ON "gadgets"("device_identifier_hash");
+
+-- Models the step-1 search offers. Our team adds new ones from the admin (Device models).
+CREATE TABLE "device_models" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "name" VARCHAR(120) NOT NULL,
+  "brand" VARCHAR(60) NOT NULL,
+  -- A DEVICE_PROFILES key (what the flow asks about it).
+  "profile_key" VARCHAR(40) NOT NULL,
+  -- A LISTING_CATEGORIES key.
+  "category_key" VARCHAR(40) NOT NULL,
+  "aliases" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  -- Order shown when the search box is empty (lower first).
+  "sort_rank" INTEGER NOT NULL DEFAULT 100,
+  "is_active" BOOLEAN NOT NULL DEFAULT true,
+  "created_at" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "added_by" UUID,
+  CONSTRAINT "device_models_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "device_models_name_key" ON "device_models"(lower("name"));
+CREATE INDEX "idx_device_models_category" ON "device_models"("category_key", "is_active");
+ALTER TABLE "device_models" ADD CONSTRAINT "device_models_added_by_fkey"
+  FOREIGN KEY ("added_by") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+INSERT INTO "device_models" ("name", "brand", "profile_key", "category_key", "aliases", "sort_rank") VALUES
+  -- iPhone 15 and newer
+  ('iPhone 16 Pro Max', 'Apple', 'iphone_new', 'phones', ARRAY['16 pro max', 'iphone 16 promax'], 1),
+  ('iPhone 16 Pro', 'Apple', 'iphone_new', 'phones', ARRAY['16 pro'], 3),
+  ('iPhone 15 Pro Max', 'Apple', 'iphone_new', 'phones', ARRAY['15 pro max', 'iphone 15 promax'], 2),
+  ('iPhone 15 Pro', 'Apple', 'iphone_new', 'phones', ARRAY['15 pro'], 4),
+  ('iPhone 16', 'Apple', 'iphone_new', 'phones', ARRAY[]::TEXT[], 8),
+  ('iPhone 16 Plus', 'Apple', 'iphone_new', 'phones', ARRAY['16 plus'], 12),
+  ('iPhone 16e', 'Apple', 'iphone_new', 'phones', ARRAY['16e'], 20),
+  ('iPhone 15', 'Apple', 'iphone_new', 'phones', ARRAY[]::TEXT[], 9),
+  ('iPhone 15 Plus', 'Apple', 'iphone_new', 'phones', ARRAY['15 plus'], 14),
+  ('iPhone 17 Pro Max', 'Apple', 'iphone_new', 'phones', ARRAY['17 pro max', 'iphone 17 promax'], 5),
+  ('iPhone 17 Pro', 'Apple', 'iphone_new', 'phones', ARRAY['17 pro'], 7),
+  ('iPhone 17', 'Apple', 'iphone_new', 'phones', ARRAY[]::TEXT[], 15),
+  ('iPhone Air', 'Apple', 'iphone_new', 'phones', ARRAY['iphone 17 air'], 22),
+  -- iPhone 14 and older
+  ('iPhone 14 Pro Max', 'Apple', 'iphone_old', 'phones', ARRAY['14 pro max', 'iphone 14 promax'], 6),
+  ('iPhone 14 Pro', 'Apple', 'iphone_old', 'phones', ARRAY['14 pro'], 10),
+  ('iPhone 14', 'Apple', 'iphone_old', 'phones', ARRAY[]::TEXT[], 16),
+  ('iPhone 14 Plus', 'Apple', 'iphone_old', 'phones', ARRAY['14 plus'], 21),
+  ('iPhone 13 Pro Max', 'Apple', 'iphone_old', 'phones', ARRAY['13 pro max', 'iphone 13 promax'], 11),
+  ('iPhone 13 Pro', 'Apple', 'iphone_old', 'phones', ARRAY['13 pro'], 17),
+  ('iPhone 13', 'Apple', 'iphone_old', 'phones', ARRAY[]::TEXT[], 13),
+  ('iPhone 13 mini', 'Apple', 'iphone_old', 'phones', ARRAY['13 mini'], 40),
+  ('iPhone 12 Pro Max', 'Apple', 'iphone_old', 'phones', ARRAY['12 pro max', 'iphone 12 promax'], 18),
+  ('iPhone 12 Pro', 'Apple', 'iphone_old', 'phones', ARRAY['12 pro'], 24),
+  ('iPhone 12', 'Apple', 'iphone_old', 'phones', ARRAY[]::TEXT[], 19),
+  ('iPhone 12 mini', 'Apple', 'iphone_old', 'phones', ARRAY['12 mini'], 45),
+  ('iPhone 11 Pro Max', 'Apple', 'iphone_old', 'phones', ARRAY['11 pro max', 'iphone 11 promax'], 25),
+  ('iPhone 11 Pro', 'Apple', 'iphone_old', 'phones', ARRAY['11 pro'], 30),
+  ('iPhone 11', 'Apple', 'iphone_old', 'phones', ARRAY[]::TEXT[], 23),
+  ('iPhone XS Max', 'Apple', 'iphone_old', 'phones', ARRAY['xs max', 'iphone 10s max'], 35),
+  ('iPhone XS', 'Apple', 'iphone_old', 'phones', ARRAY['iphone 10s'], 42),
+  ('iPhone XR', 'Apple', 'iphone_old', 'phones', ARRAY['iphone 10r'], 28),
+  ('iPhone SE (2022)', 'Apple', 'iphone_old', 'phones', ARRAY['iphone se 3', 'se 2022'], 44),
+  ('iPhone SE (2020)', 'Apple', 'iphone_old', 'phones', ARRAY['iphone se 2', 'se 2020'], 48),
+  -- Samsung Galaxy
+  ('Galaxy S24 Ultra', 'Samsung', 'samsung', 'phones', ARRAY['samsung s24 ultra', 's24 ultra'], 26),
+  ('Galaxy S25 Ultra', 'Samsung', 'samsung', 'phones', ARRAY['samsung s25 ultra', 's25 ultra'], 27),
+  ('Galaxy S23 Ultra', 'Samsung', 'samsung', 'phones', ARRAY['samsung s23 ultra', 's23 ultra'], 29),
+  ('Galaxy S22 Ultra', 'Samsung', 'samsung', 'phones', ARRAY['samsung s22 ultra', 's22 ultra'], 36),
+  ('Galaxy S25', 'Samsung', 'samsung', 'phones', ARRAY['samsung s25'], 38),
+  ('Galaxy S24', 'Samsung', 'samsung', 'phones', ARRAY['samsung s24'], 37),
+  ('Galaxy S24 FE', 'Samsung', 'samsung', 'phones', ARRAY['samsung s24 fe'], 50),
+  ('Galaxy S23', 'Samsung', 'samsung', 'phones', ARRAY['samsung s23'], 46),
+  ('Galaxy S23 FE', 'Samsung', 'samsung', 'phones', ARRAY['samsung s23 fe'], 52),
+  ('Galaxy S21 Ultra', 'Samsung', 'samsung', 'phones', ARRAY['samsung s21 ultra', 's21 ultra'], 47),
+  ('Galaxy Note20 Ultra', 'Samsung', 'samsung', 'phones', ARRAY['note 20 ultra', 'samsung note 20 ultra'], 49),
+  ('Galaxy Z Fold6', 'Samsung', 'samsung', 'phones', ARRAY['z fold 6', 'fold 6', 'samsung fold 6'], 41),
+  ('Galaxy Z Fold5', 'Samsung', 'samsung', 'phones', ARRAY['z fold 5', 'fold 5', 'samsung fold 5'], 51),
+  ('Galaxy Z Flip6', 'Samsung', 'samsung', 'phones', ARRAY['z flip 6', 'flip 6', 'samsung flip 6'], 43),
+  ('Galaxy Z Flip5', 'Samsung', 'samsung', 'phones', ARRAY['z flip 5', 'flip 5', 'samsung flip 5'], 53),
+  ('Galaxy A55', 'Samsung', 'samsung', 'phones', ARRAY['samsung a55'], 31),
+  ('Galaxy A35', 'Samsung', 'samsung', 'phones', ARRAY['samsung a35'], 34),
+  ('Galaxy A25', 'Samsung', 'samsung', 'phones', ARRAY['samsung a25'], 39),
+  ('Galaxy A15', 'Samsung', 'samsung', 'phones', ARRAY['samsung a15'], 33),
+  ('Galaxy A16', 'Samsung', 'samsung', 'phones', ARRAY['samsung a16'], 54),
+  ('Galaxy A05s', 'Samsung', 'samsung', 'phones', ARRAY['samsung a05s'], 55),
+  -- Other Android phones
+  ('Pixel 9 Pro XL', 'Google', 'android', 'phones', ARRAY['google pixel 9 pro xl'], 56),
+  ('Pixel 9 Pro', 'Google', 'android', 'phones', ARRAY['google pixel 9 pro'], 57),
+  ('Pixel 9', 'Google', 'android', 'phones', ARRAY['google pixel 9'], 60),
+  ('Pixel 8 Pro', 'Google', 'android', 'phones', ARRAY['google pixel 8 pro'], 58),
+  ('Pixel 8', 'Google', 'android', 'phones', ARRAY['google pixel 8'], 61),
+  ('Pixel 7 Pro', 'Google', 'android', 'phones', ARRAY['google pixel 7 pro'], 59),
+  ('Pixel 7a', 'Google', 'android', 'phones', ARRAY['google pixel 7a'], 64),
+  ('Tecno Camon 30 Pro', 'Tecno', 'android', 'phones', ARRAY['camon 30 pro'], 62),
+  ('Tecno Camon 30', 'Tecno', 'android', 'phones', ARRAY['camon 30'], 63),
+  ('Tecno Camon 20 Pro', 'Tecno', 'android', 'phones', ARRAY['camon 20 pro'], 66),
+  ('Tecno Spark 30', 'Tecno', 'android', 'phones', ARRAY['spark 30'], 65),
+  ('Tecno Spark 20 Pro', 'Tecno', 'android', 'phones', ARRAY['spark 20 pro'], 67),
+  ('Tecno Phantom X2 Pro', 'Tecno', 'android', 'phones', ARRAY['phantom x2 pro', 'phantom x2'], 70),
+  ('Tecno Phantom V Fold', 'Tecno', 'android', 'phones', ARRAY['phantom v fold'], 74),
+  ('Tecno Pova 6 Pro', 'Tecno', 'android', 'phones', ARRAY['pova 6 pro'], 72),
+  ('Infinix Note 40 Pro', 'Infinix', 'android', 'phones', ARRAY['note 40 pro'], 68),
+  ('Infinix Note 40', 'Infinix', 'android', 'phones', ARRAY['note 40'], 69),
+  ('Infinix Note 30', 'Infinix', 'android', 'phones', ARRAY['note 30'], 73),
+  ('Infinix Hot 50', 'Infinix', 'android', 'phones', ARRAY['hot 50'], 71),
+  ('Infinix Hot 40i', 'Infinix', 'android', 'phones', ARRAY['hot 40i'], 75),
+  ('Infinix Zero 30', 'Infinix', 'android', 'phones', ARRAY['zero 30'], 76),
+  ('Infinix GT 20 Pro', 'Infinix', 'android', 'phones', ARRAY['gt 20 pro'], 77),
+  ('Redmi Note 14 Pro', 'Xiaomi', 'android', 'phones', ARRAY['xiaomi redmi note 14 pro'], 78),
+  ('Redmi Note 13 Pro+', 'Xiaomi', 'android', 'phones', ARRAY['redmi note 13 pro plus', 'xiaomi redmi note 13 pro+'], 79),
+  ('Redmi Note 13 Pro', 'Xiaomi', 'android', 'phones', ARRAY['xiaomi redmi note 13 pro'], 80),
+  ('Redmi Note 13', 'Xiaomi', 'android', 'phones', ARRAY['xiaomi redmi note 13'], 81),
+  ('Redmi 13C', 'Xiaomi', 'android', 'phones', ARRAY['xiaomi redmi 13c'], 82),
+
+  -- iPads
+  ('iPad Pro 13-inch (M4)', 'Apple', 'ipad', 'tablets', ARRAY['ipad pro 13', 'ipad pro m4'], 1),
+  ('iPad Pro 11-inch (M4)', 'Apple', 'ipad', 'tablets', ARRAY['ipad pro 11 m4'], 2),
+  ('iPad Pro 12.9-inch (M2)', 'Apple', 'ipad', 'tablets', ARRAY['ipad pro 12.9', 'ipad pro m2'], 4),
+  ('iPad Pro 11-inch (M2)', 'Apple', 'ipad', 'tablets', ARRAY['ipad pro 11'], 5),
+  ('iPad Air 13-inch (M2)', 'Apple', 'ipad', 'tablets', ARRAY['ipad air 13', 'ipad air m2'], 6),
+  ('iPad Air 11-inch (M2)', 'Apple', 'ipad', 'tablets', ARRAY['ipad air 11', 'ipad air 6'], 3),
+  ('iPad Air (5th generation)', 'Apple', 'ipad', 'tablets', ARRAY['ipad air 5', 'ipad air m1'], 8),
+  ('iPad (10th generation)', 'Apple', 'ipad', 'tablets', ARRAY['ipad 10', 'ipad 10th gen'], 7),
+  ('iPad (9th generation)', 'Apple', 'ipad', 'tablets', ARRAY['ipad 9', 'ipad 9th gen'], 9),
+  ('iPad mini (A17 Pro)', 'Apple', 'ipad', 'tablets', ARRAY['ipad mini 7'], 10),
+  ('iPad mini (6th generation)', 'Apple', 'ipad', 'tablets', ARRAY['ipad mini 6'], 11),
+  ('Galaxy Tab S9', 'Samsung', 'android_tablet', 'tablets', ARRAY['samsung tab s9', 'tab s9'], 12),
+  ('Galaxy Tab A9+', 'Samsung', 'android_tablet', 'tablets', ARRAY['samsung tab a9', 'tab a9 plus'], 13),
+
+  -- MacBooks (Apple silicon)
+  ('MacBook Air 13-inch (M1, 2020)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook air m1', 'mba m1'], 1),
+  ('MacBook Air 13-inch (M2, 2022)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook air m2', 'mba m2'], 2),
+  ('MacBook Air 15-inch (M2, 2023)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook air 15 m2'], 9),
+  ('MacBook Air 13-inch (M3, 2024)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook air m3', 'mba m3'], 4),
+  ('MacBook Air 15-inch (M3, 2024)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook air 15 m3'], 10),
+  ('MacBook Air 13-inch (M4, 2025)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook air m4', 'mba m4'], 6),
+  ('MacBook Air 15-inch (M4, 2025)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook air 15 m4'], 12),
+  ('MacBook Pro 13-inch (M1, 2020)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro m1', 'mbp m1'], 3),
+  ('MacBook Pro 13-inch (M2, 2022)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro m2', 'mbp m2'], 11),
+  ('MacBook Pro 14-inch (M1 Pro or Max, 2021)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 14 m1 pro', 'macbook pro m1 max'], 5),
+  ('MacBook Pro 16-inch (M1 Pro or Max, 2021)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 16 m1 pro', 'macbook pro 16 m1 max'], 8),
+  ('MacBook Pro 14-inch (M2 Pro or Max, 2023)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 14 m2 pro', 'macbook pro m2 max'], 13),
+  ('MacBook Pro 16-inch (M2 Pro or Max, 2023)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 16 m2 pro', 'macbook pro 16 m2 max'], 15),
+  ('MacBook Pro 14-inch (M3, 2023)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro m3'], 14),
+  ('MacBook Pro 14-inch (M3 Pro or Max, 2023)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 14 m3 pro', 'macbook pro m3 max'], 7),
+  ('MacBook Pro 16-inch (M3 Pro or Max, 2023)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 16 m3 pro', 'macbook pro 16 m3 max'], 16),
+  ('MacBook Pro 14-inch (M4, 2024)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro m4'], 17),
+  ('MacBook Pro 14-inch (M4 Pro or Max, 2024)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 14 m4 pro', 'macbook pro m4 max'], 18),
+  ('MacBook Pro 16-inch (M4 Pro or Max, 2024)', 'Apple', 'macbook_as', 'laptops', ARRAY['macbook pro 16 m4 pro', 'macbook pro 16 m4 max'], 19),
+  -- MacBooks (Intel)
+  ('MacBook Air 13-inch (Intel, 2020)', 'Apple', 'macbook_intel', 'laptops', ARRAY['macbook air 2020 intel', 'macbook air i5'], 20),
+  ('MacBook Pro 13-inch (Intel, 2020)', 'Apple', 'macbook_intel', 'laptops', ARRAY['macbook pro 2020 intel', 'macbook pro i5'], 21),
+  ('MacBook Pro 16-inch (Intel, 2019)', 'Apple', 'macbook_intel', 'laptops', ARRAY['macbook pro 16 2019', 'macbook pro i9'], 22),
+  ('MacBook Pro 15-inch (Intel, 2019)', 'Apple', 'macbook_intel', 'laptops', ARRAY['macbook pro 15 2019', 'macbook pro i7'], 23),
+  -- Windows laptops
+  ('HP EliteBook 840', 'HP', 'windows_laptop', 'laptops', ARRAY['elitebook 840', 'hp 840'], 24),
+  ('HP EliteBook 850', 'HP', 'windows_laptop', 'laptops', ARRAY['elitebook 850', 'hp 850'], 27),
+  ('HP ProBook 450', 'HP', 'windows_laptop', 'laptops', ARRAY['probook 450', 'hp 450'], 26),
+  ('HP Spectre x360', 'HP', 'windows_laptop', 'laptops', ARRAY['spectre x360', 'hp spectre'], 28),
+  ('HP Envy x360', 'HP', 'windows_laptop', 'laptops', ARRAY['envy x360', 'hp envy'], 30),
+  ('HP Victus 15', 'HP', 'windows_laptop', 'laptops', ARRAY['victus 15', 'hp victus'], 36),
+  ('Dell XPS 13', 'Dell', 'windows_laptop', 'laptops', ARRAY['xps 13'], 29),
+  ('Dell XPS 15', 'Dell', 'windows_laptop', 'laptops', ARRAY['xps 15'], 32),
+  ('Dell Latitude 5420', 'Dell', 'windows_laptop', 'laptops', ARRAY['latitude 5420', 'dell 5420'], 25),
+  ('Dell Latitude 7420', 'Dell', 'windows_laptop', 'laptops', ARRAY['latitude 7420', 'dell 7420'], 31),
+  ('Lenovo ThinkPad T14', 'Lenovo', 'windows_laptop', 'laptops', ARRAY['thinkpad t14'], 33),
+  ('Lenovo ThinkPad X1 Carbon', 'Lenovo', 'windows_laptop', 'laptops', ARRAY['thinkpad x1 carbon', 'x1 carbon'], 34),
+  ('Lenovo Legion 5', 'Lenovo', 'windows_laptop', 'laptops', ARRAY['legion 5'], 35),
+  ('Lenovo IdeaPad 3', 'Lenovo', 'windows_laptop', 'laptops', ARRAY['ideapad 3'], 37),
+  ('ASUS ROG Strix G15', 'ASUS', 'windows_laptop', 'laptops', ARRAY['rog strix g15', 'asus rog strix'], 38),
+  ('ASUS ROG Zephyrus G14', 'ASUS', 'windows_laptop', 'laptops', ARRAY['zephyrus g14', 'rog g14'], 39),
+  ('ASUS Zenbook 14', 'ASUS', 'windows_laptop', 'laptops', ARRAY['zenbook 14'], 40),
+  ('ASUS TUF Gaming F15', 'ASUS', 'windows_laptop', 'laptops', ARRAY['tuf f15', 'asus tuf'], 41),
+  ('Acer Aspire 5', 'Acer', 'windows_laptop', 'laptops', ARRAY['aspire 5'], 42),
+  ('Acer Nitro 5', 'Acer', 'windows_laptop', 'laptops', ARRAY['nitro 5'], 43),
+  ('Microsoft Surface Laptop 5', 'Microsoft', 'windows_laptop', 'laptops', ARRAY['surface laptop 5', 'surface laptop'], 44),
+
+  -- Desktops
+  ('Gaming PC (custom build)', 'Custom', 'desktop_pc', 'desktops', ARRAY['gaming pc', 'custom pc', 'desktop', 'tower'], 1),
+
+  -- Consoles
+  ('PlayStation 5', 'Sony', 'console', 'gaming', ARRAY['ps5', 'ps 5', 'playstation 5 disc'], 1),
+  ('PlayStation 5 Slim', 'Sony', 'console', 'gaming', ARRAY['ps5 slim'], 2),
+  ('PlayStation 5 Pro', 'Sony', 'console', 'gaming', ARRAY['ps5 pro'], 3),
+  ('PlayStation 4 Pro', 'Sony', 'console', 'gaming', ARRAY['ps4 pro'], 6),
+  ('PlayStation 4', 'Sony', 'console', 'gaming', ARRAY['ps4', 'ps 4', 'ps4 slim'], 5),
+  ('Xbox Series X', 'Microsoft', 'console', 'gaming', ARRAY['series x', 'xsx'], 4),
+  ('Xbox Series S', 'Microsoft', 'console', 'gaming', ARRAY['series s', 'xss'], 7),
+  -- Handhelds
+  ('Nintendo Switch OLED', 'Nintendo', 'handheld', 'gaming', ARRAY['switch oled'], 8),
+  ('Nintendo Switch', 'Nintendo', 'handheld', 'gaming', ARRAY['switch'], 9),
+  ('Nintendo Switch Lite', 'Nintendo', 'handheld', 'gaming', ARRAY['switch lite'], 12),
+  ('Nintendo Switch 2', 'Nintendo', 'handheld', 'gaming', ARRAY['switch 2'], 10),
+  ('Steam Deck OLED', 'Valve', 'handheld', 'gaming', ARRAY['steamdeck oled'], 11),
+  ('Steam Deck', 'Valve', 'handheld', 'gaming', ARRAY['steamdeck'], 13),
+  ('ASUS ROG Ally', 'ASUS', 'handheld', 'gaming', ARRAY['rog ally'], 14),
+  ('ASUS ROG Ally X', 'ASUS', 'handheld', 'gaming', ARRAY['rog ally x'], 15),
+  ('Lenovo Legion Go', 'Lenovo', 'handheld', 'gaming', ARRAY['legion go'], 16),
+
+  -- VR & glasses
+  ('Meta Quest 3', 'Meta', 'vr_headset', 'vr_glasses', ARRAY['quest 3', 'oculus quest 3'], 1),
+  ('Meta Quest 3S', 'Meta', 'vr_headset', 'vr_glasses', ARRAY['quest 3s'], 2),
+  ('Meta Quest 2', 'Meta', 'vr_headset', 'vr_glasses', ARRAY['quest 2', 'oculus quest 2'], 3),
+  ('Meta Quest Pro', 'Meta', 'vr_headset', 'vr_glasses', ARRAY['quest pro'], 5),
+  ('Ray-Ban Meta smart glasses', 'Ray-Ban', 'smart_glasses', 'vr_glasses', ARRAY['ray ban meta', 'rayban meta', 'meta glasses', 'ray-ban stories'], 4),
+  ('Apple Vision Pro', 'Apple', 'vision_pro', 'vr_glasses', ARRAY['vision pro'], 6),
+
+  -- Wearables
+  ('Apple Watch Ultra 2', 'Apple', 'apple_watch', 'wearables', ARRAY['watch ultra 2'], 1),
+  ('Apple Watch Ultra 3', 'Apple', 'apple_watch', 'wearables', ARRAY['watch ultra 3'], 4),
+  ('Apple Watch Ultra', 'Apple', 'apple_watch', 'wearables', ARRAY['watch ultra'], 6),
+  ('Apple Watch Series 11', 'Apple', 'apple_watch', 'wearables', ARRAY['watch series 11', 'apple watch 11'], 5),
+  ('Apple Watch Series 10', 'Apple', 'apple_watch', 'wearables', ARRAY['watch series 10', 'apple watch 10'], 2),
+  ('Apple Watch Series 9', 'Apple', 'apple_watch', 'wearables', ARRAY['watch series 9', 'apple watch 9'], 3),
+  ('Apple Watch Series 8', 'Apple', 'apple_watch', 'wearables', ARRAY['watch series 8', 'apple watch 8'], 7),
+  ('Apple Watch Series 7', 'Apple', 'apple_watch', 'wearables', ARRAY['watch series 7', 'apple watch 7'], 9),
+  ('Apple Watch SE (2nd generation)', 'Apple', 'apple_watch', 'wearables', ARRAY['watch se 2', 'apple watch se'], 8),
+  ('Galaxy Watch7', 'Samsung', 'smartwatch', 'wearables', ARRAY['galaxy watch 7', 'samsung watch 7'], 10),
+  ('Galaxy Watch6', 'Samsung', 'smartwatch', 'wearables', ARRAY['galaxy watch 6', 'samsung watch 6'], 11),
+  ('Galaxy Watch Ultra', 'Samsung', 'smartwatch', 'wearables', ARRAY['samsung watch ultra'], 12),
+
+  -- Audio
+  ('AirPods Pro (2nd generation)', 'Apple', 'audio', 'audio', ARRAY['airpods pro 2', 'airpod pro 2'], 1),
+  ('AirPods Pro 3', 'Apple', 'audio', 'audio', ARRAY['airpod pro 3'], 4),
+  ('AirPods Pro (1st generation)', 'Apple', 'audio', 'audio', ARRAY['airpods pro 1', 'airpods pro'], 7),
+  ('AirPods Max', 'Apple', 'audio', 'audio', ARRAY['airpod max'], 2),
+  ('AirPods 4', 'Apple', 'audio', 'audio', ARRAY['airpods 4th gen'], 5),
+  ('AirPods (3rd generation)', 'Apple', 'audio', 'audio', ARRAY['airpods 3'], 6),
+  ('AirPods (2nd generation)', 'Apple', 'audio', 'audio', ARRAY['airpods 2'], 8),
+  ('Sony WH-1000XM5', 'Sony', 'audio', 'audio', ARRAY['xm5', 'sony xm5', 'wh1000xm5'], 3),
+  ('Sony WH-1000XM4', 'Sony', 'audio', 'audio', ARRAY['xm4', 'sony xm4', 'wh1000xm4'], 9),
+  ('Sony WF-1000XM5', 'Sony', 'audio', 'audio', ARRAY['wf xm5', 'sony earbuds xm5'], 12),
+  ('Bose QuietComfort Ultra Headphones', 'Bose', 'audio', 'audio', ARRAY['bose qc ultra', 'qc ultra'], 10),
+  ('Bose QuietComfort 45', 'Bose', 'audio', 'audio', ARRAY['bose qc45', 'qc45'], 11),
+  ('Bose QuietComfort Earbuds II', 'Bose', 'audio', 'audio', ARRAY['bose qc earbuds 2', 'qc earbuds'], 14),
+  ('Beats Studio Pro', 'Beats', 'audio', 'audio', ARRAY['beats studio'], 13),
+  ('Galaxy Buds2 Pro', 'Samsung', 'audio', 'audio', ARRAY['buds 2 pro', 'samsung buds'], 15),
+
+  -- Drones
+  ('DJI Mini 4 Pro', 'DJI', 'drone', 'cameras_drones', ARRAY['mini 4 pro'], 1),
+  ('DJI Mini 3 Pro', 'DJI', 'drone', 'cameras_drones', ARRAY['mini 3 pro'], 3),
+  ('DJI Mini 3', 'DJI', 'drone', 'cameras_drones', ARRAY['mini 3'], 5),
+  ('DJI Air 3', 'DJI', 'drone', 'cameras_drones', ARRAY['air 3'], 4),
+  ('DJI Air 2S', 'DJI', 'drone', 'cameras_drones', ARRAY['air 2s'], 7),
+  ('DJI Mavic 3 Pro', 'DJI', 'drone', 'cameras_drones', ARRAY['mavic 3 pro'], 8),
+  ('DJI Mavic 3', 'DJI', 'drone', 'cameras_drones', ARRAY['mavic 3'], 9),
+  ('DJI Avata 2', 'DJI', 'drone', 'cameras_drones', ARRAY['avata 2'], 12),
+  -- Cameras
+  ('Sony Alpha 7 IV', 'Sony', 'camera', 'cameras_drones', ARRAY['sony a7 iv', 'a7iv', 'a7 iv'], 2),
+  ('Sony Alpha 7 III', 'Sony', 'camera', 'cameras_drones', ARRAY['sony a7 iii', 'a7iii', 'a7 iii'], 6),
+  ('Sony ZV-E10', 'Sony', 'camera', 'cameras_drones', ARRAY['zv e10', 'zve10'], 10),
+  ('Sony Alpha 6400', 'Sony', 'camera', 'cameras_drones', ARRAY['sony a6400', 'a6400'], 13),
+  ('Canon EOS R6', 'Canon', 'camera', 'cameras_drones', ARRAY['canon r6', 'eos r6'], 11),
+  ('Canon EOS R50', 'Canon', 'camera', 'cameras_drones', ARRAY['canon r50', 'eos r50'], 14),
+  ('Canon EOS 90D', 'Canon', 'camera', 'cameras_drones', ARRAY['canon 90d'], 15),
+  ('Canon EOS 250D', 'Canon', 'camera', 'cameras_drones', ARRAY['canon 250d', 'rebel sl3'], 16),
+  ('Nikon Z6 II', 'Nikon', 'camera', 'cameras_drones', ARRAY['z6 ii', 'z6ii', 'nikon z6'], 17),
+  ('Nikon Z50', 'Nikon', 'camera', 'cameras_drones', ARRAY['z50'], 18),
+  ('Nikon D7500', 'Nikon', 'camera', 'cameras_drones', ARRAY['d7500'], 19),
+  ('Fujifilm X-T5', 'Fujifilm', 'camera', 'cameras_drones', ARRAY['fuji xt5', 'x-t5', 'xt5'], 20),
+  ('Fujifilm X-T4', 'Fujifilm', 'camera', 'cameras_drones', ARRAY['fuji xt4', 'x-t4', 'xt4'], 21),
+  ('Fujifilm X100V', 'Fujifilm', 'camera', 'cameras_drones', ARRAY['x100v', 'fuji x100v'], 22),
+  ('GoPro HERO13 Black', 'GoPro', 'camera', 'cameras_drones', ARRAY['gopro 13', 'hero 13'], 23),
+  ('GoPro HERO12 Black', 'GoPro', 'camera', 'cameras_drones', ARRAY['gopro 12', 'hero 12'], 24),
+  ('DJI Osmo Pocket 3', 'DJI', 'camera', 'cameras_drones', ARRAY['osmo pocket 3', 'pocket 3'], 25);

@@ -29,6 +29,8 @@ import { getErrorMessage } from '../../services/api';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
+  /** Optional { draft } starts the message ("Payout PO-…: "). */
+  route?: { params?: { draft?: string } };
 };
 
 function mergeById(
@@ -44,12 +46,12 @@ function mergeById(
   );
 }
 
-export const SupportChatScreen: React.FC<Props> = ({ navigation }) => {
+export const SupportChatScreen: React.FC<Props> = ({ navigation, route }) => {
   const { colors } = useTheme();
   const user = useAuthStore(s => s.user);
   const [thread, setThread] = useState<SupportThread | null>(null);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(route?.params?.draft ?? '');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');

@@ -4,6 +4,7 @@ import {
   CreateAuctionRequest,
   AuctionStatus,
   AuctionWithGadget,
+  listingDisclosures,
 } from '@gadget-bidding/shared';
 import logger from '../../utils/logger';
 import config from '../../config';
@@ -205,6 +206,8 @@ export const getAuctionById = async (
       images: auction.gadget.images,
       category_name: auction.gadget.category?.name,
       category_slug: auction.gadget.category?.slug,
+      // Listing-flow repairs, damage and faults as "Buyers will see" lines (empty for older listings).
+      disclosures: listingDisclosures(auction.gadget.specifications as any),
     },
     // Buyers only ever see a seller's code ("Verified seller CV-1042"), never a name or photo.
     seller: {
@@ -377,9 +380,24 @@ export const updateAuction = async (
       throw new Error('Auction not found or unauthorized');
     }
 
-    // Can only update scheduled auctions
-    if (auction.status !== 'scheduled') {
-      throw new Error('Can only update scheduled auctions');
+    // Scheduled auctions can change anything; a live one only its prices, and only before the first bid.
+    const liveNoBids = auction.status === 'active' && (auction.totalBids ?? 0) === 0;
+    if (auction.status !== 'scheduled' && !liveNoBids) {
+      throw new Error(
+        auction.status === 'active' ? "This listing has bids, so it can't be changed now" : 'Can only update scheduled auctions'
+      );
+    }
+    if (liveNoBids && (updates.start_time || updates.end_time)) {
+      throw new Error("A live listing's times can't change. You can change its prices or end it.");
+    }
+    if (liveNoBids && (await tx.bid.count({ where: { auctionId } })) > 0) {
+      throw new Error("This listing has bids, so it can't be changed now");
+    }
+    const nextStart = Number(updates.starting_price ?? auction.startingPrice);
+    const nextBuyNow =
+      updates.buy_now_price !== undefined ? updates.buy_now_price : auction.buyNowPrice != null ? Number(auction.buyNowPrice) : null;
+    if (nextBuyNow != null && Number(nextBuyNow) <= nextStart) {
+      throw new Error('The buy-now price has to be higher than the starting price');
     }
 
     // Build update data

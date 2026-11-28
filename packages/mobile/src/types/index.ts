@@ -5,7 +5,8 @@ export interface User {
   full_name: string;
   email?: string;
   avatar_url?: string;
-  role: 'bidder' | 'seller' | 'admin';
+  /** 'staff': a store staff account (sees only its store's hub drop-offs and collections). */
+  role: 'bidder' | 'seller' | 'admin' | 'staff';
   is_verified: boolean;
   business_name?: string;
   cac_number?: string;
@@ -104,7 +105,7 @@ export interface Auction {
   start_time: string;
   end_time: string;
   original_end_time: string;
-  status: 'scheduled' | 'active' | 'ended' | 'sold' | 'cancelled';
+  status: 'scheduled' | 'active' | 'paused' | 'ended' | 'sold' | 'cancelled';
   winner_id?: string;
   winning_bid_id?: string;
   bid_count: number;
@@ -143,7 +144,7 @@ export interface Order {
   platform_fee: number;
   seller_amount: number;
   seller_payout?: number;
-  payout_status?: 'pending' | 'ready' | 'held' | 'paid';
+  payout_status?: 'pending' | 'ready' | 'held' | 'sending' | 'paid';
   payout_paid_at?: string;
   payout_reference?: string;
   status:

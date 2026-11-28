@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { adminApi } from '@/api';
 import { label, when } from '@/lib/format';
 import {
@@ -52,6 +53,7 @@ const KNOWN_ACTIONS = [
   'bid_failed',
   'buy_now_failed',
   'rate_limit_hit',
+  'page_load_error',
 ];
 
 const RESOURCE_TYPES = [
@@ -98,8 +100,11 @@ export function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+  // ?action=page_load_error (from "View audit log" on a page that couldn't load) opens filtered.
+  const [params] = useSearchParams();
+  const initial: Filters = params.get('action') ? { ...EMPTY_FILTERS, action: params.get('action')! } : EMPTY_FILTERS;
+  const [filters, setFilters] = useState<Filters>(initial);
+  const [applied, setApplied] = useState<Filters>(initial);
 
   const load = useCallback(async () => {
     setLoading(true);

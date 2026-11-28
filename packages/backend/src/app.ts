@@ -28,9 +28,19 @@ import adminRoutes from './api/routes/admin.routes';
 import adminReportRoutes from './api/routes/adminReports.routes';
 import sellerRoutes from './api/routes/seller.routes';
 import sellerSignupRoutes from './api/routes/sellerSignup.routes';
+import { staffJoinRoutes, staffAppRoutes } from './api/routes/staff.routes';
 import sellerApplicationRoutes from './api/routes/sellerApplication.routes';
 import adminSellerApplicationRoutes from './api/routes/adminSellerApplications.routes';
 import privateFileRoutes from './api/routes/privateFiles.routes';
+import sellerTabRoutes from './api/routes/sellerTabs.routes';
+import sellerPayoutRoutes from './api/routes/sellerPayouts.routes';
+import sellerStoreRoutes from './api/routes/sellerStore.routes';
+import adminPayoutRoutes from './api/routes/adminPayouts.routes';
+import sellerInsightsRoutes from './api/routes/sellerInsights.routes';
+import sellerCloseRoutes from './api/routes/sellerClose.routes';
+import adminSellerStoreRoutes from './api/routes/adminSellerStore.routes';
+import adminPeopleRoutes from './api/routes/adminPeople.routes';
+import adminDeviceModelRoutes from './api/routes/adminDeviceModels.routes';
 import meRoutes from './api/routes/me.routes';
 import storeRoutes from './api/routes/store.routes';
 import caseRoutes from './api/routes/case.routes';
@@ -184,6 +194,7 @@ app.use(
 
 // API Routes (webhooks mounted above with raw parser)
 app.use(`/api/${config.apiVersion}/auth/seller`, sellerSignupRoutes);
+app.use(`/api/${config.apiVersion}/auth/staff`, staffJoinRoutes);
 app.use(`/api/${config.apiVersion}/auth`, authRoutes);
 app.use(`/api/${config.apiVersion}/me`, meRoutes);
 app.use(`/api/${config.apiVersion}/stores`, storeRoutes);
@@ -198,8 +209,18 @@ app.use(`/api/${config.apiVersion}/notifications`, notificationRoutes);
 app.use(`/api/${config.apiVersion}/support`, supportRoutes);
 app.use(`/api/${config.apiVersion}/admin/listing-reports`, adminReportRoutes);
 app.use(`/api/${config.apiVersion}/admin/seller-applications`, adminSellerApplicationRoutes);
+app.use(`/api/${config.apiVersion}/admin/seller-payouts`, adminPayoutRoutes);
+app.use(`/api/${config.apiVersion}/admin/sellers`, adminSellerStoreRoutes);
+app.use(`/api/${config.apiVersion}/admin/device-models`, adminDeviceModelRoutes);
+app.use(`/api/${config.apiVersion}/admin`, adminPeopleRoutes);
 app.use(`/api/${config.apiVersion}/admin`, adminRoutes);
+app.use(`/api/${config.apiVersion}/staff`, staffAppRoutes);
 app.use(`/api/${config.apiVersion}/seller/application`, sellerApplicationRoutes);
+app.use(`/api/${config.apiVersion}/seller/payouts`, sellerPayoutRoutes);
+app.use(`/api/${config.apiVersion}/seller/store`, sellerStoreRoutes);
+app.use(`/api/${config.apiVersion}/seller/insights`, sellerInsightsRoutes);
+app.use(`/api/${config.apiVersion}/seller/close`, sellerCloseRoutes);
+app.use(`/api/${config.apiVersion}/seller`, sellerTabRoutes);
 app.use(`/api/${config.apiVersion}/seller`, sellerRoutes);
 app.use(`/api/${config.apiVersion}/files/private`, privateFileRoutes);
 // Public: minimum app version, store links, maintenance state (the app checks it at launch).

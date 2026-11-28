@@ -1,16 +1,68 @@
 import { FormEvent, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
-import { getStoredUser, login, loginWithCode } from '@/api';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff, Lock } from 'lucide-react';
+import { ApiError, PAUSED_KEY, getStoredUser, login, loginWithCode, type PauseDetails } from '@/api';
 import { AuthField, AuthHeading, AuthLayout, AuthSubmit, authForm, authInput, authLink } from '@/components/AuthLayout';
 import { Seo } from '@/components/Seo';
 import { PAGES } from '@/lib/site';
 
 const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
+/** "Nov 26 at 10:14 am" (Lagos time). */
+const pausedWhen = (iso: string) => {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Africa/Lagos' });
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'Africa/Lagos' }).toLowerCase();
+  return `${day} at ${time}`;
+};
+
+/** A session paused mid-use leaves the details here (see api.ts). */
+const readPaused = (): PauseDetails | null => {
+  try {
+    const raw = sessionStorage.getItem(PAUSED_KEY);
+    return raw ? (JSON.parse(raw) as PauseDetails) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The design's "Your admin access is paused": who, when and the reason the admin gave. */
+function PausedNotice({ details, onBack }: { details: PauseDetails; onBack: () => void }) {
+  return (
+    <div className="gb-fade-up flex flex-col items-center text-center" role="alert">
+      <span className="grid size-14 place-items-center rounded-[16px] bg-[#FFF6EE] text-[#DB7A2E]">
+        <Lock className="size-6" aria-hidden />
+      </span>
+      <h1 className="mt-5 text-[26px] font-medium leading-[35px] tracking-[-0.02em] text-ink">Your admin access is paused</h1>
+      <p className="mt-2 text-[15px] leading-[1.5] text-slate">
+        An admin paused {details.email ? <span className="font-medium text-ink">{details.email}</span> : 'your account'}
+        {details.paused_at ? ` on ${pausedWhen(details.paused_at)}` : ''}.
+      </p>
+      {details.reason ? (
+        <p className="mt-4 w-full rounded-[12px] bg-[#FFF6EE] px-4 py-3 text-left text-[14px] leading-5 text-[#9A5A1F]">
+          <span className="font-medium text-[#DB7A2E]">Reason:</span> “{details.reason}”
+        </p>
+      ) : (
+        <p className="mt-4 w-full rounded-[12px] bg-fill px-4 py-3 text-left text-[14px] leading-5 text-slate">
+          No reason was given. Ask the ops lead why, or to switch your access back on.
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={onBack}
+        className="mt-6 h-[50px] w-full rounded-[12px] bg-blue-brand text-[16px] font-medium text-white transition-colors duration-150 hover:bg-blue-press focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-brand"
+      >
+        Back to sign in
+      </button>
+    </div>
+  );
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const existing = getStoredUser();
+  const [paused, setPaused] = useState<PauseDetails | null>(() => (params.get('paused') ? readPaused() : null));
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [password, setPassword] = useState('');
@@ -23,6 +75,13 @@ export function LoginPage() {
   if (existing?.role === 'admin' && localStorage.getItem('gb_admin_token')) {
     return <Navigate to="/" replace />;
   }
+
+  const backToSignIn = () => {
+    sessionStorage.removeItem(PAUSED_KEY);
+    setPaused(null);
+    setPassword('');
+    if (params.get('paused')) setParams({}, { replace: true });
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -37,6 +96,10 @@ export function LoginPage() {
       if (res.done) navigate('/');
       else setTwoStep({ id: res.verification_id, hint: res.email_hint });
     } catch (err: any) {
+      if (err instanceof ApiError && err.code === 'ADMIN_PAUSED') {
+        setPaused((err.data as PauseDetails) ?? { email: email.trim().toLowerCase(), paused_at: null, reason: null });
+        return;
+      }
       setError(err.message || "That email and password don't match. Try again.");
     } finally {
       setBusy(false);
@@ -63,7 +126,9 @@ export function LoginPage() {
   return (
     <AuthLayout>
       <Seo title={seo.title} description={seo.description} path={seo.path} noindex={false} />
-      {twoStep ? (
+      {paused ? (
+        <PausedNotice details={paused} onBack={backToSignIn} />
+      ) : twoStep ? (
         <form onSubmit={submitCode} noValidate className={`${authForm} gb-fade-up`}>
           <AuthHeading title="Check your email">We sent a 6-digit code to {twoStep.hint}.</AuthHeading>
           <AuthField id="code" label="Sign-in code" error={error || undefined}>

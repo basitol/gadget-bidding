@@ -188,3 +188,151 @@ export const sendPasswordResetEmail = async (to: string, otp: string): Promise<b
     ),
   });
 };
+
+/* ---------------- Store staff invite ---------------- */
+
+export interface StaffInvite {
+  /** As the owner typed it: "Ifeoma Okeke". */
+  staffName: string;
+  business: string;
+  ownerName: string | null;
+  /** The email they'll sign in with (this one). */
+  email: string;
+  /** The 6-digit code hub staff check, with their ID. */
+  pickupCode: string;
+  /** "your NIN slip" */
+  idPhrase: string;
+}
+
+export const sendStaffInviteEmail = async (to: string, i: StaffInvite): Promise<boolean> => {
+  const first = escapeHtml(i.staffName.split(' ')[0] || i.staffName);
+  const business = escapeHtml(i.business);
+  const who = i.ownerName ? `${escapeHtml(i.ownerName)} from ${business}` : business;
+  const step = (n: number, text: string) => `
+    <tr>
+      <td style="width:24px;vertical-align:top;padding:6px 0;color:${INK};font-size:14px;font-weight:600;">${n}.</td>
+      <td style="padding:6px 0;color:${SLATE};font-size:14px;line-height:1.6;">${text}</td>
+    </tr>`;
+  const body = `
+    <p style="color:${SLATE};font-size:15px;line-height:1.6;margin:0 0 20px;">
+      Hi ${first}, ${who} added you as store staff. You'll drop off and collect gadgets at our Computer Village hub for the store, and see what's waiting in the app.
+    </p>
+    <p style="color:${INK};font-size:15px;font-weight:600;margin:0 0 4px;">Set up your sign-in</p>
+    <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 20px;">
+      ${step(1, 'Get the Gadgets Bidding app.')}
+      ${step(2, 'Tap <b>I\'m a business</b>, then <b>I was added to a store team</b>.')}
+      ${step(3, `Enter <b>${escapeHtml(i.email)}</b>, the code we email you, and a password.`)}
+    </table>
+    <p style="color:${SLATE};font-size:15px;line-height:1.6;margin:0 0 12px;">At the hub, show ${escapeHtml(i.idPhrase)} and this code:</p>
+    <div style="background:#F5F6F9;border-radius:12px;padding:16px;text-align:center;margin:0 0 16px;">
+      <span style="font-size:32px;font-weight:600;letter-spacing:8px;color:${INK};">${escapeHtml(i.pickupCode)}</span>
+    </div>
+    <p style="color:${SLATE};font-size:14px;line-height:1.6;margin:0;">Store staff can't see the store's payouts or change its settings.</p>`;
+  return sendEmail({
+    to,
+    subject: `${i.business} added you to their team on Gadgets Bidding`,
+    html: emailShell(
+      `You're on the ${business} team`,
+      body,
+      `You're getting this because ${business} added this email as store staff on Gadgets Bidding. If you don't know them, ignore this email.`
+    ),
+  });
+};
+
+/* ---------------- Account restrictions (Users › Suspend / Pause listings / Restore) ---------------- */
+
+/** An email built but not sent: the team sees it in the sheet ("See full email") before confirming. */
+export type BuiltEmail = { subject: string; html: string; summary: string };
+
+const para = (text: string) => `<p style="color:${SLATE};font-size:15px;line-height:1.6;margin:0 0 16px;">${text}</p>`;
+const factRows = (rows: [string, string][]) =>
+  `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:0 0 20px;">${rows
+    .map(
+      ([k, v]) => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid ${LINE};color:${SLATE};font-size:14px;width:30%;vertical-align:top;">${k}</td>
+      <td style="padding:10px 0;border-bottom:1px solid ${LINE};color:${INK};font-size:14px;">${v}</td>
+    </tr>`
+    )
+    .join('')}</table>`;
+
+export const buildSuspendedEmail = (i: { firstName: string; why: string; until: string }): BuiltEmail => ({
+  subject: 'Your account is suspended',
+  summary: `Why: ${i.why} Until: ${i.until}. Reply to this email to appeal.`,
+  html: emailShell(
+    'Your account is suspended',
+    para(`Hi ${escapeHtml(i.firstName)}, we've suspended your Gadgets Bidding account, so you can't sign in, bid or pay for now.`) +
+      factRows([
+        ['Why', escapeHtml(i.why)],
+        ['Until', escapeHtml(i.until)],
+      ]) +
+      para('Orders you already paid for still get delivered. Any live bids you had were withdrawn.') +
+      para('<b>Think we got this wrong?</b> Reply to this email and tell us why. Someone from our team reads every reply.'),
+    "You're getting this because our team suspended the Gadgets Bidding account for this email."
+  ),
+});
+
+export const buildListingsPausedEmail = (i: {
+  name: string;
+  why: string;
+  until: string;
+  closeStore: boolean;
+  liveAuctions: number;
+}): BuiltEmail => ({
+  subject: i.closeStore ? 'Your store is closed' : 'Your listings are paused',
+  summary: `Why: ${i.why} Until: ${i.until}. Reply to this email to appeal.`,
+  html: emailShell(
+    i.closeStore ? 'Your store is closed' : 'Your listings are paused',
+    para(
+      i.closeStore
+        ? `Hi ${escapeHtml(i.name)}, we've closed your store on Gadgets Bidding. You can't sign in to sell until it's reopened.`
+        : `Hi ${escapeHtml(i.name)}, we've paused your listings on Gadgets Bidding while we look into something.`
+    ) +
+      factRows([
+        ['Why', escapeHtml(i.why)],
+        ['Until', escapeHtml(i.until)],
+      ]) +
+      para(
+        [
+          i.liveAuctions
+            ? `Your ${i.liveAuctions} live ${i.liveAuctions === 1 ? 'auction is' : 'auctions are'} paused, and bidders have been told. ${i.liveAuctions === 1 ? 'It keeps' : 'They keep'} the time ${i.liveAuctions === 1 ? 'it' : 'they'} had left.`
+            : null,
+          "You can't list anything new for now. Orders you've already sold still go through the hub as usual.",
+          'Payouts are held until your listings are back.',
+        ]
+          .filter(Boolean)
+          .join(' ')
+      ) +
+      para('<b>Think we got this wrong?</b> Reply to this email and tell us why. Someone from our team reads every reply.'),
+    "You're getting this because our team paused the Gadgets Bidding seller account for this email."
+  ),
+});
+
+export const buildRestoredEmail = (i: {
+  firstName: string;
+  seller: boolean;
+  reason: 'served' | 'mistake' | 'appeal' | 'expired';
+}): BuiltEmail => {
+  const what = i.seller ? 'You can list and sell again, and payouts start again.' : 'You can bid and pay again.';
+  const subject = i.seller ? 'Your listings are back' : 'Your account is active again';
+  const lead =
+    i.reason === 'mistake'
+      ? `We ${i.seller ? 'paused your listings' : 'suspended your account'} by mistake. Sorry about that. ${what}`
+      : i.reason === 'appeal'
+        ? `We looked at what you sent us and agree. ${what}`
+        : i.reason === 'expired'
+          ? `Your ${i.seller ? 'pause' : 'suspension'} has ended. ${what}`
+          : `${what} Thanks for sorting it out.`;
+  return {
+    subject,
+    summary: lead,
+    html: emailShell(
+      subject,
+      para(`Hi ${escapeHtml(i.firstName)}, ${lead.charAt(0).toLowerCase()}${lead.slice(1)}`) +
+        (i.seller ? para('Any auctions we paused start again with the time they had left.') : ''),
+      "You're getting this because your Gadgets Bidding account was restored."
+    ),
+  };
+};
+
+export const sendBuiltEmail = (to: string, e: BuiltEmail) => sendEmail({ to, subject: e.subject, html: e.html });

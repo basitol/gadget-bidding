@@ -29,7 +29,7 @@ import {
 } from '../../components/glass';
 import { BottomSheet, useSequentialFill } from '../../components/motion';
 import { fonts } from '../../constants';
-import { addressService, orderService } from '../../services';
+import { addressService, orderService, api, getErrorMessage } from '../../services';
 import { meService, MissedPayment } from '../../services/me.service';
 import { dropoffByLabel } from '../../services/order.service';
 import {
@@ -1051,16 +1051,18 @@ const RateSeller: React.FC<{
   onRated: (r: { score: number }) => void;
 }> = ({ orderId, rating, onRated }) => {
   const [stars, setStars] = useState(0);
+  // "Was it well packed?" is optional: null until they pick.
+  const [packed, setPacked] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const score = rating?.score ?? stars;
   const send = async () => {
     setBusy(true);
     try {
-      await meService.rate(orderId, stars);
+      await api.post('/me/ratings', { order_id: orderId, score: stars, ...(packed !== null ? { well_packed: packed } : {}) });
       onRated({ score: stars });
       toast('Thanks for rating the seller', 'success');
     } catch (e) {
-      toast(errText(e, "We couldn't save your rating. Try again."));
+      toast(getErrorMessage(e) || "We couldn't save your rating. Try again.");
     } finally {
       setBusy(false);
     }
@@ -1075,7 +1077,35 @@ const RateSeller: React.FC<{
           </Pressable>
         ))}
       </View>
-      {!rating ? <PrimaryButton label={busy ? 'Sending…' : 'Send rating'} onPress={send} disabled={!stars || busy} compact /> : null}
+      {!rating ? (
+        <>
+          <Text style={styles.packedQuestion}>
+            Was it well packed? <Text style={styles.packedOptional}>Optional</Text>
+          </Text>
+          <View style={styles.packedRow}>
+            {([
+              ['Yes', true],
+              ['No', false],
+            ] as const).map(([label, value]) => {
+              const on = packed === value;
+              return (
+                <Pressable
+                  key={label}
+                  onPress={() => setPacked(on ? null : value)}
+                  style={({ pressed }) => [styles.packedChip, on && styles.packedChipOn, pressed && { opacity: 0.75 }]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={`Well packed: ${label}`}
+                  hitSlop={4}
+                >
+                  <Text style={[styles.packedText, on && styles.packedTextOn]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <PrimaryButton label={busy ? 'Sending…' : 'Send rating'} onPress={send} disabled={!stars || busy} compact />
+        </>
+      ) : null}
     </GlassCard>
   );
 };
@@ -1275,6 +1305,13 @@ const styles = StyleSheet.create({
   rate: { padding: 16, marginTop: 12, gap: 12, alignItems: 'center' },
   rateTitle: { color: G.ink, fontSize: 15, fontFamily: fonts.medium },
   stars: { flexDirection: 'row', gap: 8 },
+  packedQuestion: { color: G.slate, fontSize: 14, fontFamily: fonts.medium },
+  packedOptional: { color: G.muted, fontFamily: fonts.regular },
+  packedRow: { flexDirection: 'row', gap: 8 },
+  packedChip: { minWidth: 72, height: 36, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  packedChipOn: { backgroundColor: G.ink },
+  packedText: { color: G.ink, fontSize: 14, fontFamily: fonts.medium },
+  packedTextOn: { color: '#FFFFFF' },
 
 
   /* Sheets */

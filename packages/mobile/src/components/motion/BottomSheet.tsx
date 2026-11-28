@@ -63,7 +63,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ visible, onClose, chil
       </Animated.View>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.holder}
+        style={[styles.holder, { paddingTop: insets.top + 8 }]}
         pointerEvents="box-none"
       >
         <Animated.View
@@ -96,5 +96,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingHorizontal: 20,
     paddingTop: 24,
+    // Never taller than the space under the status bar (a ScrollView inside then scrolls).
+    maxHeight: '100%',
   },
 });

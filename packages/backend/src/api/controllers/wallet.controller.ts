@@ -1,3 +1,4 @@
+import prisma from '../../config/prisma';
 import { Request, Response } from 'express';
 import config from '../../config';
 import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
@@ -246,6 +247,14 @@ export const withdraw = async (req: Request, res: Response) => {
     }
     if (!twoStepEnabled) {
       return refuse(res, 403, 'Turn on 2-step sign-in before your first payout.', 'TWO_STEP_REQUIRED', { missing });
+    }
+    // A recently changed payout account: nothing goes out until the safety pause ends.
+    const paused = await prisma.user.findUnique({ where: { id: userId }, select: { payoutsPausedUntil: true } });
+    if (paused?.payoutsPausedUntil && paused.payoutsPausedUntil > new Date()) {
+      const day = paused.payoutsPausedUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Lagos' });
+      return refuse(res, 403, `Payouts resume on ${day} — your payout account changed recently.`, 'PAYOUTS_PAUSED', {
+        resumes_at: paused.payoutsPausedUntil.toISOString(),
+      });
     }
 
     const amount = Number(req.body.amount);

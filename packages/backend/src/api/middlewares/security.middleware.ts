@@ -157,6 +157,13 @@ export const adminMutationRateLimiter = rateLimit({
   },
 });
 
+/** IMEI / serial checks in the listing flow (it says whether a device is already listed). */
+export const deviceCheckRateLimiter = createScopedRateLimiter(
+  'device_check',
+  60,
+  'Too many number checks. Wait a few minutes and try again.'
+);
+
 /** Image uploads */
 export const uploadRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

@@ -1,4 +1,4 @@
-import { BID_COMMITMENT_AMOUNT } from '@gadget-bidding/shared';
+import { BID_COMMITMENT_AMOUNT, PLATFORM_FEE_TIERS } from '@gadget-bidding/shared';
 import prisma from '../../config/prisma';
 import config from '../../config';
 import {
@@ -51,7 +51,8 @@ export const getQueueCounts = async (adminId?: string) => {
     prisma.order.count({ where: { fulfillmentStatus: 'received_by_backoffice', paymentStatus: 'paid' } }),
     prisma.dispute.count({ where: { status: { in: OPEN_DISPUTE } } }),
     prisma.auction.count({ where: { status: 'active' } }),
-    prisma.order.count({ where: { payoutStatus: 'ready', paymentStatus: 'paid' } }),
+    // 6 pm payouts waiting for our team to send by hand (while live payouts are off).
+    prisma.sellerPayout.count({ where: { status: 'sending', transferCode: null } }),
     adminId ? prisma.notification.count({ where: { userId: adminId, isRead: false } }) : Promise.resolve(0),
     prisma.listingReport.count({ where: { status: 'open' } }),
   ]);
@@ -129,9 +130,9 @@ export const getAttention = async (limit = 50) => {
       },
       take: limit,
     }),
-    prisma.order.aggregate({
-      where: { payoutStatus: 'ready', paymentStatus: 'paid' },
-      _sum: { sellerPayout: true },
+    prisma.sellerPayout.aggregate({
+      where: { status: 'sending', transferCode: null },
+      _sum: { amount: true },
       _count: true,
     }),
     // Paid, but the seller hasn't brought it to the hub yet (overdue ones are picked out below).
@@ -210,10 +211,10 @@ export const getAttention = async (limit = 50) => {
       id: 'payouts-ready',
       kind: 'payouts',
       queue: 'Payouts',
-      title: `${payouts._count} payout${payouts._count === 1 ? '' : 's'} ready`,
-      sub: `${money(toNumber(payouts._sum.sellerPayout))} to release`,
+      title: `${payouts._count} payout${payouts._count === 1 ? '' : 's'} to send`,
+      sub: `${money(toNumber(payouts._sum.amount))} to sellers' banks`,
       due_at: startOfLagosDay(1).toISOString(),
-      route: '/payouts?status=ready',
+      route: '/payouts',
     });
   }
 
@@ -296,7 +297,13 @@ export const getOverview = async (adminId?: string) => {
 /** The rules the apps run on, read from the same constants the backend uses. */
 export const getRules = () => ({
   fees: [
-    { key: 'platform_fee', label: 'Platform fee', value: `${config.platformFeePercentage}% of the winning bid`, note: 'Taken from the seller payout' },
+    {
+      key: 'platform_fee',
+      label: 'Platform fee',
+      value: 'By price band (seller agreement)',
+      note: 'Taken from the seller payout. Orders keep the fee they sold with.',
+      tiers: PLATFORM_FEE_TIERS.map(t => t.label),
+    },
     { key: 'delivery_fee', label: 'Delivery fee', value: money(config.deliveryFee), note: 'Added to the buyer total' },
     { key: 'bid_hold', label: 'Bid commitment', value: money(BID_COMMITMENT_AMOUNT), note: 'Held in the wallet for each auction bid on, until it ends' },
     { key: 'min_increment', label: 'Smallest bid step', value: money(config.minBidIncrement), note: 'Bigger steps apply on pricier items' },

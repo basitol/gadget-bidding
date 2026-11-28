@@ -1,7 +1,8 @@
-import { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import { type Crumb } from '@/components/Breadcrumbs';
 import { Seo } from '@/components/Seo';
+import { PillIndicator, useTabIndicator } from '@/components/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge as ShadcnBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -187,11 +188,15 @@ export function StatusTabs({
   onValueChange: (value: string) => void;
   items: string[];
 }) {
+  const bar = useRef<HTMLDivElement>(null);
+  useTabIndicator(bar, value, 'status-tabs');
   return (
     <div
+      ref={bar}
       role="tablist"
-      className="inline-flex h-14 flex-wrap items-center rounded-2xl bg-muted/80 px-1 py-1.5"
+      className="relative inline-flex h-14 flex-wrap items-center rounded-2xl bg-muted/80 px-1 py-1.5"
     >
+      <PillIndicator className="rounded-xl bg-background shadow-toggle" />
       {items.map(item => {
         const active = value === item;
         return (
@@ -202,10 +207,8 @@ export function StatusTabs({
             aria-selected={active}
             onClick={() => onValueChange(item)}
             className={cn(
-              'mx-1 h-11 shrink-0 rounded-xl px-5 text-sm font-medium capitalize transition-all',
-              active
-                ? 'bg-background text-foreground shadow-toggle'
-                : 'bg-transparent text-muted-foreground hover:text-foreground'
+              'relative mx-1 h-11 shrink-0 rounded-xl px-5 text-sm font-medium capitalize transition-colors duration-150',
+              active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {item}

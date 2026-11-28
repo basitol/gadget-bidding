@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, Check, Circle, Hash, TrendingUp } from 'lucide-react';
 import { adminApi, getStoredUser, sellerApplicationsApi, type ChecklistItem, type Overview, type SellerApplicationRow } from '@/api';
@@ -10,8 +10,9 @@ import { Seo } from '@/components/Seo';
 import { Icon3d, type Icon3dName } from '@/components/shell/Icon3d';
 import { AttentionTable, QueueChip, SectionCard } from '@/components/attention';
 import { SalesChart } from '@/components/SalesChart';
-import { ErrorAlert } from '@/components/shared';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Bone, PageLoadError, SkeletonCard, StatCardSkeleton, usePageStatus } from '@/components/states';
+import { UnderlineIndicator, useTabIndicator } from '@/components/tabs';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -360,6 +361,44 @@ function LaunchChecklist() {
   );
 }
 
+/* ---------------- Loading ---------------- */
+
+/** The overview's shape while its numbers load: greeting card, six stat cards, tabs, the chart card. */
+function OverviewSkeleton() {
+  usePageStatus('Loading');
+  return (
+    <div aria-busy aria-label="Loading the overview" className="flex flex-col gap-4 pb-16">
+      <SkeletonCard className="rounded-[24px] px-6 py-6">
+        <div className="flex gap-2">
+          <Bone className="h-[30px] w-40 rounded-[9px]" />
+          <Bone className="h-[30px] w-32 rounded-[9px]" />
+        </div>
+        <div className="mt-5 flex items-center gap-5">
+          <Bone className="size-16 rounded-[18px]" />
+          <div className="flex flex-1 flex-col gap-2">
+            <Bone className="h-8 w-80 max-w-full" />
+            <Bone className="h-4 w-64 max-w-full" />
+          </div>
+        </div>
+      </SkeletonCard>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }, (_, i) => (
+          <StatCardSkeleton key={i} />
+        ))}
+      </div>
+      <div className="mt-2 flex gap-8 border-b border-line pb-3">
+        <Bone className="h-5 w-20" />
+        <Bone className="h-5 w-24" />
+        <Bone className="h-5 w-20" />
+      </div>
+      <SkeletonCard className="rounded-[24px] p-6">
+        <Bone className="h-5 w-40" />
+        <Bone className="mt-5 h-64 w-full rounded-[16px]" />
+      </SkeletonCard>
+    </div>
+  );
+}
+
 /* ---------------- Page ---------------- */
 
 type Tab = 'overview' | 'verification' | 'payments';
@@ -368,7 +407,11 @@ export function OverviewPage() {
   const user = getStoredUser();
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
+  /** Kept so the error card can show the reference (status code). */
+  const [failure, setFailure] = useState<unknown>(null);
   const [tab, setTab] = useState<Tab>('overview');
+  const tabBar = useRef<HTMLDivElement>(null);
+  useTabIndicator(tabBar, tab);
   const now = useTick();
 
   const load = useCallback(() => {
@@ -377,8 +420,12 @@ export function OverviewPage() {
       .then(r => {
         setData(r.data);
         setError('');
+        setFailure(null);
       })
-      .catch(err => setError(err.message || "Couldn't load the overview"));
+      .catch(err => {
+        setError(err.message || "Couldn't load the overview");
+        setFailure(err);
+      });
   }, []);
 
   useEffect(() => {
@@ -406,6 +453,24 @@ export function OverviewPage() {
   const s = data?.stats;
   const firstName = user?.full_name?.split(/\s+/)[0] || 'there';
 
+  // Nothing loaded yet: the page's shape, or the error if the first load failed.
+  if (!data) {
+    if (!failure) return <OverviewSkeleton />;
+    return (
+      <div className="pb-16 pt-1">
+        <PageLoadError
+          area="OVW"
+          title="We couldn’t load the overview"
+          error={failure}
+          onRetry={() => {
+            setFailure(null);
+            load();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4 pb-16">
       <Seo title="Overview" description="Marketplace overview for the Gadgets Bidding team." path="/" />
@@ -432,7 +497,6 @@ export function OverviewPage() {
         </div>
       </section>
 
-      {error && !data ? <ErrorAlert>{error}</ErrorAlert> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {s ? (
@@ -463,7 +527,8 @@ export function OverviewPage() {
         )}
       </div>
 
-      <div role="tablist" aria-label="Overview sections" className="mt-2 flex gap-8 border-b border-line">
+      <div ref={tabBar} role="tablist" aria-label="Overview sections" className="relative mt-2 flex gap-8 border-b border-line">
+        <UnderlineIndicator />
         {(
           [
             ['overview', 'Overview'],
@@ -478,8 +543,8 @@ export function OverviewPage() {
             aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={cn(
-              '-mb-px border-b-2 pb-3 text-[16px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-blue-brand',
-              tab === key ? 'border-blue-brand text-ink' : 'border-transparent text-hint hover:text-ink'
+              '-mb-px border-b-2 border-transparent pb-3 text-[16px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-blue-brand',
+              tab === key ? 'text-ink' : 'text-hint hover:text-ink'
             )}
           >
             {text}

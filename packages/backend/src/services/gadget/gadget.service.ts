@@ -5,13 +5,23 @@ import {
   CreateGadgetRequest,
   GadgetStatus,
 } from '@gadget-bidding/shared';
-import { normalizeMediaPaths } from '@gadget-bidding/shared';
+import { normalizeMediaPaths, listingDisclosures } from '@gadget-bidding/shared';
 import logger from '../../utils/logger';
 import * as notificationService from '../notification/notification.service';
 import { deleteAssetsByUrl } from '../media/cloudinary.service';
 import fs from 'fs';
 import path from 'path';
 import { sellerCode } from '../buyer/sellerSummary.service';
+
+/**
+ * The full IMEI / serial and its hash are staff-only (admin listing review). Raw `g.*` /
+ * `RETURNING *` rows go through this before they leave the service.
+ */
+export const stripPrivate = <T extends Record<string, any>>(g: T): Omit<T, 'device_identifier' | 'device_identifier_hash'> => {
+  if (!g) return g;
+  const { device_identifier: _id, device_identifier_hash: _hash, ...rest } = g;
+  return rest;
+};
 
 /** A warranty end date only means something for a seller or manufacturer warranty. */
 const cleanSpecifications = <T extends Record<string, unknown> | undefined>(specs: T): T => {
@@ -72,7 +82,7 @@ export const createGadget = async (
       );
     });
 
-  return result[0];
+  return stripPrivate(result[0]) as Gadget;
 };
 
 /**
@@ -89,7 +99,9 @@ export const getGadgetById = async (
     [gadgetId]
   );
 
-  return result.length > 0 ? withSellerCode(result[0]) : null;
+  if (!result.length) return null;
+  const g = withSellerCode(stripPrivate(result[0]));
+  return { ...g, disclosures: listingDisclosures(g.specifications) };
 };
 
 /** Listings show the seller's public code, never the account name. */
@@ -176,7 +188,7 @@ export const getGadgets = async (filters: {
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  const gadgets = (await query(gadgetsQuery, [...params, limit, offset])).map(withSellerCode);
+  const gadgets = (await query(gadgetsQuery, [...params, limit, offset])).map(g => withSellerCode(stripPrivate(g)));
 
   return { gadgets, total };
 };
@@ -318,7 +330,7 @@ export const updateGadget = async (
 
     logger.info(`Gadget updated: ${gadgetId}`);
 
-    return result.rows[0];
+    return stripPrivate(result.rows[0]) as Gadget;
   });
 };
 
@@ -447,7 +459,7 @@ export const approveGadget = async (gadgetId: string): Promise<Gadget> => {
       gadgetId,
     ]);
 
-    return updated.rows[0];
+    return stripPrivate(updated.rows[0]) as Gadget;
   });
 
   logger.info(
@@ -455,8 +467,8 @@ export const approveGadget = async (gadgetId: string): Promise<Gadget> => {
   );
 
   if (gadget.status === 'listed') {
-    notificationService
-      .notifySellerListingLive(gadget.seller_id, gadget.title)
+    import('../seller/sellerAlerts')
+      .then(a => a.notifySellerListingApproved(gadgetId))
       .catch(error => {
         logger.error('Failed to notify seller about live listing:', error);
       });
@@ -485,14 +497,15 @@ export const rejectGadget = async (
   }
 
   logger.info(`Gadget rejected: ${gadgetId}`);
+  const rejected = stripPrivate(result[0]) as Gadget;
 
-  notificationService
-    .notifySellerListingRejected(result[0].seller_id, result[0].title, reason)
+  import('../seller/sellerAlerts')
+    .then(a => a.notifySellerChangesRequested(gadgetId, reason))
     .catch(error => {
       logger.error('Failed to notify seller about rejected listing:', error);
     });
 
-  return result[0];
+  return rejected;
 };
 
 /**

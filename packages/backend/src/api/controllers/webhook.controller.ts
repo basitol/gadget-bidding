@@ -7,6 +7,7 @@ import * as orderService from '../../services/order/order.service';
 import prisma from '../../config/prisma';
 import logger from '../../utils/logger';
 import * as savedCardService from '../../services/buyer/savedCard.service';
+import * as payoutsService from '../../services/seller/payouts.service';
 
 /**
  * Paystack webhook handler
@@ -35,11 +36,9 @@ export const paystackWebhook = async (req: Request, res: Response) => {
         break;
 
       case 'transfer.success':
-        await handleTransferSuccess(event.data);
-        break;
-
       case 'transfer.failed':
-        await handleTransferFailed(event.data);
+      case 'transfer.reversed':
+        await handleTransferEvent(event.event, event.data || {});
         break;
 
       default:
@@ -179,10 +178,28 @@ async function handleChargeSuccess(
   if (gateway === 'paystack') await savedCardService.saveFromGateway(pendingTx.userId, data);
 }
 
-async function handleTransferSuccess(data: Record<string, unknown>) {
-  logger.info(`Transfer successful: ${data.reference}`);
-}
-
-async function handleTransferFailed(data: Record<string, unknown>) {
-  logger.error(`Transfer failed: ${data.reference}`);
+/**
+ * Paystack transfers: the 6 pm seller payouts (PO-… references) and old wallet withdrawals
+ * (po_… references). Both settle once; Paystack's retries and repeats do nothing.
+ */
+async function handleTransferEvent(
+  event: 'transfer.success' | 'transfer.failed' | 'transfer.reversed',
+  data: Record<string, unknown>
+) {
+  const reference = typeof data.reference === 'string' ? data.reference : '';
+  if (!reference) {
+    logger.warn(`Paystack ${event} without a reference`);
+    return;
+  }
+  if (payoutsService.isPayoutReference(reference)) {
+    const r = await payoutsService.settleFromTransferEvent(event, data);
+    logger.info(`Paystack ${event} for payout ${reference}: ${r.settled ? 'settled' : 'already settled or unknown'}`);
+    return;
+  }
+  const outcome = event === 'transfer.success' ? 'success' : event === 'transfer.failed' ? 'failed' : 'reversed';
+  const info: Record<string, string> = {};
+  if (typeof data.transfer_code === 'string') info.transfer_code = data.transfer_code;
+  if (typeof data.gateway_response === 'string') info.gateway_response = data.gateway_response;
+  const r = await walletService.settleWithdrawal(reference, outcome, info);
+  logger.info(`Paystack ${event} for ${reference}: ${r.settled ? 'withdrawal settled' : 'nothing to settle'}`);
 }

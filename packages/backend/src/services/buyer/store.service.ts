@@ -16,27 +16,141 @@ import { createNotification, alreadyNotified } from '../notification/notificatio
 const TOP_SELLER = { minRating: 4.5, minRatings: 10, minSales: 50 };
 const DEFAULT_LOCATION = 'Computer Village, Ikeja';
 
+/** The store's chips. The seller's own Store tab uses this too, so both always agree. */
+export const storeBadges = (
+  seller: { sellerKybStatus: string; cacNumber: string | null },
+  rating: { average: number | null; count: number },
+  sales: number
+) => {
+  const verified = seller.sellerKybStatus === 'approved';
+  return {
+    verified_business: verified,
+    cac_registered: verified && !!seller.cacNumber,
+    top_seller:
+      (rating.average ?? 0) >= TOP_SELLER.minRating && rating.count >= TOP_SELLER.minRatings && sales >= TOP_SELLER.minSales,
+  };
+};
+
 const assertSeller = async (sellerId: string) => {
   const seller = await prisma.user.findUnique({
     where: { id: sellerId },
-    select: { id: true, role: true, sellerKybStatus: true, cacNumber: true, createdAt: true, isActive: true },
+    select: {
+      id: true,
+      role: true,
+      sellerKybStatus: true,
+      cacNumber: true,
+      createdAt: true,
+      isActive: true,
+      storeAbout: true,
+      storeHours: true,
+      storeAway: true,
+    },
   });
   if (!seller || seller.isActive === false) throw new Error('Store not found');
   return seller;
+};
+
+/* ---------------- Opening hours ---------------- */
+
+const HOURS_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+const HOURS_DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+type DayHoursValue = { open: string; close: string } | null;
+
+/** "09:00" → "9:00 am", "18:30" → "6:30 pm" */
+const clock = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
+};
+
+/** [0,1,2,3,4,5] → "Mon–Sat"; [0,2,4] → "Mon, Wed, Fri"; [0,1,2,4] → "Mon–Wed, Fri". */
+const dayRuns = (idx: number[]) => {
+  const parts: string[] = [];
+  let i = 0;
+  while (i < idx.length) {
+    let j = i;
+    while (j + 1 < idx.length && idx[j + 1] === idx[j] + 1) j++;
+    parts.push(
+      j - i >= 2
+        ? `${HOURS_DAY_SHORT[idx[i]]}–${HOURS_DAY_SHORT[idx[j]]}`
+        : idx.slice(i, j + 1).map(d => HOURS_DAY_SHORT[d]).join(', ')
+    );
+    i = j + 1;
+  }
+  return parts.join(', ');
+};
+
+/**
+ * "Open Mon–Sat, 9:00 am–6:00 pm". Days with other hours follow after " · "
+ * ("Open Mon–Fri, 9:00 am–6:00 pm · Sat, 10:00 am–4:00 pm"). null when no hours are set.
+ */
+export const hoursLine = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const v = value as Record<string, DayHoursValue>;
+  const groups = new Map<string, number[]>();
+  HOURS_DAYS.forEach((d, i) => {
+    const h = v[d];
+    if (!h || typeof h.open !== 'string' || typeof h.close !== 'string') return;
+    const key = `${h.open}-${h.close}`;
+    groups.set(key, [...(groups.get(key) ?? []), i]);
+  });
+  if (!groups.size) return 'Closed all week';
+  const parts = [...groups.entries()].map(([key, idx]) => {
+    const [open, close] = key.split('-');
+    return `${dayRuns(idx)}, ${clock(open)}–${clock(close)}`;
+  });
+  return `Open ${parts.join(' · ')}`;
+};
+
+/* ---------------- Reviews (buyer and seller views share this) ---------------- */
+
+export const REVIEW_INCLUDE = { order: { select: { auction: { select: { gadget: { select: { title: true } } } } } } } as const;
+
+type ReviewRow = {
+  id: string;
+  score: number;
+  comment: string | null;
+  raterId: string;
+  wellPacked: boolean | null;
+  sellerReply: string | null;
+  sellerRepliedAt: Date | null;
+  createdAt: Date;
+  order: { auction: { gadget: { title: string } | null } | null } | null;
+};
+
+/** One review. `buyer` is a stand-in ("Buyer •••7"), never a name. */
+export const reviewView = (r: ReviewRow) => ({
+  id: r.id,
+  score: r.score,
+  comment: r.comment,
+  item: r.order?.auction?.gadget?.title ?? null,
+  buyer: bidderLabel(r.raterId).replace('Bidder', 'Buyer'),
+  created_at: r.createdAt.toISOString(),
+  /** "Was it well packed?" (null: not answered). */
+  well_packed: r.wellPacked,
+  /** The seller's public reply. */
+  reply: r.sellerReply ? { text: r.sellerReply, at: (r.sellerRepliedAt ?? r.createdAt).toISOString() } : null,
+});
+
+/** Stars 5 → 1 with how many ratings gave each, over every rating (not just the ones listed). */
+export const ratingBreakdown = async (sellerId: string) => {
+  const groups = await prisma.rating.groupBy({ by: ['score'], where: { rateeId: sellerId }, _count: { _all: true } });
+  return [5, 4, 3, 2, 1].map(score => ({ score, count: groups.find(g => g.score === score)?._count._all ?? 0 }));
 };
 
 export const profile = async (sellerId: string, viewerId?: string) => {
   const seller = await assertSeller(sellerId);
   const [rating, sales, followers, following, firstListing, address, live] = await Promise.all([
     ratingService.summaryFor(sellerId),
-    prisma.order.count({ where: { sellerId, fulfillmentStatus: 'delivered' } }),
+    // Sales: delivered and not refunded (same as the seller's Store tab).
+    prisma.order.count({
+      where: { sellerId, fulfillmentStatus: 'delivered', paymentStatus: 'paid', disputes: { none: { outcome: 'refund' } } },
+    }),
     prisma.follow.count({ where: { sellerId } }),
     viewerId ? prisma.follow.count({ where: { sellerId, followerId: viewerId } }) : Promise.resolve(0),
     prisma.auction.findFirst({ where: { sellerId }, orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
     prisma.userAddress.findFirst({ where: { userId: sellerId }, orderBy: { isDefault: 'desc' }, select: { city: true, state: true } }),
     prisma.auction.count({ where: { sellerId, status: 'active', endTime: { gt: new Date() } } }),
   ]);
-  const verified = seller.sellerKybStatus === 'approved';
   const since = firstListing?.createdAt ?? seller.createdAt ?? new Date();
 
   return {
@@ -44,15 +158,15 @@ export const profile = async (sellerId: string, viewerId?: string) => {
     code: sellerCode(sellerId),
     location: address?.city ? `${address.city}${address.state ? `, ${address.state}` : ''}` : DEFAULT_LOCATION,
     selling_since: since.toISOString(),
-    badges: {
-      verified_business: verified,
-      cac_registered: verified && !!seller.cacNumber,
-      top_seller:
-        (rating.average ?? 0) >= TOP_SELLER.minRating &&
-        rating.count >= TOP_SELLER.minRatings &&
-        sales >= TOP_SELLER.minSales,
-    },
+    badges: storeBadges(seller, rating, sales),
     stats: { sales, rating: rating.average, rating_count: rating.count, followers },
+    /** What the seller wrote, and opening hours { mon..sun: { open, close } | null } (null: not set). */
+    about: seller.storeAbout ?? null,
+    hours: (seller.storeHours as Record<string, { open: string; close: string } | null> | null) ?? null,
+    /** "Open Mon–Sat, 9:00 am–6:00 pm" (null: not set). */
+    hours_line: hoursLine(seller.storeHours),
+    /** The seller is away: new listings are paused; live auctions still run. */
+    away: seller.storeAway,
     live_count: live,
     following: following > 0,
     is_me: viewerId === sellerId,
@@ -72,26 +186,21 @@ export const liveAuctions = async (sellerId: string) => {
 
 export const reviews = async (sellerId: string) => {
   await assertSeller(sellerId);
-  const rows = await prisma.rating.findMany({
-    where: { rateeId: sellerId },
-    orderBy: { createdAt: 'desc' },
-    take: 50,
-    include: { order: { select: { auction: { select: { gadget: { select: { title: true } } } } } } },
-  });
-  const summary = await ratingService.summaryFor(sellerId);
-  const breakdown = [5, 4, 3, 2, 1].map(score => ({ score, count: rows.filter(r => r.score === score).length }));
+  const [rows, summary, breakdown] = await Promise.all([
+    prisma.rating.findMany({
+      where: { rateeId: sellerId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: REVIEW_INCLUDE,
+    }),
+    ratingService.summaryFor(sellerId),
+    ratingBreakdown(sellerId),
+  ]);
   return {
     average: summary.average,
     count: summary.count,
     breakdown,
-    reviews: rows.map(r => ({
-      id: r.id,
-      score: r.score,
-      comment: r.comment,
-      item: r.order?.auction?.gadget?.title ?? null,
-      buyer: bidderLabel(r.raterId).replace('Bidder', 'Buyer'),
-      created_at: r.createdAt.toISOString(),
-    })),
+    reviews: rows.map(reviewView),
   };
 };
 

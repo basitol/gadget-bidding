@@ -8,6 +8,8 @@ import * as savedSearchService from '../services/buyer/savedSearch.service';
 import * as storeService from '../services/buyer/store.service';
 import * as buyerAlerts from '../services/notification/buyerAlerts';
 import { isMaintenanceActive } from '../services/app/appConfig.service';
+import { liftExpiredRestrictions } from '../services/admin/people.service';
+import * as payoutsService from '../services/seller/payouts.service';
 
 let auctionJobInterval: NodeJS.Timeout | null = null;
 
@@ -64,14 +66,7 @@ const processExpiredAuctions = async (): Promise<void> => {
 
             // Notify seller
             if (sellerId) {
-              await notificationService.notifySellerAuctionEnded(
-                sellerId,
-                auction.id,
-                gadgetTitle,
-                result.finalPrice,
-                result.winnerId,
-                order.order_number
-              );
+              await import('../services/seller/sellerAlerts').then(a => a.notifySellerAuctionEnded(auction.id, true));
             }
 
             // Notify other bidders they lost
@@ -101,13 +96,7 @@ const processExpiredAuctions = async (): Promise<void> => {
         } else {
           // Notify seller auction ended without winner
           if (sellerId) {
-            await notificationService.notifySellerAuctionEnded(
-              sellerId,
-              auction.id,
-              gadgetTitle,
-              0,
-              null
-            );
+            await import('../services/seller/sellerAlerts').then(a => a.notifySellerAuctionEnded(auction.id, false));
           }
           // Bidders and watchers: nobody won, nothing was charged.
           const people = await query(
@@ -303,6 +292,23 @@ const notifySavedSearchMatches = async (): Promise<void> => {
 };
 
 /**
+ * Seller payouts at 6:00 pm Lagos: one per seller for the orders ready by then. Runs every tick;
+ * only does something once a run is due (and catches up if the server was down at 6 pm).
+ */
+const runSellerPayouts = async (): Promise<void> => {
+  try {
+    const result = await payoutsService.runDuePayouts();
+    if (result?.created.length) {
+      // Sellers whose payout account changed recently are skipped (skipped.paused); their orders stay ready.
+      const paused = result.skipped.paused ? `, ${result.skipped.paused} paused after an account change` : '';
+      logger.info(`Seller payouts for ${result.slot}: ${result.created.length} made, ${result.sent} sent to Paystack${paused}`);
+    }
+  } catch (error) {
+    logger.error('Seller payout run failed:', error);
+  }
+};
+
+/**
  * Start auction processing job
  * Runs every 30 seconds
  */
@@ -331,6 +337,9 @@ export const startAuctionJob = (): void => {
     await notifySavedSearchMatches();
     await storeService.notifyFollowersOfNewListings().catch(err => logger.error('Store follower alerts failed:', err));
     await buyerAlerts.remindConfirmDelivery().catch(err => logger.error('Confirm-delivery reminders failed:', err));
+    await runSellerPayouts();
+    // Suspensions and listing pauses that ran their 7 or 30 days end by themselves.
+    await liftExpiredRestrictions().catch(err => logger.error('Lifting expired restrictions failed:', err));
   }, 30000); // 30 seconds
 
   logger.info('Auction processing job started');

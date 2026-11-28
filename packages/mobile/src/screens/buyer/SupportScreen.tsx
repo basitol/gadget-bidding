@@ -23,7 +23,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useToastStore } from '../../store/toastStore';
 
 /**
- * Buyer chat with the Gadgets Bidding team. Opened from Profile › Help centre, or from an
+ * Chat with the Gadgets Bidding team (buyer and seller apps). Opened from Profile › Help centre, or from an
  * order's "Get help" (route params orderId + orderNumber), which shows the order on top and
  * starts the message with "About order GB-…".
  */
@@ -200,7 +200,12 @@ export const SupportScreen: React.FC<{ navigation: any; route: any }> = ({ navig
           <PrimaryButton label="Try again" onPress={load} style={styles.retry} />
         </View>
       ) : (
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          // It sits under GlassScreen's top safe-area padding; without this the composer ends up under the keyboard.
+          keyboardVerticalOffset={insets.top}
+        >
           {order ? (
             <GlassCard style={styles.order}>
               <View style={styles.orderTile}>
@@ -274,18 +279,23 @@ export const SupportScreen: React.FC<{ navigation: any; route: any }> = ({ navig
   );
 };
 
-const EmptyChat: React.FC = () => (
-  <View style={styles.empty}>
-    <View style={styles.emptyTile}>
-      <Ionicons name="chatbubbles-outline" size={26} color={SUPPORT_TEAL.fg} />
+const EmptyChat: React.FC = () => {
+  // The seller app opens this chat too (payouts, store help, the application).
+  const seller = useAuthStore(s => s.user?.role === 'seller');
+  return (
+    <View style={styles.empty}>
+      <View style={styles.emptyTile}>
+        <Ionicons name="chatbubbles-outline" size={26} color={SUPPORT_TEAL.fg} />
+      </View>
+      <Text style={styles.centerTitle}>How can we help?</Text>
+      <Text style={styles.centerSub}>
+        {seller
+          ? 'Ask about listings, payouts, the hub or a case. Someone from our team replies here, usually within a day.'
+          : 'Ask about bidding, paying, delivery or a problem with an order. Someone from our team replies here, usually within a day.'}
+      </Text>
     </View>
-    <Text style={styles.centerTitle}>How can we help?</Text>
-    <Text style={styles.centerSub}>
-      Ask about bidding, paying, delivery or a problem with an order. Someone from our team replies here, usually
-      within a day.
-    </Text>
-  </View>
-);
+  );
+};
 
 const Bubble: React.FC<{ m: SupportMessage; mine: boolean }> = ({ m, mine }) => (
   <View style={[styles.bubbleRow, mine ? styles.rowMine : styles.rowTheirs]}>

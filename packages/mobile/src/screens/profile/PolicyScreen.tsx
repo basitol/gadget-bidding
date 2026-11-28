@@ -12,7 +12,7 @@ import {
   BID_COMMITMENT_AMOUNT,
   BID_DEFAULT_PENALTY_AMOUNT,
   BID_PAYMENT_DEADLINE_HOURS,
-  PLATFORM_FEE_PERCENTAGE,
+  PLATFORM_FEE_TIERS,
 } from '@gadget-bidding/shared';
 import { useTheme } from '../../hooks';
 import { ThemeColors, fonts, spacing, borderRadius } from '../../constants';
@@ -41,7 +41,7 @@ const POLICY_SECTIONS = [
   },
   {
     title: 'Seller fees',
-    body: `Sellers are charged a ${PLATFORM_FEE_PERCENTAGE}% platform fee on successful sales. The app shows estimated payout before a seller lists an auction.`,
+    body: `Sellers pay a platform fee only on successful sales, by sale price: ${PLATFORM_FEE_TIERS.map(t => t.label).join('; ')}. The app shows the estimated payout before a seller lists an auction.`,
   },
   {
     title: 'Backoffice delivery',

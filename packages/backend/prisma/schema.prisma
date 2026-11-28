@@ -45,8 +45,20 @@ model User {
   payoutAccountNumber      String?   @map("payout_account_number") @db.VarChar(20)
   payoutAccountName        String?   @map("payout_account_name") @db.VarChar(255)
   payoutAccountAddedAt     DateTime? @map("payout_account_added_at") @db.Timestamp(6)
+  /// Store page "About" the seller writes.
+  storeAbout               String?   @map("store_about") @db.VarChar(500)
+  /// Opening hours: { mon..sun: { open: "09:00", close: "18:00" } | null }
+  storeHours               Json?     @map("store_hours")
+  /// "I'm away": no new listings while on.
+  storeAway                Boolean   @default(false) @map("store_away")
+  /// The seller closed their store.
+  storeClosedAt            DateTime? @map("store_closed_at") @db.Timestamp(6)
+  /// Payouts wait until this time after the payout account changed.
+  payoutsPausedUntil       DateTime? @map("payouts_paused_until") @db.Timestamp(6)
   /// After 3 missed payments, bidding pauses until this time (the account stays usable).
   biddingPausedUntil       DateTime? @map("bidding_paused_until") @db.Timestamp(6)
+  /// Updated at most every few minutes while they use the app ("Last active" for the team).
+  lastActiveAt             DateTime? @map("last_active_at") @db.Timestamp(6)
   /// Last username change (usernames can change once every 30 days).
   usernameChangedAt        DateTime? @map("username_changed_at") @db.Timestamp(6)
   /// Account deleted by the user: personal data anonymised, row kept for order history.
@@ -59,41 +71,55 @@ model User {
   updatedAt                DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  wallet              Wallet?
-  gadgets             Gadget[]
-  sellerAuctions      Auction[]            @relation("SellerAuctions")
-  wonAuctions         Auction[]            @relation("WonAuctions")
-  bids                Bid[]
-  buyerOrders         Order[]              @relation("BuyerOrders")
-  sellerOrders        Order[]              @relation("SellerOrders")
-  raisedDisputes      Dispute[]            @relation("RaisedDisputes")
-  disputeMessages     DisputeMessage[]     @relation("DisputeMessages")
-  resolvedDisputes    Dispute[]            @relation("ResolvedDisputes")
-  notifications       Notification[]
-  refreshTokens       RefreshToken[]
-  verifications       UserVerification[]
-  missedPayments      MissedPayment[]
-  paymentTransactions PaymentTransaction[]
-  auditLogs           AuditLog[]
-  riskFlags           UserRiskFlag[]
-  supportThreads      SupportThread[]      @relation("UserSupportThreads")
-  supportMessages     SupportMessage[]
-  addresses           UserAddress[]
-  socialAccounts      SocialAccount[]
-  pushTokens          PushToken[]
-  watchlist           Watch[]
-  autoBids            AutoBid[]
-  savedSearches       SavedSearch[]
-  savedCards          SavedCard[]
-  ratingsGiven        Rating[]             @relation("RatingsGiven")
-  ratingsReceived     Rating[]             @relation("RatingsReceived")
-  following           Follow[]             @relation("Following")
-  followers           Follow[]             @relation("Followers")
-  dataRequests        DataRequest[]
-  helpFeedback        HelpFeedback[]
-  sellerApplication   SellerApplication?   @relation("SellerApplication")
-  reviewedSellerApps  SellerApplication[]  @relation("SellerApplicationReviews")
-  trustedDevices      TrustedDevice[]
+  wallet                Wallet?
+  gadgets               Gadget[]
+  sellerAuctions        Auction[]            @relation("SellerAuctions")
+  wonAuctions           Auction[]            @relation("WonAuctions")
+  bids                  Bid[]
+  buyerOrders           Order[]              @relation("BuyerOrders")
+  sellerOrders          Order[]              @relation("SellerOrders")
+  raisedDisputes        Dispute[]            @relation("RaisedDisputes")
+  disputeMessages       DisputeMessage[]     @relation("DisputeMessages")
+  resolvedDisputes      Dispute[]            @relation("ResolvedDisputes")
+  notifications         Notification[]
+  refreshTokens         RefreshToken[]
+  verifications         UserVerification[]
+  missedPayments        MissedPayment[]
+  paymentTransactions   PaymentTransaction[]
+  auditLogs             AuditLog[]
+  riskFlags             UserRiskFlag[]
+  supportThreads        SupportThread[]      @relation("UserSupportThreads")
+  supportMessages       SupportMessage[]
+  addresses             UserAddress[]
+  socialAccounts        SocialAccount[]
+  pushTokens            PushToken[]
+  watchlist             Watch[]
+  autoBids              AutoBid[]
+  savedSearches         SavedSearch[]
+  savedCards            SavedCard[]
+  ratingsGiven          Rating[]             @relation("RatingsGiven")
+  ratingsReceived       Rating[]             @relation("RatingsReceived")
+  following             Follow[]             @relation("Following")
+  followers             Follow[]             @relation("Followers")
+  dataRequests          DataRequest[]
+  helpFeedback          HelpFeedback[]
+  sellerApplication     SellerApplication?   @relation("SellerApplication")
+  reviewedSellerApps    SellerApplication[]  @relation("SellerApplicationReviews")
+  trustedDevices        TrustedDevice[]
+  sellerPayouts         SellerPayout[]       @relation("SellerPayouts")
+  markedPayouts         SellerPayout[]       @relation("PayoutMarkedBy")
+  storeStaff            StoreStaff[]         @relation("StoreStaffSeller")
+  /// Set when this is a store staff account (role "staff").
+  staffOf               StoreStaff?          @relation("StoreStaffAccount")
+  restrictions          AccountRestriction[] @relation("RestrictedUser")
+  restrictionsAsked     AccountRestriction[] @relation("RestrictionRequester")
+  restrictionsToApprove AccountRestriction[] @relation("RestrictionApprover")
+  restrictionsLifted    AccountRestriction[] @relation("RestrictionLifter")
+  notesAbout            UserNote[]           @relation("NoteSubject")
+  notesWritten          UserNote[]           @relation("NoteAuthor")
+  deviceModelsAdded     DeviceModel[]        @relation("DeviceModelsAdded")
+
+  sellerCharges SellerCharge[]
 
   @@index([phoneNumber], map: "idx_users_phone")
   @@index([role], map: "idx_users_role")
@@ -189,6 +215,14 @@ model Gadget {
   auctionBidIncrement  Decimal?  @map("auction_bid_increment") @db.Decimal(15, 2)
   auctionDurationHours Int?      @map("auction_duration_hours")
   auctionStartNow      Boolean?  @default(true) @map("auction_start_now")
+  /// Full IMEI / serial from the listing flow. Staff only: omitted from every query by default
+  /// (config/prisma.ts) and stripped from raw SQL rows (gadget.service). Buyers see
+  /// specifications.identifier_masked.
+  deviceIdentifier     String?   @map("device_identifier") @db.VarChar(40)
+  /// sha256 of the normalised identifier, to spot the same device on another listing or sale.
+  deviceIdentifierHash String?   @map("device_identifier_hash") @db.VarChar(64)
+  /// "This item is mine to sell, and the details are true."
+  sellerAttestedAt     DateTime? @map("seller_attested_at") @db.Timestamp(6)
   createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt            DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
@@ -197,6 +231,7 @@ model Gadget {
   category GadgetCategory? @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   auctions Auction[]
 
+  @@index([deviceIdentifierHash], map: "idx_gadgets_device_identifier_hash")
   @@index([categoryId], map: "idx_gadgets_category")
   @@index([sellerId, status], map: "idx_gadgets_seller")
   @@index([status], map: "idx_gadgets_status")
@@ -219,6 +254,8 @@ model Auction {
   status            String?   @default("scheduled") @db.VarChar(20)
   winnerId          String?   @map("winner_id") @db.Uuid
   totalBids         Int?      @default(0) @map("total_bids")
+  /// Opened by someone other than the seller (Sales insights).
+  viewCount         Int       @default(0) @map("view_count")
   autoExtendEnabled Boolean?  @default(true) @map("auto_extend_enabled")
   autoExtendMinutes Int?      @default(5) @map("auto_extend_minutes")
   createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
@@ -232,6 +269,8 @@ model Auction {
   order    Order?
   watchers Watch[]
   autoBids AutoBid[]
+
+  viewDays AuctionViewDay[]
 
   @@index([sellerId], map: "idx_auctions_seller")
   @@index([status, startTime, endTime], map: "idx_auctions_status")
@@ -295,6 +334,8 @@ model Order {
   payoutStatus      String?   @default("pending") @map("payout_status") @db.VarChar(20)
   payoutPaidAt      DateTime? @map("payout_paid_at") @db.Timestamp(6)
   payoutReference   String?   @map("payout_reference") @db.VarChar(100)
+  /// The 6 pm payout this order went out in.
+  payoutBatchId     String?   @map("payout_batch_id") @db.Uuid
   paymentStatus     String?   @default("pending") @map("payment_status") @db.VarChar(20)
   fulfillmentStatus String?   @default("pending") @map("fulfillment_status") @db.VarChar(50)
   shippingAddress   Json?     @map("shipping_address")
@@ -312,14 +353,18 @@ model Order {
   updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  auction  Auction?  @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  buyer    User?     @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  seller   User?     @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  auction        Auction?        @relation(fields: [auctionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  buyer          User?           @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  seller         User?           @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   supportThreads SupportThread[]
-  disputes Dispute[]
-  ratings  Rating[]
-  events   OrderEvent[]
+  disputes       Dispute[]
+  ratings        Rating[]
+  events         OrderEvent[]
   missedPayments MissedPayment[]
+
+  payoutBatch SellerPayout? @relation(fields: [payoutBatchId], references: [id], onDelete: SetNull)
+
+  charges SellerCharge[]
 
   @@index([buyerId, paymentStatus], map: "idx_orders_buyer")
   @@index([orderNumber], map: "idx_orders_order_number")
@@ -367,36 +412,47 @@ model OrderEvent {
 }
 
 model Dispute {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orderId     String?   @map("order_id") @db.Uuid
-  raisedBy    String?   @map("raised_by") @db.Uuid
-  disputeType String    @map("dispute_type") @db.VarChar(50)
-  description String
-  evidence    Json?
-  status      String?   @default("open") @db.VarChar(20)
-  resolution  String?
-  resolvedBy  String?   @map("resolved_by") @db.Uuid
-  resolvedAt  DateTime? @map("resolved_at") @db.Timestamp(6)
+  id                            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId                       String?   @map("order_id") @db.Uuid
+  raisedBy                      String?   @map("raised_by") @db.Uuid
+  disputeType                   String    @map("dispute_type") @db.VarChar(50)
+  description                   String
+  evidence                      Json?
+  status                        String?   @default("open") @db.VarChar(20)
+  resolution                    String?
+  resolvedBy                    String?   @map("resolved_by") @db.Uuid
+  resolvedAt                    DateTime? @map("resolved_at") @db.Timestamp(6)
   /// Short number buyers quote: D-119.
-  caseNumber  Int       @unique @default(autoincrement()) @map("case_number")
+  caseNumber                    Int       @unique @default(autoincrement()) @map("case_number")
   /// 'refund' or 'not_upheld'
-  outcome     String?   @db.VarChar(20)
+  outcome                       String?   @db.VarChar(20)
   /// What our team found, shown to the buyer with the decision.
-  findings    String?
+  findings                      String?
   /// What happens next, set by our team and shown to the buyer ("Hub re-test tomorrow").
-  nextStep    String?   @map("next_step") @db.VarChar(120)
-  decidedAt   DateTime? @map("decided_at") @db.Timestamp(6)
+  nextStep                      String?   @map("next_step") @db.VarChar(120)
+  decidedAt                     DateTime? @map("decided_at") @db.Timestamp(6)
   /// The buyer can ask for one second review after a "not upheld" decision.
-  secondReviewRequestedAt DateTime? @map("second_review_requested_at") @db.Timestamp(6)
-  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+  secondReviewRequestedAt       DateTime? @map("second_review_requested_at") @db.Timestamp(6)
+  /// What the hub found: [{ label, value }] rows the team writes; the seller and buyer see them.
+  hubFindings                   Json?     @map("hub_findings")
+  /// The seller's side: 'matched' (it matched my listing) | 'partly' (partly right).
+  sellerPosition                String?   @map("seller_position") @db.VarChar(20)
+  sellerRepliedAt               DateTime? @map("seller_replied_at") @db.Timestamp(6)
+  /// The seller accepted the return and refund.
+  sellerAcceptedAt              DateTime? @map("seller_accepted_at") @db.Timestamp(6)
+  /// The seller can ask for one second review after a refund decision.
+  sellerSecondReviewRequestedAt DateTime? @map("seller_second_review_requested_at") @db.Timestamp(6)
+  createdAt                     DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt                     DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   // Relations
-  order    Order? @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  raiser   User?  @relation("RaisedDisputes", fields: [raisedBy], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  resolver User?  @relation("ResolvedDisputes", fields: [resolvedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order    Order?           @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  raiser   User?            @relation("RaisedDisputes", fields: [raisedBy], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  resolver User?            @relation("ResolvedDisputes", fields: [resolvedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
   messages DisputeMessage[]
   return   DisputeReturn?
+
+  charges SellerCharge[]
 
   @@index([orderId], map: "idx_disputes_order")
   @@index([raisedBy], map: "idx_disputes_raised_by")
@@ -423,21 +479,25 @@ model DisputeMessage {
 
 /// The item going back to the hub after a refund decision.
 model DisputeReturn {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  disputeId         String    @unique @map("dispute_id") @db.Uuid
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  disputeId            String    @unique @map("dispute_id") @db.Uuid
   /// 'dropoff' or 'pickup'
-  method            String    @db.VarChar(10)
-  returnCode        String    @unique @map("return_code") @db.VarChar(12)
+  method               String    @db.VarChar(10)
+  returnCode           String    @unique @map("return_code") @db.VarChar(12)
   /// 'started' → 'received' → 'refunded'
-  status            String    @default("started") @db.VarChar(10)
-  pickupAddress     Json?     @map("pickup_address")
-  dueAt             DateTime  @map("due_at") @db.Timestamp(6)
-  startedAt         DateTime  @default(now()) @map("started_at") @db.Timestamp(6)
-  receivedAt        DateTime? @map("received_at") @db.Timestamp(6)
-  refundedAt        DateTime? @map("refunded_at") @db.Timestamp(6)
+  status               String    @default("started") @db.VarChar(10)
+  pickupAddress        Json?     @map("pickup_address")
+  dueAt                DateTime  @map("due_at") @db.Timestamp(6)
+  startedAt            DateTime  @default(now()) @map("started_at") @db.Timestamp(6)
+  receivedAt           DateTime? @map("received_at") @db.Timestamp(6)
+  refundedAt           DateTime? @map("refunded_at") @db.Timestamp(6)
   /// 'card' or 'wallet'
-  refundDestination String?   @map("refund_destination") @db.VarChar(10)
-  refundReference   String?   @map("refund_reference") @db.VarChar(100)
+  refundDestination    String?   @map("refund_destination") @db.VarChar(10)
+  refundReference      String?   @map("refund_reference") @db.VarChar(100)
+  /// Getting the item back to the seller: 'collect' (from the hub) | 'deliver' (rider to the shop).
+  sellerReturnMethod   String?   @map("seller_return_method") @db.VarChar(10)
+  sellerReturnChosenAt DateTime? @map("seller_return_chosen_at") @db.Timestamp(6)
+  returnedToSellerAt   DateTime? @map("returned_to_seller_at") @db.Timestamp(6)
 
   dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -724,13 +784,18 @@ model SavedCard {
 
 /// After delivery, buyer and seller rate each other (1–5) once per order.
 model Rating {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orderId   String   @map("order_id") @db.Uuid
-  raterId   String   @map("rater_id") @db.Uuid
-  rateeId   String   @map("ratee_id") @db.Uuid
-  score     Int      @db.SmallInt
-  comment   String?  @db.VarChar(500)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId         String    @map("order_id") @db.Uuid
+  raterId         String    @map("rater_id") @db.Uuid
+  rateeId         String    @map("ratee_id") @db.Uuid
+  score           Int       @db.SmallInt
+  comment         String?   @db.VarChar(500)
+  /// "Was it well packed?" from the buyer (null = not answered).
+  wellPacked      Boolean?  @map("well_packed")
+  /// The seller's public reply.
+  sellerReply     String?   @map("seller_reply") @db.VarChar(500)
+  sellerRepliedAt DateTime? @map("seller_replied_at") @db.Timestamp(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   rater User  @relation("RatingsGiven", fields: [raterId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -907,4 +972,173 @@ model TrustedDevice {
 
   @@unique([userId, deviceHash])
   @@map("trusted_devices")
+}
+
+/// One day's payout to a seller's bank (the orders ready at 6 pm Lagos, sent as one transfer).
+model SellerPayout {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId      String    @map("seller_id") @db.Uuid
+  amount        Decimal   @db.Decimal(15, 2)
+  /// Charges taken off this payout (amount is after charges).
+  chargesTotal  Decimal   @default(0) @map("charges_total") @db.Decimal(15, 2)
+  orderCount    Int       @default(0) @map("order_count")
+  /// sending (transfer started, or waiting for our team to send it by hand) → paid | failed
+  status        String    @default("sending") @db.VarChar(20)
+  scheduledFor  DateTime  @map("scheduled_for") @db.Timestamp(6)
+  reference     String    @unique @db.VarChar(100)
+  transferCode  String?   @map("transfer_code") @db.VarChar(100)
+  bankName      String?   @map("bank_name") @db.VarChar(100)
+  accountLast4  String?   @map("account_last4") @db.VarChar(4)
+  accountName   String?   @map("account_name") @db.VarChar(255)
+  paidAt        DateTime? @map("paid_at") @db.Timestamp(6)
+  failureReason String?   @map("failure_reason") @db.VarChar(500)
+  markedById    String?   @map("marked_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  seller   User    @relation("SellerPayouts", fields: [sellerId], references: [id], onDelete: Cascade)
+  markedBy User?   @relation("PayoutMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  orders   Order[]
+
+  charges SellerCharge[]
+
+  @@index([sellerId, createdAt], map: "idx_seller_payouts_seller")
+  @@index([status], map: "idx_seller_payouts_status")
+  @@map("seller_payouts")
+}
+
+/// Someone who can drop off and collect at the hub for a store.
+model StoreStaff {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId     String    @map("seller_id") @db.Uuid
+  fullName     String    @map("full_name") @db.VarChar(255)
+  phone        String    @db.VarChar(15)
+  /// What they sign in with (lowercase). Null only on rows added before staff could sign in.
+  email        String?   @unique @db.VarChar(255)
+  /// Their staff account, once they've joined from the invite. Null = invite not accepted yet.
+  userId       String?   @unique @map("user_id") @db.Uuid
+  joinedAt     DateTime? @map("joined_at") @db.Timestamp(6)
+  inviteSentAt DateTime? @map("invite_sent_at") @db.Timestamp(6)
+  /// The ID they show at the hub: nin_slip | drivers_licence | passport | voters_card
+  idType       String?   @map("id_type") @db.VarChar(30)
+  /// Code we text them; hub staff check it at drop-off and collection.
+  pickupCode   String?   @map("pickup_code") @db.VarChar(10)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  seller User  @relation("StoreStaffSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  user   User? @relation("StoreStaffAccount", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([sellerId], map: "idx_store_staff_seller")
+  @@map("store_staff")
+}
+
+/// A model the "List a gadget" search offers (step 1). Our team adds new ones from the admin.
+/// Name is unique ignoring case (expression index device_models_name_key in the migration).
+model DeviceModel {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(120)
+  brand       String   @db.VarChar(60)
+  /// A DEVICE_PROFILES key (shared/src/deviceProfiles.ts).
+  profileKey  String   @map("profile_key") @db.VarChar(40)
+  /// A LISTING_CATEGORIES key.
+  categoryKey String   @map("category_key") @db.VarChar(40)
+  aliases     String[] @default([])
+  /// Order shown when the search box is empty (lower first).
+  sortRank    Int      @default(100) @map("sort_rank")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  addedBy     String?  @map("added_by") @db.Uuid
+
+  addedByUser User? @relation("DeviceModelsAdded", fields: [addedBy], references: [id], onDelete: SetNull)
+
+  @@index([categoryKey, isActive], map: "idx_device_models_category")
+  @@map("device_models")
+}
+
+/// Listing views per day (Sales insights compares periods).
+model AuctionViewDay {
+  auctionId String   @map("auction_id") @db.Uuid
+  day       DateTime @db.Date
+  views     Int      @default(0)
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@id([auctionId, day])
+  @@map("auction_view_days")
+}
+
+/// Taken off a seller's next payout (e.g. a rider bringing a returned item to the shop).
+model SellerCharge {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sellerId  String    @map("seller_id") @db.Uuid
+  amount    Decimal   @db.Decimal(15, 2)
+  reason    String    @db.VarChar(200)
+  orderId   String?   @map("order_id") @db.Uuid
+  disputeId String?   @map("dispute_id") @db.Uuid
+  /// pending → applied (taken off a payout) | waived
+  status    String    @default("pending") @db.VarChar(20)
+  payoutId  String?   @map("payout_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  appliedAt DateTime? @map("applied_at") @db.Timestamp(6)
+
+  seller  User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  order   Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  dispute Dispute?      @relation(fields: [disputeId], references: [id], onDelete: SetNull)
+  payout  SellerPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@unique([disputeId, reason], map: "seller_charges_dispute_reason_key")
+  @@index([sellerId, status], map: "idx_seller_charges_seller")
+  @@map("seller_charges")
+}
+
+/// Users › Suspend a buyer, pause a seller's listings, restore them. One pending or active per person.
+model AccountRestriction {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  /// suspend | pause_listings
+  kind        String    @db.VarChar(20)
+  reason      String    @db.VarChar(30)
+  note        String?   @db.VarChar(500)
+  /// null = permanent (suspend) or until fixed (pause)
+  until       DateTime? @db.Timestamp(6)
+  closeStore  Boolean   @default(false) @map("close_store")
+  /// pending (waiting for a second admin) → active → lifted | declined
+  status      String    @default("active") @db.VarChar(20)
+  requestedBy String?   @map("requested_by") @db.Uuid
+  approverId  String?   @map("approver_id") @db.Uuid
+  appliedAt   DateTime? @map("applied_at") @db.Timestamp(6)
+  /// { auctions: [{ id, status, remaining_ms }] } — what was paused, to give the time back.
+  meta        Json?
+  liftedAt    DateTime? @map("lifted_at") @db.Timestamp(6)
+  liftedBy    String?   @map("lifted_by") @db.Uuid
+  /// served | mistake | appeal | expired
+  liftReason  String?   @map("lift_reason") @db.VarChar(20)
+  liftNote    String?   @map("lift_note") @db.VarChar(500)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user      User  @relation("RestrictedUser", fields: [userId], references: [id], onDelete: Cascade)
+  requester User? @relation("RestrictionRequester", fields: [requestedBy], references: [id], onDelete: SetNull)
+  approver  User? @relation("RestrictionApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  lifter    User? @relation("RestrictionLifter", fields: [liftedBy], references: [id], onDelete: SetNull)
+
+  @@index([userId, status], map: "idx_account_restrictions_user")
+  @@index([status, until], map: "idx_account_restrictions_until")
+  @@map("account_restrictions")
+}
+
+/// Notes the team keeps on a person (Users › Notes).
+model UserNote {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  authorId  String?  @map("author_id") @db.Uuid
+  /// note | suspend | pause | restore
+  kind      String   @default("note") @db.VarChar(20)
+  body      String   @db.VarChar(1000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user   User  @relation("NoteSubject", fields: [userId], references: [id], onDelete: Cascade)
+  author User? @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_user_notes_user")
+  @@map("user_notes")
 }

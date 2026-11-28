@@ -12,6 +12,9 @@ import * as supportService from '../../services/support/support.service';
 import * as riskService from '../../services/risk/risk.service';
 import * as overviewService from '../../services/admin/overview.service';
 import * as auditService from '../../services/audit/audit.service';
+import * as listingService from '../../services/gadget/listing.service';
+import { getListingForReview } from '../../services/admin/listingReview.service';
+import { profileByKey } from '@gadget-bidding/shared';
 
 const toNumber = (value: unknown): number => {
   if (value == null) return 0;
@@ -317,6 +320,8 @@ export const getGadgets = async (req: Request, res: Response) => {
             ],
           },
         },
+        // A full IMEI / serial finds the listing by its hash.
+        ...listingService.identifierSearchHashes(search).map(h => ({ deviceIdentifierHash: h })),
       ];
     }
 
@@ -341,16 +346,24 @@ export const getGadgets = async (req: Request, res: Response) => {
       }),
       prisma.gadget.count({ where }),
     ]);
+    const duplicates = await listingService.duplicateFlags(gadgets.map(g => g.id));
 
     sendPaginated(
       res,
       gadgets.map(g => ({
         id: g.id,
+        // Listing flow: open the full review (GET /admin/gadgets/:id).
+        profile: (g.specifications as any)?.profile ?? null,
+        profile_label: profileByKey((g.specifications as any)?.profile)?.label ?? null,
+        duplicate: duplicates.has(g.id),
+        starting_price: g.auctionStartingPrice == null ? null : toNumber(g.auctionStartingPrice),
         title: g.title,
         description: g.description,
         brand: g.brand,
         model: g.model,
         condition: g.condition,
+        // The review dialog for older listings shows these (never holds the full IMEI / serial).
+        specifications: g.specifications,
         images: g.images,
         status: g.status,
         rejection_reason: g.rejectionReason,
@@ -379,6 +392,23 @@ export const getGadgets = async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('Admin gadgets error:', error);
     sendError(res, error.message || 'Failed to load gadgets', 500);
+  }
+};
+
+/**
+ * GET /api/v1/admin/gadgets/:id — one listing for review, with the full IMEI / serial and any
+ * other listing or sale that has it.
+ */
+export const getGadgetReview = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return sendError(res, 'Listing not found', 404);
+    const listing = await getListingForReview(id);
+    if (!listing) return sendError(res, 'Listing not found', 404);
+    sendSuccess(res, listing);
+  } catch (error: any) {
+    logger.error('Admin gadget review error:', error);
+    sendError(res, 'Couldn’t load this listing', 500);
   }
 };
 
@@ -583,7 +613,17 @@ export const getAllOrders = async (req: Request, res: Response) => {
             select: { id: true, fullName: true, phoneNumber: true },
           },
           seller: {
-            select: { id: true, fullName: true, phoneNumber: true },
+            select: {
+              id: true,
+              fullName: true,
+              phoneNumber: true,
+              // Store staff who can drop off and collect at the hub (seller app › Store staff).
+              // Hub staff check their ID and the code we texted them.
+              storeStaff: {
+                select: { fullName: true, phone: true, idType: true, pickupCode: true },
+                orderBy: { createdAt: 'asc' },
+              },
+            },
           },
           auction: {
             include: {
@@ -637,6 +677,14 @@ export const getAllOrders = async (req: Request, res: Response) => {
           id: o.seller?.id,
           full_name: o.seller?.fullName,
           phone_number: o.seller?.phoneNumber,
+          staff: (o.seller?.storeStaff ?? []).map(st => ({
+            full_name: st.fullName,
+            phone: st.phone,
+            /** nin_slip | drivers_licence | passport | voters_card (null: added before we asked). */
+            id_type: st.idType,
+            /** 6-digit code we texted them (null: added before codes). */
+            pickup_code: st.pickupCode,
+          })),
         },
       })),
       page,
@@ -747,6 +795,7 @@ export const recordInspection = async (req: Request, res: Response) => {
 
     if (result.all_passed) {
       void buyerAlerts.notifyBuyerInspectionPassed(id, result.inspection.passed, result.inspection.total);
+      void import('../../services/seller/sellerAlerts').then(a => a.notifySellerHubPassed(id as string));
     }
 
     sendSuccess(
@@ -1188,15 +1237,24 @@ export const getSellerProfile = async (req: Request, res: Response) => {
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { role, is_active, is_verified, wallet_locked } = req.body as {
+    const { role, is_active, is_verified, wallet_locked, reason: rawReason } = req.body as {
       role?: string;
       is_active?: boolean;
       is_verified?: boolean;
       wallet_locked?: boolean;
+      /** Why the account is switched off. Required for team accounts: they see it when they try to sign in. */
+      reason?: string;
     };
+    const reason = typeof rawReason === 'string' ? rawReason.trim().slice(0, 300) : '';
 
     if (id === req.user!.user_id && is_active === false) {
       return sendError(res, 'You cannot deactivate your own account', 400);
+    }
+    if (is_active === false) {
+      const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+      if (target?.role === 'admin' && reason.length < 10) {
+        return sendError(res, 'Give a reason of at least 10 characters. They see it when they try to sign in.', 400);
+      }
     }
 
     const data: Prisma.UserUpdateInput = {};
@@ -1265,6 +1323,7 @@ export const updateUser = async (req: Request, res: Response) => {
       is_active,
       is_verified,
       wallet_locked,
+      ...(is_active === false && reason ? { reason } : {}),
     });
 
     sendSuccess(
@@ -1963,6 +2022,26 @@ export const markDisputeReturnReceived = caseAction(
   },
   'dispute_return_received',
   'Refund started'
+);
+
+/** PUT /api/v1/admin/disputes/:id/hub-findings { rows: [{ label, value }] } — "What our hub found" (empty clears) */
+export const setDisputeHubFindings = caseAction(
+  async req => {
+    const { setHubFindings } = await import('../../services/buyer/case.service');
+    return setHubFindings(req.params.id as string, req.body?.rows);
+  },
+  'dispute_hub_findings',
+  'Hub findings saved'
+);
+
+/** POST /api/v1/admin/disputes/:id/returned-to-seller — the returned item left the hub with the seller */
+export const markDisputeReturnedToSeller = caseAction(
+  async req => {
+    const { markReturnedToSeller } = await import('../../services/buyer/case.service');
+    return markReturnedToSeller(req.params.id as string);
+  },
+  'dispute_returned_to_seller',
+  'Marked as handed back'
 );
 
 

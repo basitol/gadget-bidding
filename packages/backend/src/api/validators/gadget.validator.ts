@@ -1,4 +1,9 @@
+import { Request, Response, NextFunction } from 'express';
 import { body, query, param, ValidationChain } from 'express-validator';
+import { handleValidationErrors } from '../middlewares/validation.middleware';
+
+/** Photos a listing can carry (both the old body and the listing flow). */
+const MAX_IMAGES = 12;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -75,8 +80,8 @@ export const validateCreateGadget: ValidationChain[] = [
     .withMessage('Specifications must be an object'),
   validateWarrantyUntil(),
   body('images')
-    .isArray({ min: 1, max: 5 })
-    .withMessage('At least 1 image is required, maximum 5 images')
+    .isArray({ min: 1, max: MAX_IMAGES })
+    .withMessage(`At least 1 image is required, maximum ${MAX_IMAGES} images`)
     .custom((value) => {
       if (!value.every((url: string) => typeof url === 'string' && url.length > 0)) {
         throw new Error('All images must be valid URLs');
@@ -169,8 +174,8 @@ export const validateUpdateGadget: ValidationChain[] = [
   validateWarrantyUntil(),
   body('images')
     .optional()
-    .isArray({ min: 1, max: 5 })
-    .withMessage('At least 1 image is required, maximum 5 images'),
+    .isArray({ min: 1, max: MAX_IMAGES })
+    .withMessage(`At least 1 image is required, maximum ${MAX_IMAGES} images`),
   body('status')
     .optional()
     .isIn(['pending'])
@@ -290,3 +295,15 @@ export const validateAdminReview: ValidationChain[] = [
     .isLength({ min: 10, max: 500 })
     .withMessage('Rejection reason must be between 10 and 500 characters'),
 ];
+
+
+/**
+ * The old create/update body (no `profile`) keeps its express-validator rules. A listing-flow body
+ * (with `profile`) is checked by services/gadget/listing.service.ts, which answers with one plain message.
+ */
+export const forLegacyBody =
+  (chains: ValidationChain[]) => async (req: Request, res: Response, next: NextFunction) => {
+    if (req.body && req.body.profile !== undefined) return next();
+    for (const chain of chains) await chain.run(req);
+    return handleValidationErrors(req, res, next);
+  };

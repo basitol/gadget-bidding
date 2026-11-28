@@ -31,6 +31,12 @@ export interface AlertSwitches {
   saved_search: boolean;
   /** "Offers and news" */
   marketing: boolean;
+  /** Seller app › Notifications: item sold, buyer paid, order updates. */
+  sales: boolean;
+  /** Seller app: new bids on my listings. */
+  seller_bids: boolean;
+  /** Seller app: payouts to the business account. */
+  payouts: boolean;
 }
 
 export interface NotificationPrefs extends AlertSwitches {
@@ -53,6 +59,9 @@ const SWITCH_DEFAULTS: AlertSwitches = {
   dispute_updates: true,
   saved_search: true,
   marketing: false,
+  sales: true,
+  seller_bids: true,
+  payouts: true,
 };
 const CHANNEL_DEFAULTS = { push: true, email: true, sms: false };
 
@@ -94,15 +103,44 @@ const SWITCH_FOR_TYPE: Record<string, keyof AlertSwitches> = {
   store_new_listing: 'saved_search',
 };
 
+/**
+ * Sellers get some of the same types about their listings ("auction_won" = it sold), so a seller's
+ * switch is picked by the recipient. Types not listed (cases, listing review, account, security)
+ * always send. listing_bid and payout_* are for alerts that aren't sent yet.
+ */
+const SELLER_SWITCH_FOR_TYPE: Record<string, keyof AlertSwitches> = {
+  auction_won: 'sales',
+  auction_lost: 'sales',
+  auction_no_sale: 'sales',
+  auction_relisted: 'sales',
+  bid_defaulted: 'sales',
+  payment_received: 'sales',
+  order_created: 'sales',
+  order_shipped: 'sales',
+  fulfillment_updated: 'sales',
+  listing_bid: 'seller_bids',
+  bid_placed: 'seller_bids',
+  order_delivered: 'payouts',
+  payout_sent: 'payouts',
+  payout_paid: 'payouts',
+  payout_failed: 'payouts',
+};
+
 /** Payment deadlines still reach the phone during quiet hours. */
 const QUIET_HOURS_EXEMPT = new Set<string>(['payment_reminder', 'payment_failed', 'auction_won', 'bid_defaulted']);
 
 /** Receipts for something the user just did themselves: phone and app only, never an extra email or text. */
 const OWN_ACTION_TYPES = new Set<string>(['bid_placed', 'payment_initiated', 'order_created']);
 
-const switchFor = (type: string, data?: Record<string, any>): keyof AlertSwitches | undefined =>
+const switchFor = (type: string, data?: Record<string, any>, role?: string): keyof AlertSwitches | undefined => {
+  if (role === 'seller') {
+    // A payout went out (a 'system' alert carrying kind: 'payout'); payout account changes always send.
+    if (type === 'system' && data?.kind === 'payout') return 'payouts';
+    return SELLER_SWITCH_FOR_TYPE[type];
+  }
   // "Auto-bid hit your max" is sent as an outbid alert carrying the max.
-  type === 'outbid' && data?.autoBidMax != null ? 'autobid_max' : SWITCH_FOR_TYPE[type];
+  return type === 'outbid' && data?.autoBidMax != null ? 'autobid_max' : SWITCH_FOR_TYPE[type];
+};
 
 /** 10:00 pm – 7:00 am in Lagos. */
 const inQuietHours = (now = new Date()) => {
@@ -139,6 +177,12 @@ const normalizePrefs = (stored: Record<string, any> | null | undefined): Notific
 export const getPreferences = async (userId: string): Promise<NotificationPrefs> => {
   const rows = await query('SELECT notification_prefs FROM users WHERE id = $1', [userId]);
   return normalizePrefs(rows[0]?.notification_prefs);
+};
+
+/** Preferences plus the role (a seller's switches differ from a buyer's for the same type). */
+const preferencesAndRole = async (userId: string): Promise<{ prefs: NotificationPrefs; role?: string }> => {
+  const rows = await query('SELECT notification_prefs, role FROM users WHERE id = $1', [userId]);
+  return { prefs: normalizePrefs(rows[0]?.notification_prefs), role: rows[0]?.role };
 };
 
 export const updatePreferences = async (
@@ -218,8 +262,8 @@ export const createNotification = async (
 
   // The in-app list and the live socket always get it. The phone, email and SMS follow the
   // user's switches, channels and quiet hours.
-  const prefs = await getPreferences(userId).catch(() => DEFAULT_PREFS);
-  const sw = switchFor(type, data);
+  const { prefs, role } = await preferencesAndRole(userId).catch(() => ({ prefs: DEFAULT_PREFS, role: undefined }));
+  const sw = switchFor(type, data, role);
   const switchedOff = sw ? !prefs[sw] : false;
   const quiet = prefs.quiet_hours && sw !== undefined && !QUIET_HOURS_EXEMPT.has(type) && inQuietHours();
 
@@ -450,41 +494,6 @@ export const notifyBackofficeGadgetSubmitted = async (
 };
 
 /**
- * Notify a seller that their approved listing has gone live as an auction.
- */
-export const notifySellerListingLive = async (
-  sellerId: string,
-  gadgetTitle: string
-): Promise<void> => {
-  await createNotification(
-    sellerId,
-    'auction_created',
-    `Your listing is live: ${gadgetTitle}`,
-    `"${gadgetTitle}" has been approved and is now live for bidding.`,
-    {},
-    ['push', 'sms']
-  );
-};
-
-/**
- * Notify a seller that their listing was rejected.
- */
-export const notifySellerListingRejected = async (
-  sellerId: string,
-  gadgetTitle: string,
-  reason: string
-): Promise<void> => {
-  await createNotification(
-    sellerId,
-    'system',
-    'Listing not approved',
-    `"${gadgetTitle}" was rejected: ${reason}`,
-    {},
-    ['push', 'sms']
-  );
-};
-
-/**
  * Notify backoffice that a buyer used buy now.
  */
 export const notifyBackofficeBuyNowUsed = async (
@@ -682,38 +691,6 @@ export const notifyAuctionRelisted = async (
 };
 
 /**
- * Notify seller of auction end
- */
-export const notifySellerAuctionEnded = async (
-  sellerId: string,
-  auctionId: string,
-  gadgetTitle: string,
-  finalPrice: number,
-  winnerId: string | null,
-  orderNumber?: string
-): Promise<void> => {
-  if (winnerId && orderNumber) {
-    await createNotification(
-      sellerId,
-      'auction_won',
-      `Your auction sold: ${gadgetTitle}`,
-      `Your "${gadgetTitle}" sold for ₦${finalPrice.toLocaleString()}. Order #${orderNumber} has been created. Please prepare the item for shipping.`,
-      { auctionId, finalPrice, orderNumber },
-      ['push', 'sms']
-    );
-  } else {
-    await createNotification(
-      sellerId,
-      'auction_lost',
-      'Your auction has ended',
-      `Your auction for "${gadgetTitle}" ended without any bids. You can relist the item.`,
-      { auctionId },
-      ['push']
-    );
-  }
-};
-
-/**
  * Notify about auction ending soon
  */
 export const notifyAuctionEndingSoon = async (
@@ -735,24 +712,6 @@ export const notifyAuctionEndingSoon = async (
     `${gadgetTitle} ends in ${left}.`,
     { auctionId, minutesRemaining, ...(reminder && { reminder }) },
     ['push']
-  );
-};
-
-/**
- * Notify about payment received
- */
-export const notifyPaymentReceived = async (
-  sellerId: string,
-  orderNumber: string,
-  amount: number
-): Promise<void> => {
-  await createNotification(
-    sellerId,
-    'payment_received',
-    'Payment received',
-    `Payment of ₦${amount.toLocaleString()} received for order #${orderNumber}. Please ship the item.`,
-    { orderNumber, amount },
-    ['push', 'sms']
   );
 };
 

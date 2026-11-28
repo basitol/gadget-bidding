@@ -3,6 +3,37 @@ import { sendSuccess, sendError, sendPaginated } from '../../utils/response';
 import * as auctionService from '../../services/auction/auction.service';
 import logger from '../../utils/logger';
 import { bidderLabel } from '../../utils/bidderLabel';
+import prisma from '../../config/prisma';
+
+/** Someone opening the same listing again within this time counts once (Sales insights › Views). */
+const VIEW_REPEAT_MS = 30 * 60_000;
+const recentViews = new Map<string, number>();
+
+/** Adds a view when someone other than the seller (or our team) opens a listing. Fire and forget. */
+const countView = (req: Request, auctionId: string, sellerId?: string | null) => {
+  const viewer = req.user;
+  if (viewer?.role === 'admin' || (viewer && viewer.user_id === sellerId)) return;
+  const key = `${viewer?.user_id ?? req.ip}:${auctionId}`;
+  const now = Date.now();
+  if ((recentViews.get(key) ?? 0) > now - VIEW_REPEAT_MS) return;
+  if (recentViews.size > 20_000) recentViews.clear();
+  recentViews.set(key, now);
+  prisma.auction
+    .updateMany({
+      where: { id: auctionId, ...(viewer ? { NOT: { sellerId: viewer.user_id } } : {}) },
+      data: { viewCount: { increment: 1 } },
+    })
+    .then(({ count }) =>
+      // …and on today's (Lagos) row, so Sales insights can compare periods.
+      count
+        ? prisma.$executeRaw`
+            INSERT INTO auction_view_days (auction_id, day, views)
+            VALUES (${auctionId}::uuid, (now() AT TIME ZONE 'Africa/Lagos')::date, 1)
+            ON CONFLICT (auction_id, day) DO UPDATE SET views = auction_view_days.views + 1`
+        : 0
+    )
+    .catch(err => logger.warn('Listing view not counted:', err));
+};
 
 /**
  * Create a new auction
@@ -40,6 +71,7 @@ export const getAuctionById = async (req: Request, res: Response) => {
       return sendError(res, 'Auction not found', 404);
     }
 
+    countView(req, id as string, auction.seller_id);
     sendSuccess(res, auction);
   } catch (error: any) {
     logger.error('Get auction error:', error);

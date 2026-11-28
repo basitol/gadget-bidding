@@ -14,6 +14,7 @@ import {
   Camera,
   ScrollText,
   Settings,
+  Smartphone,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -51,7 +52,7 @@ export const NAV: NavItem[] = [
   { key: 'overview', label: 'Overview', to: '/', icon: LayoutGrid, match: ['/'], group: 'main' },
   { key: 'updates', label: 'Updates', to: '/notifications', icon: FileText, match: ['/notifications'], count: 'unread_notifications', group: 'main' },
   { key: 'tasks', label: 'My tasks', to: '/tasks', icon: CircleCheck, match: ['/tasks'], count: 'tasks', group: 'main' },
-  { key: 'users', label: 'Users', to: '/buyers', icon: Users, match: ['/buyers', '/sellers'], group: 'main' },
+  { key: 'users', label: 'Users', to: '/buyers', icon: Users, match: ['/buyers', '/sellers', '/users'], group: 'main' },
 
   { key: 'kyb', label: 'Seller KYB', to: '/sellers/applications', icon: IdCard, match: ['/sellers/applications'], count: 'kyb', tint: 'violet', group: 'queues' },
   { key: 'listings', label: 'Listing review', to: '/gadgets?status=pending', icon: Camera, match: ['/gadgets'], count: 'listing_review', tint: 'blue', group: 'queues' },
@@ -62,6 +63,7 @@ export const NAV: NavItem[] = [
   { key: 'money', label: 'Payouts & escrow', to: '/payouts', icon: Wallet, match: ['/payouts', '/payments', '/orders'], tint: 'green', group: 'queues' },
 
   { key: 'rules', label: 'Fees & rules', to: '/rules', icon: ListChecks, match: ['/rules'], group: 'settings' },
+  { key: 'device-models', label: 'Device models', to: '/device-models', icon: Smartphone, match: ['/device-models'], group: 'settings' },
   { key: 'audit', label: 'Audit logs', to: '/audit', icon: ScrollText, match: ['/audit'], group: 'settings' },
   { key: 'roles', label: 'Roles & permissions', to: '/admins', icon: KeyRound, match: ['/admins'], group: 'settings' },
   { key: 'settings', label: 'Settings', to: '/settings', icon: Settings, match: ['/settings'], group: 'settings' },
@@ -71,13 +73,6 @@ export const NOTIFICATIONS_ICON = Bell;
 
 /** Sibling pages reached with pills under the header (design guide: Money and Team areas). */
 export const SUB_NAV: { match: string[]; items: { label: string; to: string }[] }[] = [
-  {
-    match: ['/buyers', '/sellers'],
-    items: [
-      { label: 'Buyers', to: '/buyers' },
-      { label: 'Sellers', to: '/sellers' },
-    ],
-  },
   {
     match: ['/payouts', '/payments', '/orders'],
     items: [
@@ -114,8 +109,6 @@ export function activeItem(pathname: string, search: string): NavItem | undefine
 }
 
 const PAGE_TITLES: Record<string, string> = {
-  '/buyers': 'Buyers',
-  '/sellers': 'Sellers',
   '/payments': 'Payments',
   '/orders': 'Orders',
   '/support': 'Support chats',

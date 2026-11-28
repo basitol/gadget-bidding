@@ -17,6 +17,9 @@ declare global {
   }
 }
 
+/** What a store staff session may call: its own app, sign-in/account, push token, app config. */
+const STAFF_PATHS = /^\/api\/v\d+\/(staff|auth|app-config|notifications\/push-token)(\/|\?|$)/;
+
 /**
  * Authenticate user via JWT
  */
@@ -48,15 +51,31 @@ const authenticateUser = async (
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.user_id },
-      select: { isActive: true },
+      select: { id: true, isActive: true, role: true, email: true, lastActiveAt: true },
     });
 
-    if (!user || user.isActive === false) {
-      return sendError(
-        res,
-        'This account is suspended. Please contact support.',
-        403
-      );
+    if (!user) {
+      return sendError(res, 'This account is suspended. Please contact support.', 403);
+    }
+    if (user.isActive === false) {
+      // A team member paused mid-session: the dashboard signs them out and shows why.
+      const { pauseDetailsFor } = await import('../../services/auth/auth.service');
+      return res.status(403).json({
+        success: false,
+        error: user.role === 'admin' ? 'Your admin access is paused.' : 'This account is suspended. Please contact support.',
+        code: 'ACCOUNT_PAUSED',
+        ...(user.role === 'admin' ? { data: await pauseDetailsFor(user) } : {}),
+      });
+    }
+
+    // "Last active" for the team: written at most every 5 minutes, never waited on.
+    if (!user.lastActiveAt || Date.now() - user.lastActiveAt.getTime() > 5 * 60_000) {
+      prisma.user.update({ where: { id: user.id }, data: { lastActiveAt: new Date() } }).catch(() => {});
+    }
+
+    // Store staff accounts only work in the staff app: no bidding, buying or seller tools.
+    if (decoded.role === 'staff' && !STAFF_PATHS.test(req.originalUrl)) {
+      return sendError(res, 'Store staff accounts can only use the staff app.', 403);
     }
 
     // Attach user to request
@@ -130,23 +149,11 @@ const requireSellerKybCheck = async (
     return sendError(res, 'Authentication required', 401);
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.user_id },
-    select: { sellerKybStatus: true },
-  });
-
-  if (user?.sellerKybStatus !== 'approved') {
-    return sendError(
-      res,
-      user?.sellerKybStatus === 'pending'
-        ? "We're still checking your business. You can list once you're approved."
-        : user?.sellerKybStatus === 'needs_info'
-          ? 'Our team needs one more thing before you can list. Open your application to see what.'
-          : user?.sellerKybStatus === 'rejected'
-            ? "Your business wasn't approved, so you can't list yet."
-            : 'Finish your seller application before listing a gadget.',
-      403
-    );
+  // Every rule for sending a new listing lives in one place.
+  const { whyCantList } = await import('../../services/seller/listingGate.service');
+  const block = await whyCantList(req.user.user_id);
+  if (block) {
+    return res.status(403).json({ success: false, error: block.message, code: block.code });
   }
 
   next();

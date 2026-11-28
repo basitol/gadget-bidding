@@ -114,6 +114,15 @@ export const routeForNotification = (
   if (data.route === 'SupportChat') return { name: 'SupportChat' };
   // A decision on a seller's application.
   if (data.route === 'SellerStatus') return { name: 'SellerStatus' };
+  // A document our team asked a seller to update.
+  if (data.route === 'BusinessDocuments') return { name: 'BusinessDocuments' };
+  // Seller app alerts carry a kind.
+  if (data.kind === 'payout') return { name: 'MainTabs', params: { screen: 'Payouts' } };
+  if (data.kind === 'sold' || data.kind === 'hub_passed') return { name: 'MainTabs', params: { screen: 'Orders' } };
+  if (data.kind === 'case' && data.disputeId) return { name: 'SellerCase', params: { disputeId: data.disputeId } };
+  if (data.kind === 'changes' || data.kind === 'unsold') {
+    return { name: 'MainTabs', params: { screen: 'Listings', params: { tab: data.kind } } };
+  }
   const orderId = (data.orderId ?? data.order_id) as string | undefined;
   const auctionId = (data.auctionId ?? data.auction_id) as string | undefined;
   const missedPaymentId = data.missedPaymentId as string | undefined;

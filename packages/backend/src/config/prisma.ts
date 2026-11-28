@@ -10,22 +10,30 @@ const pool = new Pool({ connectionString });
 // Create Prisma adapter
 const adapter = new PrismaPg(pool);
 
-// Create a singleton Prisma client
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-// Initialize Prisma Client with adapter
-export const prisma =
-  globalForPrisma.prisma ??
+const createClient = () =>
   new PrismaClient({
     adapter,
+    // The full IMEI / serial is staff-only. Left out of every query (including `include: { gadget: true }`)
+    // unless a query asks for it with `omit: { deviceIdentifier: false }` (admin listing review only).
+    omit: {
+      gadget: { deviceIdentifier: true, deviceIdentifierHash: true },
+    },
     log: [
       { emit: 'event', level: 'query' },
       { emit: 'event', level: 'error' },
       { emit: 'event', level: 'warn' },
     ],
   });
+
+type AppPrismaClient = ReturnType<typeof createClient>;
+
+// Create a singleton Prisma client
+const globalForPrisma = globalThis as unknown as {
+  prisma: AppPrismaClient | undefined;
+};
+
+// Initialize Prisma Client with adapter
+export const prisma: AppPrismaClient = globalForPrisma.prisma ?? createClient();
 
 // Log queries in development
 if (process.env.NODE_ENV !== 'production') {
@@ -66,7 +74,7 @@ export const disconnectDatabase = async (): Promise<void> => {
 export const transaction = async <T>(
   fn: (
     tx: Omit<
-      PrismaClient,
+      AppPrismaClient,
       '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
     >
   ) => Promise<T>

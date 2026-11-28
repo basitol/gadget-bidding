@@ -5,7 +5,10 @@ import { Icon3d } from '@/components/shell/Icon3d';
 import { ErrorAlert, PageHeader } from '@/components/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 
-function Rows({ rows }: { rows: RuleRow[] }) {
+/** A rule can list bands (the platform fee is by sale price). */
+type Row = RuleRow & { tiers?: string[] };
+
+function Rows({ rows }: { rows: Row[] }) {
   return (
     <dl>
       {rows.map(r => (
@@ -13,6 +16,15 @@ function Rows({ rows }: { rows: RuleRow[] }) {
           <dt className="text-[15px] text-slate sm:w-64">{r.label}</dt>
           <dd className="flex-1">
             <div className="text-[15px] font-medium text-ink">{r.value}</div>
+            {r.tiers?.length ? (
+              <ul className="my-1.5 grid gap-1">
+                {r.tiers.map(t => (
+                  <li key={t} className="text-[15px] tabular-nums text-ink">
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {r.note ? <div className="text-[13px] text-slate">{r.note}</div> : null}
           </dd>
         </div>
@@ -23,7 +35,7 @@ function Rows({ rows }: { rows: RuleRow[] }) {
 
 /** Read-only: the fees and rules the apps run on, straight from the backend's settings. */
 export function RulesPage() {
-  const [data, setData] = useState<{ fees: RuleRow[]; rules: RuleRow[]; review_targets: RuleRow[] } | null>(null);
+  const [data, setData] = useState<{ fees: Row[]; rules: Row[]; review_targets: Row[] } | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     adminApi

@@ -66,6 +66,19 @@ const queues: Queue[] = [
 
 const isPickup = (order: any) => order.delivery_method === 'pickup';
 
+/** +2348030000000 → "0803 000 0000" */
+/** A seller's staff member who can drop off and collect (seller app › Store staff). */
+type StaffMember = { full_name: string; phone: string; id_type?: string | null; pickup_code?: string | null };
+const STAFF_ID_LABEL: Record<string, string> = {
+  nin_slip: 'NIN slip',
+  drivers_licence: "Driver's licence",
+  passport: 'Passport',
+  voters_card: "Voter's card",
+};
+
+const localPhone = (p: string) =>
+  p.startsWith('+234') ? `0${p.slice(4, 7)} ${p.slice(7, 10)} ${p.slice(10)}` : p;
+
 /** Every check on the list was recorded and passed. */
 const inspectionPassed = (inspection: OrderInspection | null | undefined, checks: InspectionCheck[]) =>
   !!inspection &&
@@ -298,6 +311,27 @@ function OrderCard({
         <Fact k="Payout">{money(order.seller_payout)}</Fact>
         {order.tracking_number && !step?.tracking ? <Fact k="Tracking">{order.tracking_number}</Fact> : null}
       </dl>
+
+      {order.seller?.staff?.length ? (
+        <div className="mt-3 rounded-[12px] bg-fill p-3 text-[13px]">
+          <div className="font-medium text-ink">Can drop off and collect</div>
+          <div className="text-hint">Check their ID and code before you hand anything over.</div>
+          <ul className="mt-2 space-y-1.5 text-slate">
+            {order.seller.staff.map((p: StaffMember) => (
+              <li key={p.phone} className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <span>
+                  {p.full_name} · {localPhone(p.phone)} · {STAFF_ID_LABEL[p.id_type ?? ''] ?? 'ID not given'}
+                </span>
+                {p.pickup_code ? (
+                  <span className="font-medium tabular-nums text-ink">Code {p.pickup_code}</span>
+                ) : (
+                  <span className="text-hint">No code yet</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {pickup ? (
         <div className="mt-3 rounded-[12px] bg-fill p-3 text-[13px] text-ink">The buyer collects it at the hub.</div>

@@ -8,7 +8,7 @@ import {
   ShoppingBag,
   Store,
 } from 'lucide-react';
-import { AdminSellerProfile, RiskFlag, adminApi } from '@/api';
+import { AdminSellerProfile, RiskFlag, adminApi, sellerStoreAdminApi } from '@/api';
 import { label, money, when } from '@/lib/format';
 import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import { mediaUrl } from '@/lib/media';
@@ -41,6 +41,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { PageLoadError, RowsSkeleton, usePageStatus } from '@/components/states';
 
 type UsersPageProps = {
   fixedRole?: 'bidder' | 'seller' | 'admin';
@@ -106,8 +107,9 @@ export function UsersPage({
   const sellerParam = fixedRole === 'seller' ? params.get('seller') : null;
   const [role, setRole] = useState(fixedRole || 'all');
   const [active, setActive] = useState('all');
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  // ?search= (from the search on the "page doesn't exist" screen) starts filtered.
+  const [search, setSearch] = useState(params.get('search') ?? '');
+  const [appliedSearch, setAppliedSearch] = useState(params.get('search') ?? '');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [items, setItems] = useState<any[]>([]);
@@ -115,6 +117,9 @@ export function UsersPage({
   const [totalPages, setTotalPages] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  /** The first load failed (nothing to show yet), or the list has loaded at least once. */
+  const [failure, setFailure] = useState<unknown>(null);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedSeller, setSelectedSeller] =
     useState<AdminSellerProfile | null>(null);
@@ -143,8 +148,11 @@ export function UsersPage({
       setTotalPages(
         res.pagination?.totalPages || res.pagination?.total_pages || 1
       );
+      setLoadedOnce(true);
+      setFailure(null);
     } catch (err: any) {
       setError(err.message);
+      setFailure(err);
     } finally {
       setLoading(false);
     }
@@ -154,6 +162,29 @@ export function UsersPage({
     load();
   }, [load]);
 
+  /**
+   * Switch an account off. Team accounts need a reason: the person sees it when they try to sign
+   * in ("Your admin access is paused"), and it goes in the audit log.
+   */
+  const deactivate = async (u: any) => {
+    const team = u.role === 'admin';
+    const reason = await prompt(team ? 'Reason they’ll see' : 'Reason (optional)', '', {
+      title: team ? `Pause ${u.full_name}’s admin access?` : `Deactivate ${u.full_name}?`,
+      description: team
+        ? 'They’re signed out straight away and can’t sign in until someone reactivates them. They see this reason when they try. It also goes in the audit log.'
+        : 'They can’t sign in or use the app until someone activates them again. It goes in the audit log.',
+      placeholder: team ? 'e.g. Unusual sign-in from a new device. Please call the ops lead to confirm it was you.' : '',
+      confirmLabel: team ? 'Pause access' : 'Deactivate',
+      required: team,
+    });
+    if (reason === null) return;
+    if (team && reason.trim().length < 10) {
+      toast.error('Give a reason of at least 10 characters.');
+      return;
+    }
+    await update(u.id, { is_active: false, ...(reason.trim() ? { reason: reason.trim() } : {}) });
+  };
+
   const update = async (
     id: string,
     body: {
@@ -161,6 +192,7 @@ export function UsersPage({
       is_active?: boolean;
       is_verified?: boolean;
       wallet_locked?: boolean;
+      reason?: string;
     }
   ) => {
     setBusyId(id);
@@ -332,6 +364,25 @@ export function UsersPage({
     );
   };
 
+  usePageStatus(loading && !loadedOnce ? 'Loading' : null);
+
+  // The first load failed: nothing to show, so the page is the error.
+  if (failure && !loadedOnce) {
+    return (
+      <div className="pb-16 pt-1">
+        <PageLoadError
+          area="USR"
+          title={`We couldn’t load ${title.toLowerCase()}`}
+          error={failure}
+          onRetry={() => {
+            setFailure(null);
+            load();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -395,7 +446,7 @@ export function UsersPage({
 
       <Panel>
         {loading ? (
-          <Empty>Loading users…</Empty>
+          <RowsSkeleton rows={limit > 8 ? 8 : limit} />
         ) : items.length === 0 ? (
           <Empty>No users found.</Empty>
         ) : (
@@ -498,10 +549,10 @@ export function UsersPage({
                         variant={u.is_active ? 'destructive' : 'default'}
                         disabled={busyId === u.id}
                         onClick={() =>
-                          update(u.id, { is_active: !u.is_active })
+                          u.is_active ? deactivate(u) : update(u.id, { is_active: true })
                         }
                       >
-                        {u.is_active ? 'Deactivate' : 'Activate'}
+                        {u.is_active ? (u.role === 'admin' ? 'Pause access' : 'Deactivate') : 'Activate'}
                       </Button>
                       {!u.is_active && u.pending_penalty ? (
                         <Button
@@ -552,26 +603,6 @@ export function UsersPage({
   );
 }
 
-export function BuyersPage() {
-  return (
-    <UsersPage
-      fixedRole="bidder"
-      title="Buyers"
-      description="Buyer accounts, wallet balances, purchases, and account controls."
-    />
-  );
-}
-
-export function SellersPage() {
-  return (
-    <UsersPage
-      fixedRole="seller"
-      title="Sellers"
-      description="Seller accounts, profile controls, listing activity, disputes, and wallet controls."
-    />
-  );
-}
-
 export function AdminsPage() {
   return (
     <UsersPage
@@ -579,6 +610,69 @@ export function AdminsPage() {
       title="Admins"
       description="Admin users and internal access controls."
     />
+  );
+}
+
+/** "Store closed on Nov 28, 2026" with "Reopen store", when the seller closed their store. */
+function StoreClosedNotice({ sellerId }: { sellerId: string }) {
+  const { confirm } = useConfirmDialog();
+  const [closedAt, setClosedAt] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setClosedAt(null);
+    sellerStoreAdminApi
+      .status(sellerId)
+      .then(res => live && setClosedAt(res.data.closed_at))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [sellerId]);
+
+  if (!closedAt) return null;
+
+  const reopen = async () => {
+    const ok = await confirm({
+      title: 'Reopen this store?',
+      description:
+        'The seller can log in and list again. Listings that were waiting when they closed have to be sent again.',
+      confirmLabel: 'Reopen store',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await sellerStoreAdminApi.reopen(sellerId);
+      setClosedAt(null);
+      toast.success('Store reopened. We emailed the seller.');
+    } catch (err: any) {
+      toast.error(err.message || 'Couldn’t reopen the store');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[12px] bg-[#FFF6EE] px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-medium text-[#DB7A2E]">
+          Store closed on{' '}
+          {new Date(closedAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: 'Africa/Lagos',
+          })}
+        </p>
+        <p className="text-[13px] text-ink">
+          The seller closed it. They can’t log in or list; money due is still paid at 6 pm.
+        </p>
+      </div>
+      <Button size="sm" variant="outline" disabled={busy} onClick={reopen}>
+        {busy ? 'Reopening…' : 'Reopen store'}
+      </Button>
+    </div>
   );
 }
 
@@ -617,7 +711,7 @@ function SellerProfileDialog({
     <Sheet open={Boolean(profile)} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full gap-4 overflow-y-auto p-6 data-[side=right]:sm:max-w-4xl"
+        className="gap-4 overflow-y-auto p-6 data-[side=right]:sm:max-w-4xl"
       >
         {profile ? (
           <>
@@ -693,6 +787,7 @@ function SellerProfileDialog({
                   </div>
                 </div>
               </div>
+              <StoreClosedNotice sellerId={profile.user.id} />
               <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
                 <Button
                   size="sm"

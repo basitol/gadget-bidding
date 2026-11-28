@@ -2,7 +2,8 @@
 // User Types
 // ============================================================================
 
-export type UserRole = 'bidder' | 'seller' | 'admin';
+/** 'staff': someone a seller added to drop off and collect at the hub for their store. */
+export type UserRole = 'bidder' | 'seller' | 'admin' | 'staff';
 
 export type AccountType = 'buyer' | 'seller';
 
@@ -297,7 +298,7 @@ export interface BidHold {
 
 export type PaymentStatusType = 'pending' | 'paid' | 'refunded';
 
-export type PayoutStatus = 'pending' | 'ready' | 'held' | 'paid';
+export type PayoutStatus = 'pending' | 'ready' | 'held' | 'sending' | 'paid';
 
 export type FulfillmentStatus =
   | 'pending'
@@ -423,6 +424,7 @@ export type NotificationType =
   | 'saved_search_match'
   | 'store_new_listing'
   | 'seller_application'
+  | 'listing_bid'
   | 'payment_initiated'
   | 'order_created'
   | 'order_shipped'

@@ -17,11 +17,10 @@ import {
   TextInput,
   ActivityIndicator,
   Dimensions,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BID_PAYMENT_DEADLINE_HOURS } from '@gadget-bidding/shared';
+import { BID_PAYMENT_DEADLINE_HOURS, listingDisclosures, profileByKey, type Disclosure } from '@gadget-bidding/shared';
 import {
   G,
   GlassScreen,
@@ -34,6 +33,7 @@ import {
   isUrgent,
   useNow,
   FooterBar,
+  GlassKeyboardView,
 } from '../../components/glass';
 import { AuctionDetailSkeleton, FooterSkeleton } from '../../components/glass/Skeleton';
 import { fonts } from '../../constants';
@@ -269,21 +269,51 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
   const live =
     auction.status === 'active' && new Date(auction.end_time).getTime() > now;
   const scheduled = auction.status === 'scheduled';
+  // Our team paused the seller: no bids until it's back (it keeps the time it had left).
+  const paused = auction.status === 'paused';
   const grade = GRADE[auction.gadget?.condition];
   const imeiClean =
     String(specs.imei_blacklist ?? '').toLowerCase() === 'clean';
-  const details: [string, string][] = [
-    ['Storage', specs.storage],
-    ['Colour', specs.color],
-    ['Battery health', specs.battery_health ? `${specs.battery_health}%` : ''],
-    [
-      'In the box',
-      Array.isArray(specs.included)
-        ? specs.included.join(', ')
-        : specs.included,
-    ],
-    ['Known faults', specs.known_faults],
-  ].filter((d): d is [string, string] => !!d[1]);
+  // Listings from the new "List a gadget" flow say which kind of device they are (specs.profile).
+  const profile = profileByKey(typeof specs.profile === 'string' ? specs.profile : null);
+  const specText = (v: unknown) =>
+    Array.isArray(v) ? v.join(', ') : v === null || v === undefined ? '' : String(v);
+  const idLabel =
+    profile?.identifier === 'imei'
+      ? 'IMEI'
+      : profile
+        ? 'Serial number'
+        : 'IMEI / serial';
+  const details: [string, string][] = (
+    profile
+      ? [
+          ...profile.specs.map(f => [f.label, specText(specs[f.key])]),
+          ['Battery health', specs.battery_health ? `${specs.battery_health}%` : ''],
+          [
+            'In the box',
+            (Array.isArray(specs.included) ? specs.included : [])
+              .map((k: string) => profile.inBox.find(o => o.key === k)?.label ?? k)
+              .join(', '),
+          ],
+        ]
+      : [
+          ['Storage', specs.storage],
+          ['Colour', specs.color],
+          ['Battery health', specs.battery_health ? `${specs.battery_health}%` : ''],
+          [
+            'In the box',
+            Array.isArray(specs.included)
+              ? specs.included.join(', ')
+              : specs.included,
+          ],
+          ['Known faults', specs.known_faults],
+        ]
+  )
+    .concat([[idLabel, specs.identifier_masked]])
+    .filter((d): d is [string, string] => !!d[1]);
+  const disclosures: Disclosure[] = Array.isArray(auction.gadget?.disclosures)
+    ? auction.gadget.disclosures
+    : listingDisclosures(specs as any);
 
   return (
     <GlassScreen>
@@ -378,7 +408,9 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
                 ? timeLeft(auction.start_time, now)
                 : live
                   ? timeLeft(auction.end_time, now)
-                  : 'Ended'}
+                  : paused
+                    ? 'Paused'
+                    : 'Ended'}
             </Text>
           </View>
         </GlassCard>
@@ -456,6 +488,26 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
           </>
         ) : null}
 
+        {profile || disclosures.length ? (
+          <>
+            <Text style={styles.h2}>Repairs & damage</Text>
+            <GlassCard style={styles.discCard}>
+              {disclosures.length ? (
+                <View style={styles.discTags}>
+                  {disclosures.map(x => (
+                    <Tag key={x.label} tone={x.tone} label={x.label} />
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.checkText}>
+                  The seller says it's never been opened or repaired, with no damage or faults.
+                </Text>
+              )}
+              <Text style={styles.hint}>Our hub checks this before it ships to you.</Text>
+            </GlassCard>
+          </>
+        ) : null}
+
         {auction.gadget?.description ? (
           <Text style={styles.description}>{auction.gadget.description}</Text>
         ) : null}
@@ -529,6 +581,8 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
         ) : (
           scheduled ? (
             <PrimaryButton label="Not open for bids yet" onPress={() => {}} disabled />
+          ) : paused ? (
+            <PrimaryButton label="Bidding is paused for now" onPress={() => {}} disabled />
           ) : (
             <PrimaryButton
               label="See how it ended"
@@ -541,15 +595,18 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
   );
 };
 
-const Tag: React.FC<{ label: string; tone: 'green' | 'blue' | 'purple' }> = ({
-  label,
-  tone,
-}) => {
+const Tag: React.FC<{
+  label: string;
+  tone: 'green' | 'blue' | 'purple' | 'amber' | 'red' | 'neutral';
+}> = ({ label, tone }) => {
   // Status tints from the design guide: tint + dark text.
   const c = {
     green: ['#EEF9F2', '#2E9E5E'],
     blue: ['#F1F5FF', G.blue600],
     purple: [SELLER_TINT, SELLER_INK],
+    amber: ['#FFF6EE', '#DB7A2E'],
+    red: [G.redTint, G.red],
+    neutral: ['#F5F6F9', G.ink],
   }[tone];
   return (
     <View style={[styles.tag, { backgroundColor: c[0] }]}>
@@ -1037,10 +1094,7 @@ export const AutoBidScreen: React.FC<{ navigation: any; route: any }> = ({
   return (
     <GlassScreen>
       <GlassHeader title="Auto-bid" onBack={() => navigation.goBack()} />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <GlassKeyboardView>
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -1132,7 +1186,7 @@ export const AutoBidScreen: React.FC<{ navigation: any; route: any }> = ({
             strong
           />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </GlassKeyboardView>
       <BottomBar>
         <PrimaryButton
           label={
@@ -1277,6 +1331,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
   },
   table: { overflow: 'hidden' },
+  discCard: { padding: 14, gap: 10 },
+  discTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
