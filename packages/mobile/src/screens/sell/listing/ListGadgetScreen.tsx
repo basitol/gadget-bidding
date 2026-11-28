@@ -4,6 +4,7 @@ import { LISTING_CATEGORIES, isValidImei, maskIdentifier, profileByKey } from '@
 import { A, AuthButton, AuthShell } from '../../../components/auth/GlassAuthKit';
 import { useAuthStore } from '../../../store';
 import { DEFAULT_LISTING_CONFIG, listingService, type ListingConfig } from '../../../services/listing.service';
+import { listingPauseService } from '../../../services/listingPause.service';
 import type { Gadget } from '../../../types';
 import { whenLabel } from '../onboarding/kit';
 import {
@@ -72,12 +73,33 @@ export const ListGadgetScreen: React.FC<{ navigation: any; route: any }> = ({ na
     }
   }, [editing, user, navigation]);
 
+  // New listings paused (failed hub checks, or our team): explain why instead of letting them fill it in.
+  // The draft prompt waits for this check so it never shows over the paused screen.
+  const needsPauseCheck = !editing && user?.seller_kyb_status === 'approved';
+  const [pauseChecked, setPauseChecked] = useState(!needsPauseCheck);
+  useEffect(() => {
+    if (!needsPauseCheck) return;
+    let alive = true;
+    listingPauseService
+      .get()
+      .then(p => {
+        if (!alive) return;
+        if (p.paused) navigation.replace('ListingsPaused');
+        else setPauseChecked(true);
+      })
+      .catch(() => alive && setPauseChecked(true));
+    return () => {
+      alive = false;
+    };
+  }, [needsPauseCheck, navigation]);
+
   useEffect(() => {
     listingService.config().then(setConfig);
   }, []);
 
   // "Carry on with your draft?"
   useEffect(() => {
+    if (!pauseChecked) return;
     if (editing || !user?.id) {
       setReady(true);
       return;
@@ -118,7 +140,7 @@ export const ListGadgetScreen: React.FC<{ navigation: any; route: any }> = ({ na
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pauseChecked]);
 
   // Saved as they go (new listings only).
   useEffect(() => {
@@ -267,6 +289,13 @@ export const ListGadgetScreen: React.FC<{ navigation: any; route: any }> = ({ na
       navigation.replace('ListingSubmitted', { gadgetId: saved?.id ?? editing?.id, idWord: idWord(profile), edited: !!editing });
     } catch (e) {
       toast(errMsg(e));
+      // Paused while they were filling it in: the draft stays saved; show why.
+      if (!editing) {
+        listingPauseService
+          .get()
+          .then(p => p.paused && navigation.replace('ListingsPaused'))
+          .catch(() => {});
+      }
     } finally {
       setBusy(false);
     }

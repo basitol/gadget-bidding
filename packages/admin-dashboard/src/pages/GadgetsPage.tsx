@@ -6,6 +6,7 @@ import { mediaUrl } from '@/lib/media';
 import { label, when } from '@/lib/format';
 import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import { ListingReviewSheet } from '@/components/ListingReviewSheet';
+import { ListingAdditionsCard } from '@/components/ListingAdditionsCard';
 import { Chip } from '@/components/SellerApplicationPanel';
 import {
   Badge,
@@ -134,6 +135,8 @@ export function GadgetsPage() {
       />
 
       <ErrorAlert>{error}</ErrorAlert>
+
+      <ListingAdditionsCard />
 
       <Toolbar>
         <StatusTabs value={status} onValueChange={setStatus} items={STATUSES} />

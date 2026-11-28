@@ -1,18 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  FlatList,
-  ScrollView,
-  StyleSheet,
-  RefreshControl,
-  ActivityIndicator,
-  Alert,
-  ActionSheetIOS,
-  Platform,
-  TextInput,
-} from 'react-native';
+import { View, Text, Pressable, FlatList, ScrollView, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -22,12 +9,10 @@ import {
   GlassCard,
   PillTabs,
   GadgetImage,
-  PrimaryButton,
   startsLabel,
   useNow,
   isUrgent,
 } from '../../../components/glass';
-import { BottomSheet } from '../../../components';
 import { fonts } from '../../../constants';
 import { auctionService } from '../../../services';
 import { useReloadOnReconnect } from '../../../store/networkStore';
@@ -40,7 +25,6 @@ const toast = (m: string, t: 'success' | 'error' = 'error') => useToastStore.get
 const msg = (e: unknown) => (e instanceof Error ? e.message : "That didn't work. Try again.");
 const day = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-const digits = (v: string) => v.replace(/\D/g, '');
 
 const EMPTY: Record<ListingTab, string> = {
   live: 'Nothing live right now. Tap + to list a gadget.',
@@ -58,9 +42,6 @@ export const MyListingsScreen: React.FC<{ navigation: any; route: any }> = ({ na
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [pricing, setPricing] = useState<SellerListing | null>(null);
-  const [start, setStart] = useState('');
-  const [buyNow, setBuyNow] = useState('');
 
   const load = useCallback(async (t: ListingTab) => {
     try {
@@ -103,90 +84,6 @@ export const MyListingsScreen: React.FC<{ navigation: any; route: any }> = ({ na
     }
   };
 
-  const endListing = (l: SellerListing) =>
-    Alert.alert('End this listing?', "It has no bids, so nobody loses out. You can relist it later.", [
-      { text: 'Keep it', style: 'cancel' },
-      {
-        text: 'End listing',
-        style: 'destructive',
-        onPress: async () => {
-          setBusy(l.id);
-          try {
-            await sellerTabsService.endListing(l.id);
-            toast('Listing ended', 'success');
-            load(tab);
-          } catch (e) {
-            toast(msg(e));
-          } finally {
-            setBusy(null);
-          }
-        },
-      },
-    ]);
-
-  const openPrices = (l: SellerListing) => {
-    setStart(String(l.starting_price ?? l.price ?? ''));
-    setBuyNow(l.buy_now_price ? String(l.buy_now_price) : '');
-    setPricing(l);
-  };
-
-  const editOrEnd = (l: SellerListing) => {
-    const options = ['Change prices', 'End listing', 'Cancel'];
-    const pick = (i: number) => (i === 0 ? openPrices(l) : i === 1 ? endListing(l) : undefined);
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { title: l.title, options, cancelButtonIndex: 2, destructiveButtonIndex: 1 },
-        pick
-      );
-    } else {
-      Alert.alert(l.title, undefined, [
-        { text: options[0], onPress: () => pick(0) },
-        { text: options[1], style: 'destructive', onPress: () => pick(1) },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
-  };
-
-  const savePrices = async () => {
-    if (!pricing) return;
-    const s = Number(digits(start));
-    const b = buyNow ? Number(digits(buyNow)) : null;
-    if (!s) return toast('Enter a starting price.');
-    if (b != null && b <= s) return toast('The buy-now price has to be higher than the starting price.');
-    setBusy(pricing.id);
-    try {
-      await sellerTabsService.updatePrices(pricing.id, { starting_price: s, buy_now_price: b });
-      setPricing(null);
-      toast('Prices updated', 'success');
-      load(tab);
-    } catch (e) {
-      toast(msg(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const relist = (l: SellerListing) =>
-    Alert.alert('Relist this gadget?', 'It goes live again with the same prices and photos.', [
-      { text: 'Not now', style: 'cancel' },
-      {
-        text: 'Relist',
-        onPress: async () => {
-          setBusy(l.id);
-          try {
-            await sellerTabsService.relist(l.id);
-            toast('Relisted', 'success');
-            setTab('live');
-            load('live');
-          } catch (e) {
-            toast(msg(e));
-          } finally {
-            setBusy(null);
-          }
-        },
-      },
-    ]);
-
   const chipFor = (l: SellerListing): { label: string; bg: string; text: string } => {
     if (tab === 'live')
       return l.status === 'scheduled'
@@ -211,18 +108,16 @@ export const MyListingsScreen: React.FC<{ navigation: any; route: any }> = ({ na
     const chip = chipFor(l);
     const live = tab === 'live';
     const scheduled = l.status === 'scheduled';
-    const action =
-      live && l.can_edit
-        ? { label: 'Edit or end', onPress: () => editOrEnd(l) }
-        : live
-          ? { label: 'Manage', onPress: () => navigation.navigate('AuctionDetail', { auctionId: l.id }) }
-          : tab === 'changes'
-          ? { label: 'Fix listing', onPress: () => editGadget(l.id) }
-          : tab === 'unsold'
-            ? { label: 'Relist', onPress: () => relist(l) }
-            : null;
-    const open = () =>
-      l.kind === 'auction' ? navigation.navigate('AuctionDetail', { auctionId: l.id }) : editGadget(l.id);
+    // Live and didn't-sell listings open Manage listing (edit, end, end early, note, photo, relist).
+    const manage = () => navigation.navigate('ManageListing', { auctionId: l.id });
+    const action = live
+      ? { label: l.can_edit ? 'Edit or end' : 'Manage', onPress: manage }
+      : tab === 'changes'
+        ? { label: 'Fix listing', onPress: () => editGadget(l.id) }
+        : tab === 'unsold'
+          ? { label: 'Relist', onPress: () => navigation.navigate('Relist', { auctionId: l.id }) }
+          : null;
+    const open = () => (l.kind === 'auction' ? manage() : editGadget(l.id));
     return (
       <Pressable onPress={open} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button" accessibilityLabel={l.title}>
         <GlassCard style={styles.card}>
@@ -325,31 +220,6 @@ export const MyListingsScreen: React.FC<{ navigation: any; route: any }> = ({ na
         }
       />
 
-      <BottomSheet visible={!!pricing} onClose={() => setPricing(null)}>
-        <Text style={styles.sheetTitle}>Change prices</Text>
-        <Text style={styles.sheetSub}>No one has bid yet, so you can change these. The end time stays the same.</Text>
-        <Text style={styles.label}>Starting price</Text>
-        <TextInput
-          value={start ? Number(digits(start)).toLocaleString('en-NG') : ''}
-          onChangeText={setStart}
-          keyboardType="number-pad"
-          style={styles.input}
-          placeholder="₦0"
-          placeholderTextColor={G.faint}
-          accessibilityLabel="Starting price"
-        />
-        <Text style={styles.label}>Buy-now price (optional)</Text>
-        <TextInput
-          value={buyNow ? Number(digits(buyNow)).toLocaleString('en-NG') : ''}
-          onChangeText={setBuyNow}
-          keyboardType="number-pad"
-          style={styles.input}
-          placeholder="No buy-now price"
-          placeholderTextColor={G.faint}
-          accessibilityLabel="Buy-now price"
-        />
-        <PrimaryButton label={busy ? 'Saving…' : 'Save prices'} onPress={savePrices} disabled={!!busy} style={styles.save} />
-      </BottomSheet>
     </GlassScreen>
   );
 };
@@ -384,17 +254,4 @@ const styles = StyleSheet.create({
   loader: { marginTop: 40 },
   empty: { padding: 18 },
   emptyText: { color: G.muted, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, textAlign: 'center' },
-  sheetTitle: { color: G.ink, fontSize: 19, fontFamily: fonts.medium },
-  sheetSub: { color: G.muted, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, marginTop: 6, marginBottom: 12 },
-  label: { color: G.slate, fontSize: 14, fontFamily: fonts.medium, marginTop: 10, marginBottom: 8 },
-  input: {
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: '#F5F6F9',
-    paddingHorizontal: 16,
-    fontSize: 16,
-    fontFamily: fonts.regular,
-    color: G.ink,
-  },
-  save: { marginTop: 18 },
 });

@@ -16,6 +16,9 @@ import { PayoutsScreen } from '../screens/sell/tabs/PayoutsScreen';
 import { SellerStoreScreen } from '../screens/sell/tabs/SellerStoreScreen';
 import { storeScreens } from '../screens/sell/store';
 import { moneyScreens } from '../screens/sell/money';
+import { manageScreens } from '../screens/sell/manage';
+import { hubScreens } from '../screens/sell/hub';
+import { pausedScreens } from '../screens/sell/paused';
 
 import {
   SellScreen,
@@ -138,7 +141,7 @@ export const SellerNavigator: React.FC = () => {
       />
       <RootStack.Screen name="SellerStatus" component={SellerStatusScreen as any} options={{ gestureEnabled: false }} />
       <RootStack.Screen name="TwoStepSetup" component={TwoStepSetupScreen as any} />
-      {[...storeScreens, ...storeExtraScreens, ...moneyScreens, ...caseScreens].map(sc => (
+      {[...storeScreens, ...storeExtraScreens, ...moneyScreens, ...caseScreens, ...manageScreens, ...hubScreens, ...pausedScreens].map(sc => (
         <RootStack.Screen key={sc.name} name={sc.name} component={sc.component as any} />
       ))}
       <RootStack.Screen name="PayoutAccount" component={PayoutAccountScreen as any} />

@@ -1,6 +1,7 @@
 import prisma from '../../config/prisma';
 import { caseLabel } from '../buyer/case.service';
 import { dropoffDueOf, dropoffDueAt } from '../order/order.service';
+import { hubFlags } from './hub.service';
 
 /**
  * What the seller app's Home, My listings and Orders tabs show. Read-only views over
@@ -78,15 +79,34 @@ const describeOrder = (o: SellerOrder) => {
   const fs = o.fulfillmentStatus ?? 'pending';
   const confirmed = !!o.buyerConfirmedAt;
   const anyCase = openCase(o);
+  const hub = hubFlags(o);
 
   let stage: Stage;
   let chip: { label: string; tone: 'amber' | 'red' | 'blue' | 'green' | 'neutral' };
   if (reply) {
     stage = 'todo';
     chip = { label: 'Reply to buyer', tone: 'red' };
+  } else if (o.paymentStatus === 'paid' && due && hub.riderBooked) {
+    stage = 'progress';
+    chip = { label: 'Rider booked', tone: 'blue' };
   } else if (o.paymentStatus === 'paid' && due) {
     stage = 'todo';
     chip = { label: 'Drop at hub', tone: 'amber' };
+  } else if (o.returnedToSellerAt) {
+    stage = 'done';
+    chip = { label: 'Back with you', tone: 'neutral' };
+  } else if (o.paymentStatus === 'refunded' && hub.failedCheck && o.failedChoice === 'collect') {
+    stage = 'todo';
+    chip = { label: 'Collect from hub', tone: 'amber' };
+  } else if (o.paymentStatus === 'refunded' && hub.failedCheck && o.failedChoice === 'deliver') {
+    stage = 'progress';
+    chip = { label: 'Coming back to you', tone: 'blue' };
+  } else if (o.paymentStatus === 'paid' && fs === 'received_by_backoffice' && hub.secondCheckPending) {
+    stage = 'progress';
+    chip = { label: 'Second check', tone: 'blue' };
+  } else if (o.paymentStatus === 'paid' && fs === 'received_by_backoffice' && hub.failedCheck) {
+    stage = 'todo';
+    chip = { label: "Didn't pass · choose", tone: 'red' };
   } else if (o.paymentStatus === 'refunded' || fs === 'cancelled') {
     stage = 'done';
     chip = { label: o.paymentStatus === 'refunded' ? 'Refunded' : 'Cancelled', tone: 'neutral' };
@@ -98,10 +118,11 @@ const describeOrder = (o: SellerOrder) => {
     chip = { label: 'Case open', tone: 'red' };
   } else if (fs === 'sent_to_backoffice') {
     stage = 'progress';
-    chip = { label: 'At hub · being checked', tone: 'blue' };
+    // A rider has it on the way in; otherwise the seller said they handed it in.
+    chip = { label: o.hubMethod === 'rider' ? 'On its way to the hub' : 'At hub · being checked', tone: 'blue' };
   } else if (fs === 'received_by_backoffice') {
     stage = 'progress';
-    chip = { label: 'Passed hub check', tone: 'green' };
+    chip = o.inspection ? { label: 'Passed hub check', tone: 'green' } : { label: 'At hub · being checked', tone: 'blue' };
   } else if (fs === 'shipped') {
     stage = 'progress';
     chip = { label: o.deliveryMethod === 'pickup' ? 'Ready for pickup' : 'Out for delivery', tone: 'blue' };
@@ -126,7 +147,8 @@ const describeOrder = (o: SellerOrder) => {
       sold_for: soldPrice(o),
       payout: num(o.sellerPayout),
       chip,
-      dropoff_due_at: iso(due),
+      // A booked rider brings it in: nothing for the seller to drop off.
+      dropoff_due_at: iso(hub.riderBooked ? null : due),
       case: reply ?? (anyCase ? { ...anyCase, respond_by: null } : null),
       fulfillment_status: fs,
       payout_status: o.payoutStatus,
@@ -167,7 +189,8 @@ export const getSellerOrders = async (sellerId: string, tab: Stage) => {
 export const getDropoffCodes = async (sellerId: string) => {
   const orders = (await loadSellerOrders(sellerId))
     .map(o => ({ o, due: dropoffDueOf(o) }))
-    .filter(x => x.o.paymentStatus === 'paid' && x.due);
+    // A booked rider collects it from the shop, so it has no drop-off code to show.
+    .filter(x => x.o.paymentStatus === 'paid' && x.due && !hubFlags(x.o).riderBooked);
   return orders
     .sort((a, b) => a.due!.getTime() - b.due!.getTime())
     .map(({ o, due }) => ({

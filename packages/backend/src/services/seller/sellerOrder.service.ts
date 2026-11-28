@@ -3,6 +3,7 @@ import { platformFeeFor, platformFeeLabel } from '@gadget-bidding/shared';
 import { caseLabel } from '../buyer/case.service';
 import { CONFIRM_WINDOW_HOURS, dropoffDueOf, paymentDueOf } from '../order/order.service';
 import { nextPayoutTime, payoutBlockFor, PayoutBlock } from './payouts.service';
+import { hubSummaryOf } from './hub.service';
 
 /**
  * One order, as the seller sees it (GET /seller/orders/:id): where it is in the six steps
@@ -79,8 +80,10 @@ export type SellerOrderDetail = {
     batch: { id: string; reference: string; status: string } | null;
   };
   case: { id: string; number: string; status: string; open: boolean } | null;
-  /** "Send to hub" is allowed now. */
+  /** "Send to hub" is allowed now (choosing drop-off or a rider, or changing it before the rider comes). */
   can_send_to_hub: boolean;
+  /** How it's getting to the hub, the check's result and, if it failed, what happens next. */
+  hub: ReturnType<typeof hubSummaryOf>;
 };
 
 /** Last time the order reached this status. */
@@ -101,7 +104,7 @@ const readInspection = (value: unknown): { passed: number; total: number; at: st
 };
 
 /** "5%" when the stored fee is the band's fee, else the stored fee's own share ("0%", "4.5%"). */
-const feeLabelOf = (sale: number, fee: number) => {
+export const feeLabelOf = (sale: number, fee: number) => {
   if (Math.round(fee) === platformFeeFor(sale)) return platformFeeLabel(sale);
   if (sale <= 0) return '0%';
   const pct = Math.round((fee / sale) * 1000) / 10;
@@ -139,6 +142,11 @@ export const getSellerOrder = async (sellerId: string, orderId: string, now = ne
       paymentDueAt: true,
       buyerConfirmedAt: true,
       inspection: true,
+      hubMethod: true,
+      riderPickup: true,
+      failedChoice: true,
+      secondCheckAt: true,
+      returnedToSellerAt: true,
       createdAt: true,
       updatedAt: true,
       auction: { select: { id: true, totalBids: true, gadget: { select: { title: true, images: true } } } },
@@ -248,5 +256,6 @@ export const getSellerOrder = async (sellerId: string, orderId: string, now = ne
       : null,
     // Payment moves it to processing; only from there can the seller hand it in.
     can_send_to_hub: stage === 'sold' && fs === 'processing' && !caseOpen,
+    hub: hubSummaryOf(o),
   };
 };

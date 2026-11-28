@@ -15,6 +15,7 @@ import * as auditService from '../../services/audit/audit.service';
 import * as listingService from '../../services/gadget/listing.service';
 import { getListingForReview } from '../../services/admin/listingReview.service';
 import { profileByKey } from '@gadget-bidding/shared';
+import { hubAdminSummary } from '../../services/seller/hub.service';
 
 const toNumber = (value: unknown): number => {
   if (value == null) return 0;
@@ -578,6 +579,10 @@ export const getAllOrders = async (req: Request, res: Response) => {
     if (missingShipping) {
       where.shippingAddress = { equals: Prisma.DbNull };
     }
+    // Hub desk: orders whose seller chose drop-off or booked a rider (still before the hub).
+    if (req.query.hub_method === 'set') {
+      where.hubMethod = { not: null };
+    }
     if (search) {
       where.OR = [
         { orderNumber: { contains: search, mode: 'insensitive' } },
@@ -661,6 +666,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
         tracking_number: o.trackingNumber,
         /** Hub check (admin only: includes who did it). */
         inspection: o.inspection ?? null,
+        /** Getting it in (drop-off or rider) and, after a failed check, back to the seller. */
+        hub: hubAdminSummary(o),
         created_at: o.createdAt?.toISOString(),
         updated_at: o.updatedAt?.toISOString(),
         gadget_title: o.auction?.gadget?.title,
@@ -796,6 +803,9 @@ export const recordInspection = async (req: Request, res: Response) => {
     if (result.all_passed) {
       void buyerAlerts.notifyBuyerInspectionPassed(id, result.inspection.passed, result.inspection.total);
       void import('../../services/seller/sellerAlerts').then(a => a.notifySellerHubPassed(id as string));
+    } else {
+      // The seller chooses: collect it, a rider to their shop, or (once) a second check.
+      void import('../../services/seller/hub.service').then(h => h.notifySellerHubFailed(id as string));
     }
 
     sendSuccess(

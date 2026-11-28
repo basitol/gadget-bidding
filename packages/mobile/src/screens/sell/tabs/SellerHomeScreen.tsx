@@ -10,6 +10,7 @@ import { useReloadOnReconnect } from '../../../store/networkStore';
 import { useToastStore } from '../../../store/toastStore';
 import { formatCurrency } from '../../../utils';
 import { sellerTabsService, SellerHome, SellerTodo, byWhen, hoursLeft, timeLeftLong } from '../../../services/sellerTabs.service';
+import { listingPauseService, type ListingPause } from '../../../services/listingPause.service';
 import { initialsOf } from '../../buyer/categories';
 import { TINT } from '../onboarding/kit';
 
@@ -44,6 +45,7 @@ export const SellerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   const now = useNow(1000);
   const [home, setHome] = useState<SellerHome | null>(null);
   const [payouts, setPayouts] = useState<PayoutSummary | null>(null);
+  const [pause, setPause] = useState<ListingPause | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -56,6 +58,10 @@ export const SellerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
       .get('/seller/payouts')
       .then(r => setPayouts(r.data?.data ?? null))
       .catch(() => setPayouts(null));
+    listingPauseService
+      .get()
+      .then(setPause)
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -162,13 +168,36 @@ export const SellerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
         <View style={styles.sectionRow}>
           <Text style={styles.section}>Needs your attention</Text>
-          {home?.todo_count ? (
+          {(home?.todo_count ?? 0) + (pause?.paused ? 1 : 0) ? (
             <View style={styles.todoChip}>
-              <Text style={styles.todoChipText}>{home.todo_count} to do</Text>
+              <Text style={styles.todoChipText}>{(home?.todo_count ?? 0) + (pause?.paused ? 1 : 0)} to do</Text>
             </View>
           ) : null}
         </View>
-        {home && !home.todo.length ? (
+        {pause?.paused ? (
+          <Pressable
+            onPress={() => navigation.navigate('ListingsPaused')}
+            style={({ pressed }) => [styles.todoWrap, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="New listings are paused. See why"
+          >
+            <GlassCard style={styles.todo}>
+              <View style={styles.pauseIcon}>
+                <Ionicons name="lock-closed-outline" size={17} color="#DB7A2E" />
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.todoTitle} numberOfLines={1}>
+                  New listings are paused
+                </Text>
+                <Text style={[styles.todoSub, styles.pauseSub]} numberOfLines={1}>
+                  {pause.code === 'PAUSED_BY_TEAM' ? 'Paused by our team · see why' : `${pause.failed.length} failed sales · see why`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={G.faint} />
+            </GlassCard>
+          </Pressable>
+        ) : null}
+        {home && !home.todo.length && !pause?.paused ? (
           <GlassCard style={styles.empty}>
             <Text style={styles.emptyText}>You're all caught up.</Text>
           </GlassCard>
@@ -301,6 +330,8 @@ const styles = StyleSheet.create({
   todoWrap: { marginBottom: 8 },
   todo: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
   todoIcon: { width: 32, height: 32, resizeMode: 'contain' },
+  pauseIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFF6EE', alignItems: 'center', justifyContent: 'center' },
+  pauseSub: { color: '#DB7A2E' },
   todoTitle: { color: G.ink, fontSize: 14, fontFamily: fonts.medium },
   todoSub: { color: G.muted, fontSize: 12, fontFamily: fonts.regular, marginTop: 2 },
   urgent: { color: G.red },

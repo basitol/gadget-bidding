@@ -358,7 +358,7 @@ async function fetchJson<T>(
   return { res, json: json ?? {} };
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let { res, json } = await fetchJson<T>(
     path,
     options,
@@ -1097,6 +1097,15 @@ export type SellerDetail = {
     on_hold: number;
   };
   counts: { listings: number; payouts: number; notes: number };
+  /** New listings paused on their own: failed hub checks or refunded cases in the window. */
+  auto_pause: {
+    paused: boolean;
+    failed: { order_id: string; order_number: string; title: string; at: string; reason: string; kind: 'hub_check' | 'case' }[];
+    count: number;
+    limit: number;
+    window_days: number;
+    review_requested_at: string | null;
+  };
 };
 
 export type SellerListing = {
@@ -1162,6 +1171,11 @@ export const peopleApi = {
   buyerBids: (id: string) => request<{ data: BuyerLiveBid[] }>(`/admin/people/buyers/${id}/bids`),
   buyerDisputes: (id: string) => request<{ data: PersonDispute[] }>(`/admin/people/buyers/${id}/disputes`),
   seller: (id: string) => request<{ data: SellerDetail }>(`/admin/people/sellers/${id}`),
+  liftListingPause: (id: string) =>
+    request<{ data: { cleared_at: string; failed_cleared: number }; message?: string }>(
+      `/admin/people/sellers/${id}/lift-listing-pause`,
+      { method: 'POST' }
+    ),
   sellerListings: (id: string) => request<{ data: SellerListing[] }>(`/admin/people/sellers/${id}/listings`),
   sellerPayouts: (id: string) => request<{ data: SellerPayoutItem[] }>(`/admin/people/sellers/${id}/payouts`),
   notes: (id: string) => request<{ data: PersonNote[] }>(`/admin/people/${id}/notes`),

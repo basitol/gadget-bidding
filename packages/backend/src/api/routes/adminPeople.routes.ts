@@ -6,6 +6,8 @@ import { adminMutationRateLimiter } from '../middlewares/security.middleware';
 import { sendError, sendSuccess } from '../../utils/response';
 import logger from '../../utils/logger';
 import * as people from '../../services/admin/people.service';
+import { liftAutomaticPause, ListingPauseError } from '../../services/seller/listingPause.service';
+import { recordAuditEventSafe } from '../../services/audit/audit.service';
 
 /**
  * Users (admin), mounted at /api/v1/admin:
@@ -20,6 +22,7 @@ import * as people from '../../services/admin/people.service';
  *   POST /people/:id/pause-listings { reason, duration: until_fixed|30d|close_store, note? }
  *   POST /people/:id/restore { reason: served|mistake|appeal, note? }
  *   POST /people/:id/password-reset
+ *   POST /people/sellers/:id/lift-listing-pause (the automatic pause after failed sales)
  *   POST /restrictions/:id/approve · POST /restrictions/:id/decline (a second admin)
  */
 const router: Router = Router();
@@ -120,6 +123,29 @@ router.post(
 router.post('/people/:id/restore', adminMutationRateLimiter, [id], handleValidationErrors, run(req => people.restorePerson(admin(req), req.params.id as string, req.body ?? {}), 'Restored'));
 router.post('/people/:id/password-reset', adminMutationRateLimiter, [id], handleValidationErrors, run(req => people.sendPasswordReset(req.params.id as string), 'Reset code sent'));
 
+router.post(
+  '/people/sellers/:id/lift-listing-pause',
+  adminMutationRateLimiter,
+  [id],
+  handleValidationErrors,
+  async (req: Request, res: Response) => {
+    try {
+      const result = await liftAutomaticPause(req.params.id as string);
+      recordAuditEventSafe({
+        req,
+        action: 'listing_pause_lifted',
+        resourceType: 'user',
+        resourceId: req.params.id as string,
+        changes: result,
+      });
+      sendSuccess(res, result, 'They can list again');
+    } catch (error: any) {
+      if (error instanceof ListingPauseError) return sendError(res, error.message, error.status);
+      logger.error('Lift listing pause error:', error);
+      sendError(res, 'That didn’t work. Try again.', 500);
+    }
+  }
+);
 router.post('/restrictions/:id/approve', adminMutationRateLimiter, [id], handleValidationErrors, run(req => people.approveRestriction(admin(req), req.params.id as string), 'Approved'));
 router.post('/restrictions/:id/decline', adminMutationRateLimiter, [id], handleValidationErrors, run(req => people.declineRestriction(admin(req), req.params.id as string), 'Declined'));
 

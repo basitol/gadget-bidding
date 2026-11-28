@@ -1,6 +1,7 @@
 import prisma from '../../config/prisma';
 import logger from '../../utils/logger';
 import { Prisma } from '../../generated/prisma';
+import { SELLER_POLICY } from '@gadget-bidding/shared';
 import { sellerCode } from '../buyer/sellerSummary.service';
 import {
   inspectionPassed,
@@ -16,6 +17,7 @@ import {
   type BuiltEmail,
 } from '../notification/email.service';
 import { releaseHold } from '../wallet/wallet.service';
+import { failedSales } from '../seller/listingGate.service';
 import { startPasswordReset, maskEmail } from '../auth/auth.service';
 
 /**
@@ -538,6 +540,7 @@ const loadPerson = async (id: string, role: 'bidder' | 'seller') => {
       twoFactorEnabled: true,
       lastActiveAt: true,
       sellerKybStatus: true,
+      listingReviewRequestedAt: true,
       sellerApplication: {
         select: { id: true, status: true, businessName: true, ownerName: true, shopNumber: true, plaza: true, area: true },
       },
@@ -708,7 +711,7 @@ export const buyerDisputes = async (id: string) => {
 export const sellerDetail = async (id: string) => {
   const u = await loadPerson(id, 'seller');
   const app = u.sellerApplication;
-  const [restriction, sold, rating, inspected, openDisputes, onHold, listings, payouts, notes] = await Promise.all([
+  const [restriction, sold, rating, inspected, openDisputes, onHold, listings, payouts, notes, failed] = await Promise.all([
     openRestriction(id),
     prisma.order.findMany({ where: SOLD(id), select: { totalAmount: true, deliveryFee: true } }),
     prisma.rating.aggregate({ where: { rateeId: id }, _avg: { score: true }, _count: { _all: true } }),
@@ -718,6 +721,7 @@ export const sellerDetail = async (id: string) => {
     prisma.gadget.count({ where: { sellerId: id } }),
     prisma.sellerPayout.count({ where: { sellerId: id } }),
     prisma.userNote.count({ where: { userId: id } }),
+    failedSales(id),
   ]);
   const passed = inspected.filter(o => inspectionPassed(o.inspection)).length;
   const shop = [
@@ -749,6 +753,15 @@ export const sellerDetail = async (id: string) => {
       on_hold: onHold,
     },
     counts: { listings, payouts, notes },
+    /** New listings paused on their own: failed hub checks or refunded cases in the window. */
+    auto_pause: {
+      paused: failed.length >= SELLER_POLICY.failedSaleLimit,
+      failed: failed.slice(0, 10),
+      count: failed.length,
+      limit: SELLER_POLICY.failedSaleLimit,
+      window_days: SELLER_POLICY.failedSaleWindowDays,
+      review_requested_at: iso(u.listingReviewRequestedAt),
+    },
   };
 };
 

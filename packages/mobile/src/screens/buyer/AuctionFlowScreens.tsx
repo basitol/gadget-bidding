@@ -512,6 +512,16 @@ export const AuctionScreen: React.FC<{ navigation: any; route: any }> = ({
           <Text style={styles.description}>{auction.gadget.description}</Text>
         ) : null}
 
+        {auction.gadget?.bidder_note ? (
+          <>
+            <Text style={styles.h2}>Note from the seller</Text>
+            <GlassCard style={styles.discCard}>
+              <Text style={styles.checkText}>{auction.gadget.bidder_note}</Text>
+              <Text style={styles.hint}>Added while the auction was running.</Text>
+            </GlassCard>
+          </>
+        ) : null}
+
         <View style={styles.bidsHead}>
           <Text style={styles.h2}>Recent bids</Text>
           <Text style={styles.hint}>Names are hidden</Text>

@@ -12,9 +12,8 @@ import {
   videoDurationSeconds,
 } from '../../api/middlewares/upload.middleware';
 import { SELLER_POLICY } from '@gadget-bidding/shared';
-import { applyBalanceDelta } from '../../utils/wallet-balance';
 import * as notificationService from '../notification/notification.service';
-import * as paystackService from '../payment/paystack.service';
+import { cardPaymentFor, creditBuyerWallet, startCardRefund } from '../order/buyerRefund.service';
 import { paymentMethodLabel } from '../order/order.service';
 import { nextPayoutTime } from '../seller/payouts.service';
 import { failedSalesCount } from '../seller/listingGate.service';
@@ -686,17 +685,13 @@ export const markReturnReceived = async (disputeId: string) => {
     if (!claimed.count) throw new Error('This return is already being processed. Refresh the case.');
   }
 
-  const cardTx = await prisma.paymentTransaction.findFirst({
-    where: { status: 'success', paymentGateway: 'paystack', metadata: { path: ['order_id'], equals: order.id } },
-    orderBy: { updatedAt: 'desc' },
-  });
+  const cardTx = await cardPaymentFor(order.id);
 
   let destination: 'card' | 'wallet' = 'wallet';
   let reference = `RF-${order.orderNumber}`;
   if (cardTx?.gatewayReference) {
-    const refund = await paystackService.refundTransaction(cardTx.gatewayReference);
+    reference = await startCardRefund(cardTx.gatewayReference);
     destination = 'card';
-    reference = refund.id ? `PSR-${refund.id}` : `PSR-${cardTx.gatewayReference}`;
     await prisma.disputeReturn.update({ where: { disputeId }, data: { refundReference: reference, refundDestination: 'card' } });
   }
 
@@ -712,21 +707,13 @@ export const markReturnReceived = async (disputeId: string) => {
       },
     });
     if (destination === 'wallet' && order.buyerId) {
-      const wallet = await tx.wallet.findUnique({ where: { userId: order.buyerId } });
-      if (!wallet) throw new Error('Buyer wallet not found');
-      const { balanceBefore, balanceAfter } = await applyBalanceDelta(tx, wallet.id, amount);
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          transactionType: 'refund',
-          amount,
-          balanceBefore,
-          balanceAfter,
-          reference: order.orderNumber,
-          description: `Refund for case ${caseLabel(d.caseNumber)} (order ${order.orderNumber})`,
-          status: 'completed',
-        },
-      });
+      await creditBuyerWallet(
+        tx,
+        order.buyerId,
+        amount,
+        order.orderNumber,
+        `Refund for case ${caseLabel(d.caseNumber)} (order ${order.orderNumber})`
+      );
     }
     await tx.order.update({
       where: { id: order.id },

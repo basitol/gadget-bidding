@@ -3,7 +3,7 @@ import { SELLER_POLICY } from '@gadget-bidding/shared';
 
 /**
  * Can this seller send a new listing for review right now? One place for every rule
- * (seller agreement): verified, store not closed, not away, fewer than 3 refunded sales in
+ * (seller agreement): verified, store not closed, not away, fewer than 3 failed sales (failed hub checks or refunded cases) in
  * 90 days, and proof of shop address not past its grace period.
  * Editing a listing our team sent back is still allowed (see requireSellerKyb).
  */
@@ -29,15 +29,112 @@ export const proofOfAddressStatus = (documents: unknown, now = new Date()) => {
   };
 };
 
-/** Refunded cases on this seller's sales in the last 90 days (each is a "failed sale"). */
-export const failedSalesCount = (sellerId: string, now = new Date()) =>
-  prisma.dispute.count({
-    where: {
-      outcome: 'refund',
-      decidedAt: { gte: new Date(now.getTime() - SELLER_POLICY.failedSaleWindowDays * DAY) },
-      order: { sellerId },
-    },
-  });
+/* ---------------- Failed sales (the automatic pause) ---------------- */
+
+export type FailedSale = {
+  order_id: string;
+  order_number: string;
+  title: string;
+  /** When it failed: the hub check, or the refund decision on the case. */
+  at: string;
+  /** "Screen crack", "Battery lower than listed", "Not as described". */
+  reason: string;
+  kind: 'hub_check' | 'case';
+};
+
+const PROBLEM_LABEL: Record<string, string> = {
+  item_not_as_described: 'Not as described',
+  not_working: 'Didn’t work properly',
+  missing_parts: 'Missing parts',
+  wrong_item: 'Wrong item',
+  item_damaged: 'Damaged in delivery',
+  item_not_received: 'Didn’t arrive',
+  fraud: 'Something was wrong',
+  other: 'Refunded',
+};
+
+type Inspection = { checks?: { label?: string; passed?: boolean }[]; passed?: number; total?: number; note?: string | null; at?: string };
+
+const readInspection = (v: unknown): Inspection | null =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Inspection) : null;
+
+/** The hub check didn't pass (some check failed). */
+export const inspectionFailed = (v: unknown) => {
+  const i = readInspection(v);
+  return !!i && typeof i.total === 'number' && typeof i.passed === 'number' && i.total > 0 && i.passed < i.total;
+};
+
+/** The first thing the hub found: its note's first line, else the first failed check. */
+const hubReason = (v: unknown) => {
+  const i = readInspection(v);
+  const note = i?.note?.split(/\r?\n/)[0]?.trim();
+  if (note) return note.length > 40 ? `${note.slice(0, 39)}…` : note;
+  return i?.checks?.find(c => c.passed === false)?.label ?? 'Didn’t pass the hub check';
+};
+
+/** When the window starts for this seller: 90 days back, or when our team last lifted the pause. */
+const windowStart = async (sellerId: string, now: Date) => {
+  const u = await prisma.user.findUnique({ where: { id: sellerId }, select: { listingPauseClearedAt: true } });
+  const since = new Date(now.getTime() - SELLER_POLICY.failedSaleWindowDays * DAY);
+  return u?.listingPauseClearedAt && u.listingPauseClearedAt > since ? u.listingPauseClearedAt : since;
+};
+
+/** Failed sales that count towards the pause, newest first (one per order). */
+export const failedSales = async (sellerId: string, now = new Date()): Promise<FailedSale[]> => {
+  const since = await windowStart(sellerId, now);
+  const [cases, hubOrders] = await Promise.all([
+    prisma.dispute.findMany({
+      where: { outcome: 'refund', decidedAt: { gt: since }, order: { sellerId } },
+      select: {
+        decidedAt: true,
+        disputeType: true,
+        order: { select: { id: true, orderNumber: true, auction: { select: { gadget: { select: { title: true } } } } } },
+      },
+    }),
+    // Refunded after a failed hub check (the inspection stays on the order with passed < total).
+    prisma.order.findMany({
+      where: { sellerId, paymentStatus: 'refunded' },
+      select: {
+        id: true,
+        orderNumber: true,
+        inspection: true,
+        updatedAt: true,
+        auction: { select: { gadget: { select: { title: true } } } },
+      },
+    }),
+  ]);
+
+  const out = new Map<string, FailedSale>();
+  for (const o of hubOrders) {
+    if (!inspectionFailed(o.inspection)) continue;
+    const atRaw = readInspection(o.inspection)?.at;
+    const at = atRaw ? new Date(atRaw) : (o.updatedAt ?? now);
+    if (Number.isNaN(at.getTime()) || at <= since) continue;
+    out.set(o.id, {
+      order_id: o.id,
+      order_number: o.orderNumber,
+      title: o.auction?.gadget?.title ?? 'Gadget',
+      at: at.toISOString(),
+      reason: hubReason(o.inspection),
+      kind: 'hub_check',
+    });
+  }
+  for (const c of cases) {
+    if (!c.order || !c.decidedAt || out.has(c.order.id)) continue;
+    out.set(c.order.id, {
+      order_id: c.order.id,
+      order_number: c.order.orderNumber,
+      title: c.order.auction?.gadget?.title ?? 'Gadget',
+      at: c.decidedAt.toISOString(),
+      reason: PROBLEM_LABEL[c.disputeType] ?? 'Refunded',
+      kind: 'case',
+    });
+  }
+  return [...out.values()].sort((a, b) => b.at.localeCompare(a.at));
+};
+
+/** Failed sales in the window (hub checks failed and refunded, or cases refunded). */
+export const failedSalesCount = async (sellerId: string, now = new Date()) => (await failedSales(sellerId, now)).length;
 
 export type ListingBlock = { code: string; message: string } | null;
 
@@ -87,7 +184,7 @@ export const whyCantList = async (sellerId: string): Promise<ListingBlock> => {
   if (failed >= SELLER_POLICY.failedSaleLimit) {
     return {
       code: 'LISTINGS_PAUSED',
-      message: `New listings are paused: ${failed} sales were refunded in the last ${SELLER_POLICY.failedSaleWindowDays} days. Our team will be in touch.`,
+      message: `New listings are paused: ${failed} of your sales failed the hub check or were refunded in the last ${SELLER_POLICY.failedSaleWindowDays} days.`,
     };
   }
   return null;

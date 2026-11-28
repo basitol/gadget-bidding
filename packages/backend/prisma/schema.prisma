@@ -53,6 +53,10 @@ model User {
   storeAway                Boolean   @default(false) @map("store_away")
   /// The seller closed their store.
   storeClosedAt            DateTime? @map("store_closed_at") @db.Timestamp(6)
+  /// "Request a review" on the paused-listings screen (failed hub checks).
+  listingReviewRequestedAt DateTime? @map("listing_review_requested_at") @db.Timestamp(6)
+  /// Our team lifted the automatic pause: failed sales up to this time no longer count.
+  listingPauseClearedAt    DateTime? @map("listing_pause_cleared_at") @db.Timestamp(6)
   /// Payouts wait until this time after the payout account changed.
   payoutsPausedUntil       DateTime? @map("payouts_paused_until") @db.Timestamp(6)
   /// After 3 missed payments, bidding pauses until this time (the account stays usable).
@@ -223,6 +227,12 @@ model Gadget {
   deviceIdentifierHash String?   @map("device_identifier_hash") @db.VarChar(64)
   /// "This item is mine to sell, and the details are true."
   sellerAttestedAt     DateTime? @map("seller_attested_at") @db.Timestamp(6)
+  /// Photos the seller added to a live listing; our team checks them before they show (then they move to images).
+  pendingImages        String[]  @default([]) @map("pending_images")
+  /// "Add a note for bidders": shown on the auction once our team has checked it.
+  bidderNote           String?   @map("bidder_note")
+  /// A new note waiting for the team (replaces bidderNote once approved).
+  bidderNotePending    String?   @map("bidder_note_pending")
   createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt            DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
@@ -258,6 +268,8 @@ model Auction {
   viewCount         Int       @default(0) @map("view_count")
   autoExtendEnabled Boolean?  @default(true) @map("auto_extend_enabled")
   autoExtendMinutes Int?      @default(5) @map("auto_extend_minutes")
+  /// Why the seller ended it early: sold_elsewhere | change_price | found_fault | other | sold_early | problem.
+  endReason         String?   @map("end_reason") @db.VarChar(40)
   createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
@@ -349,6 +361,19 @@ model Order {
   /// Hub inspection result: { checks: [{ key, label, passed }], passed, total, note, by, at }.
   /// It can only leave the hub (shipped / collected) once every check passed.
   inspection        Json?     @map("inspection")
+  /// How the item gets to the hub: 'dropoff' (seller walks it in) or 'rider' (we collect from the shop).
+  hubMethod         String?   @map("hub_method") @db.VarChar(10)
+  /// The seller ticked the "before you go" list (account removed, packed, charged, SIM out).
+  hubChecklistAt    DateTime? @map("hub_checklist_at") @db.Timestamp(6)
+  /// Rider booking: { slot, slot_start, slot_end, contact_name, contact_phone, address, fee, booked_at }.
+  riderPickup       Json?     @map("rider_pickup")
+  /// After a failed hub check: 'collect' (free for 7 days), 'deliver' (rider to the shop) or 'second_check'.
+  failedChoice      String?   @map("failed_choice") @db.VarChar(20)
+  failedChoiceAt    DateTime? @map("failed_choice_at") @db.Timestamp(6)
+  /// The seller asked for a senior inspector to check it again (once per order).
+  secondCheckAt     DateTime? @map("second_check_at") @db.Timestamp(6)
+  /// A failed item went back to the seller (collected at the hub or delivered to the shop).
+  returnedToSellerAt DateTime? @map("returned_to_seller_at") @db.Timestamp(6)
   createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 

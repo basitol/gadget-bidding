@@ -208,6 +208,8 @@ export const getAuctionById = async (
       category_slug: auction.gadget.category?.slug,
       // Listing-flow repairs, damage and faults as "Buyers will see" lines (empty for older listings).
       disclosures: listingDisclosures(auction.gadget.specifications as any),
+      // "Add a note for bidders": only once our team has checked it (never the pending one).
+      bidder_note: auction.gadget.bidderNote ?? null,
     },
     // Buyers only ever see a seller's code ("Verified seller CV-1042"), never a name or photo.
     seller: {
@@ -539,13 +541,14 @@ const MAX_RELIST_HOURS = 7 * 24;
 
 /**
  * Put an unsold gadget up again: same settings as the last run (its length, starting price,
- * reserve, bid step, buy-now), starting now. The seller may lower the starting price or the
- * reserve. Not allowed after a sale, while another run is open, or when the team stopped it.
+ * reserve, bid step, buy-now), starting now. The seller may change the starting price, the
+ * reserve or the run length. Not allowed after a sale, while another run is open, or when the
+ * team stopped it.
  */
 export const relistAuction = async (
   sellerId: string,
   auctionId: string,
-  changes: { starting_price?: number; reserve_price?: number | null } = {}
+  changes: { starting_price?: number; reserve_price?: number | null; duration_hours?: number } = {}
 ): Promise<Auction> => {
   const last = await prisma.auction.findFirst({
     where: { id: auctionId, sellerId },
@@ -572,7 +575,7 @@ export const relistAuction = async (
     changes.reserve_price === null ? null : changes.reserve_price ?? (last.reservePrice == null ? null : toNumber(last.reservePrice));
   const hours = Math.min(
     MAX_RELIST_HOURS,
-    Math.max(1, Math.round((last.endTime.getTime() - last.startTime.getTime()) / 3_600_000))
+    Math.max(1, changes.duration_hours ?? Math.round((last.endTime.getTime() - last.startTime.getTime()) / 3_600_000))
   );
   const now = Date.now();
 

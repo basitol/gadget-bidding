@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { peopleApi, sellerApplicationsApi, type SellerDetail, type SellerListing } from '@/api';
 import { SectionCard } from '@/components/attention';
 import { Seo } from '@/components/Seo';
-import { Chip, docChip, redOutline, secondary } from '@/components/SellerApplicationPanel';
+import { Chip, docChip, Note, redOutline, secondary } from '@/components/SellerApplicationPanel';
+import { useConfirmDialog } from '@/components/ConfirmDialogProvider';
 import type { Tone } from '@/components/shared';
 import { PageLoadError, usePageCrumb } from '@/components/states';
 import { Button } from '@/components/ui/button';
@@ -170,7 +171,13 @@ function SellerView({ id }: { id: string }) {
         tile={<PersonTile name={sl.name} type="seller" />}
         name={sl.name}
         sub={sub}
-        note={sl.restriction ? <RestrictionNote restriction={sl.restriction} /> : null}
+        note={
+          sl.restriction ? (
+            <RestrictionNote restriction={sl.restriction} />
+          ) : sl.auto_pause.paused ? (
+            <AutoPauseNote seller={sl} onLifted={load} />
+          ) : null
+        }
         facts={
           <>
             <Fact k="Sales">{num(s.sales)}</Fact>
@@ -407,5 +414,55 @@ function KybCard({ applicationId, refreshKey }: { applicationId: string; refresh
         )}
       </RowsState>
     </SectionCard>
+  );
+}
+
+/**
+ * New listings paused on their own (failed hub checks or refunded cases in 90 days): which sales
+ * counted, whether the seller asked for a review, and "Lift the pause" (those sales stop counting).
+ */
+function AutoPauseNote({ seller, onLifted }: { seller: SellerDetail; onLifted: () => void }) {
+  const { confirm } = useConfirmDialog();
+  const [busy, setBusy] = useState(false);
+  const p = seller.auto_pause;
+  const lift = async () => {
+    const ok = await confirm({
+      title: `Let ${seller.name} list again?`,
+      description: `The ${p.count} failed ${p.count === 1 ? 'sale stops' : 'sales stop'} counting. If ${p.limit} more fail in ${p.window_days} days, new listings pause again.`,
+      confirmLabel: 'Lift the pause',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await peopleApi.liftListingPause(seller.id);
+      toast.success(`${seller.name} can list again`);
+      onLifted();
+    } catch (e) {
+      toast.error('That didn’t go through', { description: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Note tone="warn" title={`New listings paused automatically · ${plural(p.count, 'failed sale', 'failed sales')} in ${p.window_days} days`}>
+      <ul className="mt-1 flex flex-col gap-0.5">
+        {p.failed.map(f => (
+          <li key={f.order_id} className="text-[14px] text-ink">
+            {f.title} · {dayMonth(f.at)} · <span className="text-slate">{f.reason}</span>{' '}
+            <span className="text-hint">({f.kind === 'hub_check' ? 'hub check' : 'refunded case'})</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button variant="outline" className={secondary} onClick={lift} disabled={busy}>
+          {busy ? 'Lifting…' : 'Lift the pause'}
+        </Button>
+        {p.review_requested_at ? (
+          <span className="text-[13px] text-slate">
+            They asked for a review {friendlyTime(p.review_requested_at).replace(/^(Today|Yesterday)/, w => w.toLowerCase())}
+          </span>
+        ) : null}
+      </div>
+    </Note>
   );
 }
