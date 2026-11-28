@@ -79,7 +79,18 @@ export interface SellerOrderDetail {
     batch: { id: string; reference: string; status: string } | null;
   };
   case: { id: string; number: string; status: string; open: boolean } | null;
+  /** Paid and not at the hub yet: they can choose (or change) drop-off or a rider. */
   can_send_to_hub: boolean;
+  /** How it's getting to the hub and the check's result (see services/sellerHub.service). */
+  hub: {
+    method: 'dropoff' | 'rider' | null;
+    rider: { label: string; contact: string } | null;
+    result: 'passed' | 'failed' | null;
+    second_check_pending: boolean;
+    failed_choice: 'collect' | 'deliver' | 'second_check' | null;
+    collect_code: string | null;
+    returned_at: string | null;
+  };
 }
 
 /* ---------------- Payout ---------------- */

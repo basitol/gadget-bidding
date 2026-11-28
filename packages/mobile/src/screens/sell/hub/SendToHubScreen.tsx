@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { GlassScreen, GlassHeader, GlassCard, PrimaryButton, SecondaryButton, FooterBar } from '../../../components/glass';
+import {
+  GlassScreen,
+  GlassHeader,
+  GlassCard,
+  PrimaryButton,
+  SecondaryButton,
+  FooterBar,
+} from '../../../components/glass';
 import { LoadingScreen } from '../store/shared';
 import { Label } from '../onboarding/kit';
 import { RadioCard } from '../case/shared';
@@ -20,7 +27,10 @@ const BEFORE_YOU_GO = [
   'SIM and memory card removed',
 ];
 
-export const SendToHubScreen: React.FC<{ navigation: any; route: { params?: { orderId?: string } } }> = ({ navigation, route }) => {
+export const SendToHubScreen: React.FC<{ navigation: any; route: { params?: { orderId?: string } } }> = ({
+  navigation,
+  route,
+}) => {
   const orderId = route.params?.orderId ?? '';
   const { view, error, load } = useHubView(orderId);
   const [rider, setRider] = useState<RiderOptions | null>(null);
@@ -53,7 +63,9 @@ export const SendToHubScreen: React.FC<{ navigation: any; route: { params?: { or
         <View style={hs.content}>
           <GlassCard style={hs.card}>
             <Text style={hs.question}>
-              {view.stage === 'on_its_way' ? 'The rider has it. It’s on its way to the hub.' : 'This order is already past this step.'}
+              {view.stage === 'on_its_way'
+                ? 'The rider has it. It’s on its way to the hub.'
+                : 'This order is already past this step.'}
             </Text>
           </GlassCard>
           <SecondaryButton label="Back to the order" onPress={() => navigation.goBack()} style={hs.gap} />
@@ -136,7 +148,13 @@ export const SendToHubScreen: React.FC<{ navigation: any; route: { params?: { or
       <FooterBar>
         <PrimaryButton
           label={
-            !allTicked ? 'Tick everything above' : busy ? 'Saving…' : method === 'rider' ? 'Next: book a rider' : 'Get my drop-off code'
+            !allTicked
+              ? 'Tick everything above'
+              : busy
+                ? 'Saving…'
+                : method === 'rider'
+                  ? 'Next: book a rider'
+                  : 'Get my drop-off code'
           }
           onPress={go}
           disabled={!allTicked || busy || (method === 'rider' && riderOff)}

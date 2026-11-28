@@ -150,7 +150,8 @@ export function encodeQr(text: string, forceMask?: number): boolean[][] {
   // Alignment pattern (versions 2–6 have one, at the bottom right).
   if (ver >= 2) {
     const p = size - 7;
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) setFn(p + dx, p + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) setFn(p + dx, p + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
   }
   // Reserve the format areas (drawn for real after masking).
   drawFormat(0, size, setFn);
@@ -215,14 +216,29 @@ function applyMask(dark: boolean[][], fixed: boolean[][], mask: number) {
       if (fixed[y][x]) continue;
       let flip: boolean;
       switch (mask) {
-        case 0: flip = (x + y) % 2 === 0; break;
-        case 1: flip = y % 2 === 0; break;
-        case 2: flip = x % 3 === 0; break;
-        case 3: flip = (x + y) % 3 === 0; break;
-        case 4: flip = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0; break;
-        case 5: flip = ((x * y) % 2) + ((x * y) % 3) === 0; break;
-        case 6: flip = (((x * y) % 2) + ((x * y) % 3)) % 2 === 0; break;
-        default: flip = (((x + y) % 2) + ((x * y) % 3)) % 2 === 0;
+        case 0:
+          flip = (x + y) % 2 === 0;
+          break;
+        case 1:
+          flip = y % 2 === 0;
+          break;
+        case 2:
+          flip = x % 3 === 0;
+          break;
+        case 3:
+          flip = (x + y) % 3 === 0;
+          break;
+        case 4:
+          flip = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+          break;
+        case 5:
+          flip = ((x * y) % 2) + ((x * y) % 3) === 0;
+          break;
+        case 6:
+          flip = (((x * y) % 2) + ((x * y) % 3)) % 2 === 0;
+          break;
+        default:
+          flip = (((x + y) % 2) + ((x * y) % 3)) % 2 === 0;
       }
       if (flip) dark[y][x] = !dark[y][x];
     }

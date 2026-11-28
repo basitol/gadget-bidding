@@ -23,7 +23,10 @@ export const LoadingScreen: React.FC<{ title: string; onBack: () => void; failed
       <View style={s.pad}>
         <GlassCard style={s.failed}>
           <Text style={s.failedTitle}>{failed}</Text>
-          <Text style={s.failedText}>Check your connection, then try again.</Text>
+          {/* The error may already say it ("No internet connection…"): don't repeat it. */}
+          {/connection|network|internet/i.test(failed) ? null : (
+            <Text style={s.failedText}>Check your connection, then try again.</Text>
+          )}
           {onRetry ? <PrimaryButton label="Try again" compact onPress={onRetry} style={s.retry} /> : null}
         </GlassCard>
       </View>

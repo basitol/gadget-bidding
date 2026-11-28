@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, FlatList, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { G, GlassScreen, GlassHeader, GlassCard, PillTabs, GadgetImage, useNow } from '../../../components/glass';
 import { BottomSheet } from '../../../components';
 import { fonts } from '../../../constants';
@@ -217,17 +218,25 @@ export const SellerOrdersScreen: React.FC<{ navigation: any }> = ({ navigation }
         </Text>
         {codes?.length ? (
           codes.map((c, i) => (
-            <View key={c.order_id} style={[styles.codeRow, i < codes.length - 1 && styles.rowLine]}>
+            <Pressable
+              key={c.order_id}
+              onPress={() => {
+                setCodes(null);
+                navigation.navigate('HubDropoffCode', { orderId: c.order_id });
+              }}
+              style={({ pressed }) => [styles.codeRow, i < codes.length - 1 && styles.rowLine, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Code ${c.code.split('').join(' ')}, ${c.title}. Show the QR code`}
+            >
               <GadgetImage uri={c.image} size={40} style={styles.codeThumb} />
               <View style={styles.body}>
-                <Text style={styles.code} selectable accessibilityLabel={`Code ${c.code.split('').join(' ')}`}>
-                  {c.code}
-                </Text>
+                <Text style={styles.code}>{c.code}</Text>
                 <Text style={styles.sub} numberOfLines={1}>
                   {c.title} · {byWhen(c.due_at, now)}
                 </Text>
               </View>
-            </View>
+              <Ionicons name="qr-code-outline" size={20} color={G.faint} />
+            </Pressable>
           ))
         ) : (
           <Text style={styles.emptyText}>Nothing to drop off right now.</Text>

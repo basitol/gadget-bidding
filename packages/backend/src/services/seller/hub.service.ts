@@ -7,6 +7,7 @@ import { alreadyNotified, createNotification } from '../notification/notificatio
 import { cardPaymentFor, creditBuyerWallet, startCardRefund } from '../order/buyerRefund.service';
 import { DROPOFF_CUTOFF_HOUR, HUB_CLOSED_WEEKDAYS, dropoffDueOf } from '../order/order.service';
 import { feeLabelOf } from './sellerOrder.service';
+import { FAILED_CHECK } from './listingGate.service';
 
 /**
  * Getting a sold item to the hub and, if it fails the check, back to the seller (/seller/hub).
@@ -68,7 +69,14 @@ const naira = (n: number) => `₦${Math.round(n).toLocaleString('en-NG')}`;
 
 const lagos = (d: Date) => {
   const l = new Date(d.getTime() + LAGOS * HOUR);
-  return { y: l.getUTCFullYear(), m: l.getUTCMonth(), d: l.getUTCDate(), h: l.getUTCHours(), min: l.getUTCMinutes(), dow: l.getUTCDay() };
+  return {
+    y: l.getUTCFullYear(),
+    m: l.getUTCMonth(),
+    d: l.getUTCDate(),
+    h: l.getUTCHours(),
+    min: l.getUTCMinutes(),
+    dow: l.getUTCDay(),
+  };
 };
 const lagosAt = (y: number, m: number, d: number, h: number) => new Date(Date.UTC(y, m, d, h) - LAGOS * HOUR);
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -113,7 +121,14 @@ const spacedPhone = (p: string) => {
 /* ---------------- Reading the order ---------------- */
 
 type InspectionCheck = { key: string; label: string; passed: boolean };
-type Inspection = { checks: InspectionCheck[]; passed: number; total: number; note: string | null; at: string; photos?: unknown };
+type Inspection = {
+  checks: InspectionCheck[];
+  passed: number;
+  total: number;
+  note: string | null;
+  at: string;
+  photos?: unknown;
+};
 
 const readInspection = (value: unknown): Inspection | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -333,7 +348,8 @@ const stageOf = (o: HubOrder): HubStage => {
     return failed && (o.failedChoice === 'collect' || o.failedChoice === 'deliver') ? 'returning' : 'refunded';
   }
   if (o.paymentStatus !== 'paid') return 'not_paid';
-  if (fs === 'pending' || fs === 'processing') return o.hubMethod === 'rider' && readRider(o.riderPickup) ? 'rider_booked' : 'to_send';
+  if (fs === 'pending' || fs === 'processing')
+    return o.hubMethod === 'rider' && readRider(o.riderPickup) ? 'rider_booked' : 'to_send';
   if (fs === 'sent_to_backoffice') return 'on_its_way';
   if (fs === 'received_by_backoffice') {
     if (secondCheckPending(o)) return 'second_check';
@@ -361,7 +377,9 @@ const viewOf = (o: HubOrder, now = new Date()): HubView => {
   const due = dropoffDueOf(o);
   const pending = secondCheckPending(o);
   const choice = (o.failedChoice as 'collect' | 'deliver' | 'second_check' | null) ?? null;
-  const photos = Array.isArray(inspection?.photos) ? (inspection!.photos as unknown[]).filter((p): p is string => typeof p === 'string') : [];
+  const photos = Array.isArray(inspection?.photos)
+    ? (inspection!.photos as unknown[]).filter((p): p is string => typeof p === 'string')
+    : [];
 
   return {
     order_id: o.id,
@@ -373,7 +391,12 @@ const viewOf = (o: HubOrder, now = new Date()): HubView => {
       bids: o.auction?.totalBids ?? 0,
     },
     delivery_method: o.deliveryMethod === 'pickup' ? 'pickup' : 'delivery',
-    money: { sale_price: sale, platform_fee: fee, fee_label: feeLabelOf(sale, fee), you_receive: round2(num(o.sellerPayout)) },
+    money: {
+      sale_price: sale,
+      platform_fee: fee,
+      fee_label: feeLabelOf(sale, fee),
+      you_receive: round2(num(o.sellerPayout)),
+    },
     dropoff_due_at: iso(due),
     method: (o.hubMethod as 'dropoff' | 'rider' | null) ?? null,
     checklist_done_at: iso(o.hubChecklistAt),
@@ -385,7 +408,7 @@ const viewOf = (o: HubOrder, now = new Date()): HubView => {
           // Never who checked it: only what and when.
           checks: inspection.checks.map(c => ({ label: c.label, passed: c.passed })),
           findings: noteLines(inspection.note),
-          failed_checks: inspection.checks.filter(c => !c.passed).map(c => c.label),
+          failed_checks: inspection.checks.filter(c => !c.passed).map(c => FAILED_CHECK[c.key] ?? c.label),
           photos,
           at: inspection.at,
         }
@@ -420,10 +443,16 @@ const viewOf = (o: HubOrder, now = new Date()): HubView => {
 };
 
 /** GET /seller/hub/orders/:id */
-export const getHubView = async (sellerId: string, orderId: string, now = new Date()) => viewOf(await loadOrder(sellerId, orderId), now);
+export const getHubView = async (sellerId: string, orderId: string, now = new Date()) =>
+  viewOf(await loadOrder(sellerId, orderId), now);
 
 /** For the Orders tab: a booked rider, a failed check, a second check still running. */
-export const hubFlags = (o: { hubMethod: string | null; riderPickup: unknown; inspection: unknown; secondCheckAt: Date | null }) => ({
+export const hubFlags = (o: {
+  hubMethod: string | null;
+  riderPickup: unknown;
+  inspection: unknown;
+  secondCheckAt: Date | null;
+}) => ({
   riderBooked: o.hubMethod === 'rider' && !!readRider(o.riderPickup),
   failedCheck: inspectionFailed(o.inspection),
   secondCheckPending: secondCheckPending(o),
@@ -444,7 +473,9 @@ export const hubSummaryOf = (o: {
   const rider = readRider(o.riderPickup);
   return {
     method: (o.hubMethod as 'dropoff' | 'rider' | null) ?? null,
-    rider: rider ? { label: rider.label, contact: `${rider.contact_name} · ${spacedPhone(rider.contact_phone)}` } : null,
+    rider: rider
+      ? { label: rider.label, contact: `${rider.contact_name} · ${spacedPhone(rider.contact_phone)}` }
+      : null,
     result: i ? (i.passed < i.total ? ('failed' as const) : ('passed' as const)) : null,
     second_check_pending: secondCheckPending(o),
     failed_choice: (o.failedChoice as 'collect' | 'deliver' | 'second_check' | null) ?? null,
@@ -462,14 +493,25 @@ export const riderOptions = async (sellerId: string, orderId: string, now = new 
   const due = dropoffDueOf(o);
   const [user, app, staff] = await Promise.all([
     prisma.user.findUnique({ where: { id: sellerId }, select: { fullName: true, phoneNumber: true } }),
-    prisma.sellerApplication.findUnique({ where: { userId: sellerId }, select: { shopNumber: true, plaza: true, area: true } }),
-    prisma.storeStaff.findMany({ where: { sellerId }, select: { fullName: true, phone: true }, orderBy: { createdAt: 'asc' } }),
+    prisma.sellerApplication.findUnique({
+      where: { userId: sellerId },
+      select: { shopNumber: true, plaza: true, area: true },
+    }),
+    prisma.storeStaff.findMany({
+      where: { sellerId },
+      select: { fullName: true, phone: true },
+      orderBy: { createdAt: 'asc' },
+    }),
   ]);
   const contacts = [
     ...(user ? [{ name: user.fullName, phone: user.phoneNumber, role: 'owner' as const }] : []),
     ...staff.map(s => ({ name: s.fullName, phone: s.phone, role: 'staff' as const })),
   ]
-    .map(c => ({ ...c, phone: localPhone(c.phone) ?? c.phone, label: `${c.name.split(' ')[0]} · ${spacedPhone(c.phone)}` }))
+    .map(c => ({
+      ...c,
+      phone: localPhone(c.phone) ?? c.phone,
+      label: `${c.name.split(' ')[0]} · ${spacedPhone(c.phone)}`,
+    }))
     .filter((c, i, all) => all.findIndex(x => x.phone === c.phone) === i);
   const rider = readRider(o.riderPickup);
   return {
@@ -480,11 +522,18 @@ export const riderOptions = async (sellerId: string, orderId: string, now = new 
     contacts,
     fee: SELLER_POLICY.riderPickupFee,
     paid_from: "This sale's payout",
-    current: rider ? { key: rider.slot === 'asap' ? 'asap' : rider.slot_start, contact_name: rider.contact_name, contact_phone: rider.contact_phone } : null,
+    current: rider
+      ? {
+          key: rider.slot === 'asap' ? 'asap' : rider.slot_start,
+          contact_name: rider.contact_name,
+          contact_phone: rider.contact_phone,
+        }
+      : null,
   };
 };
 
-const lockOrder = (tx: Prisma.TransactionClient, id: string) => tx.$queryRaw`SELECT id FROM orders WHERE id = ${id}::uuid FOR UPDATE`;
+const lockOrder = (tx: Prisma.TransactionClient, id: string) =>
+  tx.$queryRaw`SELECT id FROM orders WHERE id = ${id}::uuid FOR UPDATE`;
 
 /** POST /seller/hub/orders/:id/rider { slot, contact_name, contact_phone, checklist: true } */
 export const bookRider = async (
@@ -500,7 +549,12 @@ export const bookRider = async (
   if (!phone) throw new HubError('Add a Nigerian mobile number for the rider, like 0803 000 4521.');
 
   const options = await riderOptions(sellerId, orderId, now);
-  if (!options.pickup_from) throw new HubError('Add your shop number and plaza in Store details so the rider can find you.', 409, 'SHOP_ADDRESS_MISSING');
+  if (!options.pickup_from)
+    throw new HubError(
+      'Add your shop number and plaza in Store details so the rider can find you.',
+      409,
+      'SHOP_ADDRESS_MISSING'
+    );
   const slot = options.slots.find(s => s.key === body.slot);
   if (!slot) {
     throw new HubError(
@@ -525,7 +579,10 @@ export const bookRider = async (
 
   const o = await prisma.$transaction(async tx => {
     await lockOrder(tx, orderId);
-    const cur = await tx.order.findFirst({ where: { id: orderId, sellerId }, select: { paymentStatus: true, fulfillmentStatus: true, hubChecklistAt: true } });
+    const cur = await tx.order.findFirst({
+      where: { id: orderId, sellerId },
+      select: { paymentStatus: true, fulfillmentStatus: true, hubChecklistAt: true },
+    });
     if (!cur || cur.paymentStatus !== 'paid' || cur.fulfillmentStatus !== 'processing') {
       throw new HubError("This order can't be sent to the hub now.", 409);
     }
@@ -545,7 +602,10 @@ export const bookRider = async (
         data: { sellerId, orderId, amount: SELLER_POLICY.riderPickupFee, reason: RIDER_PICKUP_REASON },
       });
     } else if (charge.status === 'waived') {
-      await tx.sellerCharge.update({ where: { id: charge.id }, data: { status: 'pending', amount: SELLER_POLICY.riderPickupFee } });
+      await tx.sellerCharge.update({
+        where: { id: charge.id },
+        data: { status: 'pending', amount: SELLER_POLICY.riderPickupFee },
+      });
     }
     return tx.order.findUniqueOrThrow({ where: { id: orderId }, select: orderSelect });
   });
@@ -563,7 +623,12 @@ export const bookRider = async (
 };
 
 /** POST /seller/hub/orders/:id/dropoff { checklist: true }: they'll bring it in themselves. */
-export const chooseDropoff = async (sellerId: string, orderId: string, body: { checklist?: unknown }, now = new Date()) => {
+export const chooseDropoff = async (
+  sellerId: string,
+  orderId: string,
+  body: { checklist?: unknown },
+  now = new Date()
+) => {
   if (body.checklist !== true) throw new HubError('Tick everything on the list before you send it.');
   const before = await loadOrder(sellerId, orderId);
   if (!canSend(before)) throw new HubError("This order can't be sent to the hub now.", 409);
@@ -571,16 +636,26 @@ export const chooseDropoff = async (sellerId: string, orderId: string, body: { c
 
   const o = await prisma.$transaction(async tx => {
     await lockOrder(tx, orderId);
-    const cur = await tx.order.findFirst({ where: { id: orderId, sellerId }, select: { paymentStatus: true, fulfillmentStatus: true, hubChecklistAt: true } });
+    const cur = await tx.order.findFirst({
+      where: { id: orderId, sellerId },
+      select: { paymentStatus: true, fulfillmentStatus: true, hubChecklistAt: true },
+    });
     if (!cur || cur.paymentStatus !== 'paid' || cur.fulfillmentStatus !== 'processing') {
       throw new HubError(
-        cur?.fulfillmentStatus === 'sent_to_backoffice' ? 'The rider already has it. It’s on its way to the hub.' : "This order can't be sent to the hub now.",
+        cur?.fulfillmentStatus === 'sent_to_backoffice'
+          ? 'The rider already has it. It’s on its way to the hub.'
+          : "This order can't be sent to the hub now.",
         409
       );
     }
     await tx.order.update({
       where: { id: orderId },
-      data: { hubMethod: 'dropoff', hubChecklistAt: cur.hubChecklistAt ?? now, riderPickup: Prisma.DbNull, updatedAt: now },
+      data: {
+        hubMethod: 'dropoff',
+        hubChecklistAt: cur.hubChecklistAt ?? now,
+        riderPickup: Prisma.DbNull,
+        updatedAt: now,
+      },
     });
     // Switched before the rider came: no rider fee.
     await tx.sellerCharge.updateMany({
@@ -592,11 +667,16 @@ export const chooseDropoff = async (sellerId: string, orderId: string, body: { c
 
   if (hadRider) {
     notificationService
-      .notifyAdmins('backoffice_intake', `Rider pickup cancelled: ${o.orderNumber}`, 'The seller will drop it off at the hub instead.', {
-        orderId: o.id,
-        orderNumber: o.orderNumber,
-        route: `/backoffice?order=${o.id}`,
-      })
+      .notifyAdmins(
+        'backoffice_intake',
+        `Rider pickup cancelled: ${o.orderNumber}`,
+        'The seller will drop it off at the hub instead.',
+        {
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          route: `/backoffice?order=${o.id}`,
+        }
+      )
       .catch(err => logger.error('Rider cancel admin alert failed:', err));
   }
   return viewOf(o, now);
@@ -609,7 +689,12 @@ export const chooseDropoff = async (sellerId: string, orderId: string, body: { c
  * Collect or deliver refunds the buyer (once). Before it's handed back, the seller can switch
  * between collect and deliver (the rider fee follows). A second check is allowed once.
  */
-export const chooseAfterFailedCheck = async (sellerId: string, orderId: string, body: { choice?: unknown }, now = new Date()) => {
+export const chooseAfterFailedCheck = async (
+  sellerId: string,
+  orderId: string,
+  body: { choice?: unknown },
+  now = new Date()
+) => {
   const choice = body.choice;
   if (choice !== 'collect' && choice !== 'deliver' && choice !== 'second_check') {
     throw new HubError('Choose collect, send it back to your shop, or a second check.');
@@ -619,11 +704,17 @@ export const chooseAfterFailedCheck = async (sellerId: string, orderId: string, 
     throw new HubError('This order hasn’t failed the hub check.', 409);
   }
   if (o.returnedToSellerAt) throw new HubError('The item is already back with you.', 409);
-  if (secondCheckPending(o)) throw new HubError('A senior inspector is checking it again. We’ll tell you the result.', 409, 'SECOND_CHECK_PENDING');
+  if (secondCheckPending(o))
+    throw new HubError(
+      'A senior inspector is checking it again. We’ll tell you the result.',
+      409,
+      'SECOND_CHECK_PENDING'
+    );
 
   if (choice === 'second_check') {
     if (o.secondCheckAt) throw new HubError('A second check was already done on this item.', 409);
-    if (o.paymentStatus !== 'paid') throw new HubError('The buyer was already refunded, so it can’t be checked again.', 409);
+    if (o.paymentStatus !== 'paid')
+      throw new HubError('The buyer was already refunded, so it can’t be checked again.', 409);
     const claimed = await prisma.order.updateMany({
       where: { id: orderId, sellerId, secondCheckAt: null, paymentStatus: 'paid', failedChoice: null },
       data: { failedChoice: 'second_check', failedChoiceAt: now, secondCheckAt: now, updatedAt: now },
@@ -642,7 +733,8 @@ export const chooseAfterFailedCheck = async (sellerId: string, orderId: string, 
 
   // Already refunded: only switching between collect and deliver.
   if (o.paymentStatus === 'refunded') {
-    if (o.failedChoice !== 'collect' && o.failedChoice !== 'deliver') throw new HubError('This order was refunded another way.', 409);
+    if (o.failedChoice !== 'collect' && o.failedChoice !== 'deliver')
+      throw new HubError('This order was refunded another way.', 409);
     if (o.failedChoice !== choice) await switchReturn(o, choice, now);
     return getHubView(sellerId, orderId, now);
   }
@@ -673,14 +765,23 @@ export const chooseAfterFailedCheck = async (sellerId: string, orderId: string, 
     }
   } catch (err: any) {
     // Nothing was refunded: let them try again.
-    await prisma.order.updateMany({ where: { id: orderId, failedChoice: choice, paymentStatus: 'paid' }, data: previous });
+    await prisma.order.updateMany({
+      where: { id: orderId, failedChoice: choice, paymentStatus: 'paid' },
+      data: previous,
+    });
     logger.error(`Hub-check refund for ${o.orderNumber} didn't start:`, err);
     throw new HubError('We couldn’t start the buyer’s refund. Try again in a minute.', 502);
   }
 
   await prisma.$transaction(async tx => {
     if (destination === 'wallet' && o.buyerId) {
-      await creditBuyerWallet(tx, o.buyerId, amount, o.orderNumber, `Refund for order ${o.orderNumber}: it didn't pass the hub check`);
+      await creditBuyerWallet(
+        tx,
+        o.buyerId,
+        amount,
+        o.orderNumber,
+        `Refund for order ${o.orderNumber}: it didn't pass the hub check`
+      );
     }
     await tx.order.update({
       where: { id: orderId },
@@ -688,7 +789,9 @@ export const chooseAfterFailedCheck = async (sellerId: string, orderId: string, 
     });
     if (choice === 'deliver') await upsertReturnCharge(tx, o, 'pending');
   });
-  logger.info(`Order ${o.orderNumber} failed the hub check: buyer refunded to ${destination} (${reference}); seller chose ${choice}`);
+  logger.info(
+    `Order ${o.orderNumber} failed the hub check: buyer refunded to ${destination} (${reference}); seller chose ${choice}`
+  );
 
   if (o.buyerId) {
     createNotification(
@@ -720,7 +823,12 @@ const upsertReturnCharge = async (tx: Prisma.TransactionClient, o: HubOrder, sta
   if (!charge) {
     if (status === 'pending') {
       await tx.sellerCharge.create({
-        data: { sellerId: o.sellerId!, orderId: o.id, amount: SELLER_POLICY.returnDeliveryFee, reason: RIDER_RETURN_REASON },
+        data: {
+          sellerId: o.sellerId!,
+          orderId: o.id,
+          amount: SELLER_POLICY.returnDeliveryFee,
+          reason: RIDER_RETURN_REASON,
+        },
       });
     }
   } else if (charge.status !== 'applied' && charge.status !== status) {
@@ -733,8 +841,14 @@ const switchReturn = async (o: HubOrder, choice: 'collect' | 'deliver', now: Dat
   await prisma.$transaction(async tx => {
     await lockOrder(tx, o.id);
     if (choice === 'collect') {
-      const applied = await tx.sellerCharge.findFirst({ where: { orderId: o.id, reason: RIDER_RETURN_REASON, status: 'applied' } });
-      if (applied) throw new HubError('The rider fee was already taken from a payout, so our rider will bring it to your shop.', 409);
+      const applied = await tx.sellerCharge.findFirst({
+        where: { orderId: o.id, reason: RIDER_RETURN_REASON, status: 'applied' },
+      });
+      if (applied)
+        throw new HubError(
+          'The rider fee was already taken from a payout, so our rider will bring it to your shop.',
+          409
+        );
     }
     // failed_choice_at stays when it was first settled, so switching never extends the free-collection days.
     await tx.order.update({ where: { id: o.id }, data: { failedChoice: choice, updatedAt: now } });
@@ -744,7 +858,9 @@ const switchReturn = async (o: HubOrder, choice: 'collect' | 'deliver', now: Dat
     .notifyAdmins(
       'backoffice_intake',
       `${o.orderNumber}: ${choice === 'deliver' ? 'rider to the seller' : 'seller will collect'}`,
-      choice === 'deliver' ? "Book a rider to the seller's shop." : `The seller will collect it with code ${collectCodeOf(o.orderNumber)}.`,
+      choice === 'deliver'
+        ? "Book a rider to the seller's shop."
+        : `The seller will collect it with code ${collectCodeOf(o.orderNumber)}.`,
       { orderId: o.id, orderNumber: o.orderNumber, route: `/backoffice?order=${o.id}` }
     )
     .catch(err => logger.error('Hub return switch admin alert failed:', err));
@@ -757,7 +873,13 @@ export const notifySellerHubFailed = async (orderId: string) => {
   try {
     const o = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { id: true, sellerId: true, inspection: true, secondCheckAt: true, auction: { select: { gadget: { select: { title: true } } } } },
+      select: {
+        id: true,
+        sellerId: true,
+        inspection: true,
+        secondCheckAt: true,
+        auction: { select: { gadget: { select: { title: true } } } },
+      },
     });
     if (!o?.sellerId || !inspectionFailed(o.inspection)) return;
     const reminder = o.secondCheckAt ? 'hub_failed_again' : 'hub_failed';
@@ -838,10 +960,17 @@ export const markHandedBack = async (orderId: string) => {
     },
     data: { returnedToSellerAt: now, fulfillmentStatus: 'cancelled', updatedAt: now },
   });
-  if (!moved.count) throw new HubError('Only a refunded item at the hub that the seller chose to get back can be handed back.', 409);
+  if (!moved.count)
+    throw new HubError('Only a refunded item at the hub that the seller chose to get back can be handed back.', 409);
   const o = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    select: { id: true, orderNumber: true, sellerId: true, failedChoice: true, auction: { select: { gadget: { select: { title: true } } } } },
+    select: {
+      id: true,
+      orderNumber: true,
+      sellerId: true,
+      failedChoice: true,
+      auction: { select: { gadget: { select: { title: true } } } },
+    },
   });
   if (o.sellerId) {
     createNotification(

@@ -1,3 +1,4 @@
+import { SELLER_POLICY } from '@gadget-bidding/shared';
 import prisma from '../../config/prisma';
 import { caseLabel } from '../buyer/case.service';
 import { dropoffDueOf, dropoffDueAt } from '../order/order.service';
@@ -356,6 +357,33 @@ export const getSellerHome = async (sellerId: string) => {
         title: `Reply to case ${reply.number}`,
         item: o.auction?.gadget?.title ?? 'Gadget',
         due_at: reply.respond_by,
+      });
+      continue;
+    }
+    // Same rule as the Orders tab: a booked rider isn't a to-do; a failed check or a collection is.
+    const d = describeOrder(o);
+    if (d.stage !== 'todo') continue;
+    if (d.view.chip.label === "Didn't pass · choose") {
+      todo.push({
+        kind: 'hub_failed',
+        id: o.id,
+        order_id: o.id,
+        title: `${o.orderNumber} didn't pass the hub check`,
+        item: o.auction?.gadget?.title ?? 'Gadget',
+        due_at: null,
+      });
+      continue;
+    }
+    if (d.view.chip.label === 'Collect from hub') {
+      todo.push({
+        kind: 'hub_collect',
+        id: o.id,
+        order_id: o.id,
+        title: `Collect ${o.orderNumber} from the hub`,
+        item: o.auction?.gadget?.title ?? 'Gadget',
+        due_at: o.failedChoiceAt
+          ? new Date(o.failedChoiceAt.getTime() + SELLER_POLICY.freeCollectionDays * 24 * HOUR).toISOString()
+          : null,
       });
       continue;
     }

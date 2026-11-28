@@ -1,8 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, RefreshControl, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { SELLER_POLICY } from '@gadget-bidding/shared';
 import {
   G,
   GlassScreen,
@@ -11,16 +10,16 @@ import {
   GadgetImage,
   PrimaryButton,
   SecondaryButton,
+  TextButton,
   FooterBar,
   useNow,
 } from '../../../components/glass';
 import { SkeletonGroup, Bone } from '../../../components/glass/Skeleton';
-import { BottomSheet } from '../../../components/motion';
 import { fonts } from '../../../constants';
 import { useReloadOnReconnect } from '../../../store/networkStore';
-import { useToastStore } from '../../../store/toastStore';
 import { Label, Timeline, TimelineStep, TINT } from '../onboarding/kit';
 import { moneyService, SellerOrderDetail, STEP_KEYS, atWhen, longDay, naira, shortDay, shortWhen } from './api';
+import { SoldView } from '../hub/SoldScreen';
 
 /**
  * One sold order, for the seller (route 'SellerOrder', { orderId }): where it is in the six steps,
@@ -38,13 +37,23 @@ const TONES: Record<Tone, { bg: string; text: string }> = {
   neutral: { bg: TINT.fill, text: G.ink },
 };
 
-const toast = (m: string, t: 'success' | 'error' = 'error') => useToastStore.getState().show(m, t);
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The chip, the big next step and the deadline on the right of the top card. */
 const topCopy = (o: SellerOrderDetail, now: number): { chip: string; tone: Tone; title: string; when: string | null; late?: boolean } => {
   const pickup = o.delivery_method === 'pickup';
   if (o.case?.open) return { chip: 'Case open', tone: 'red', title: 'A buyer reported a problem', when: null };
+  const h = o.hub;
+  if (h?.returned_at) return { chip: 'Back with you', tone: 'neutral', title: "It didn't pass the hub check and is back with you", when: null };
+  if (h?.result === 'failed') {
+    if (h.second_check_pending) return { chip: 'Second check', tone: 'blue', title: 'A senior inspector is checking it again', when: null };
+    if (o.stage === 'refunded' && h.failed_choice === 'collect') return { chip: 'Collect from hub', tone: 'amber', title: 'Collect it from the hub', when: null };
+    if (o.stage === 'refunded' && h.failed_choice === 'deliver') return { chip: 'Coming back', tone: 'blue', title: 'Our rider is bringing it to your shop', when: null };
+    return { chip: "Didn't pass", tone: 'red', title: "It didn't pass the hub check", when: null };
+  }
+  if (o.stage === 'sold' && h?.method === 'rider' && h.rider) {
+    return { chip: 'Rider booked', tone: 'blue', title: 'A rider is collecting it from your shop', when: h.rider.label };
+  }
   switch (o.stage) {
     case 'unpaid':
       return {
@@ -103,6 +112,11 @@ const topCopy = (o: SellerOrderDetail, now: number): { chip: string; tone: Tone;
 /** The tinted note under the money. */
 const noteOf = (o: SellerOrderDetail, now: number): { tone: Tone; text: string } => {
   if (o.case?.open) return { tone: 'amber', text: `Case ${o.case.number} is open. Your money is held until it's settled.` };
+  if (o.hub?.result === 'failed' && o.stage !== 'refunded' && !o.hub.returned_at) {
+    return o.hub.second_check_pending
+      ? { tone: 'neutral', text: 'If it passes the second check, it goes to the buyer as normal.' }
+      : { tone: 'amber', text: 'Choose what happens to it. The buyer is refunded either way.' };
+  }
   switch (o.stage) {
     case 'unpaid':
       return { tone: 'neutral', text: "Don't drop it off yet. We'll tell you as soon as they pay." };
@@ -151,6 +165,14 @@ const timelineOf = (o: SellerOrderDetail): TimelineStep[] => {
     const at = o.times[key];
     let sub = at ? shortWhen(at) : state === 'done' ? 'Done' : 'Not yet';
     if (key === 'passed' && state !== 'todo' && o.inspection) sub += ` · ${o.inspection.passed} of ${o.inspection.total} checks`;
+    // It failed the hub check: say so instead of waiting on "Passed inspection".
+    if (key === 'passed' && o.hub?.result === 'failed') {
+      return {
+        title: "Didn't pass inspection",
+        sub: o.inspection ? `${o.inspection.passed} of ${o.inspection.total} checks passed` : 'See what the hub found',
+        state,
+      };
+    }
     if (key === 'sold' && o.stage === 'unpaid') sub = 'Waiting for payment';
     // A refunded or cancelled order is never paid out; "Not yet" would suggest it will be.
     if (key === 'paid_out' && stopped) sub = o.stage === 'refunded' ? 'No payout · the buyer was refunded' : 'No payout';
@@ -164,8 +186,6 @@ export const SellerOrderScreen: React.FC<{ navigation: any; route: { params?: { 
   const [order, setOrder] = useState<SellerOrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [codeOpen, setCodeOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) return setError("We couldn't find this order.");
@@ -183,28 +203,6 @@ export const SellerOrderScreen: React.FC<{ navigation: any; route: { params?: { 
     }, [load])
   );
   useReloadOnReconnect(load);
-
-  const sendToHub = () => {
-    if (!order) return;
-    Alert.alert('Handed it in at the hub?', "Tap this once the item is with our hub team. They'll check it against your listing.", [
-      { text: 'Not yet', style: 'cancel' },
-      {
-        text: "Yes, it's at the hub",
-        onPress: async () => {
-          setSending(true);
-          try {
-            await moneyService.sendToHub(order.id);
-            toast('Marked as dropped off. The hub checks it next.', 'success');
-            await load();
-          } catch (e) {
-            toast(e instanceof Error && e.message ? e.message : "That didn't work. Try again.");
-          } finally {
-            setSending(false);
-          }
-        },
-      },
-    ]);
-  };
 
   const title = order ? `Order ${order.order_number}` : 'Order';
 
@@ -226,18 +224,41 @@ export const SellerOrderScreen: React.FC<{ navigation: any; route: { params?: { 
     );
   }
 
+  const hub = order.hub;
+  // Sold and nothing chosen yet: the Sold screen, with "Send to hub".
+  if (order.stage === 'sold' && order.can_send_to_hub && !hub?.method && !order.case?.open) {
+    return <SoldView order={order} navigation={navigation} orderId={order.id} onBack={() => navigation.goBack()} />;
+  }
+
   const top = topCopy(order, now);
   const chip = TONES[top.tone];
   const note = noteOf(order, now);
   const noteTone = TONES[note.tone];
   const filled = order.stage === 'paid_out' ? 6 : Math.max(0, order.step + 1);
   const pickup = order.delivery_method === 'pickup';
-  const showCode = order.stage === 'sold' && !order.case?.open;
+  const showCode = order.stage === 'sold' && !order.case?.open && hub?.method !== 'rider';
+  const riderCard = order.stage === 'sold' && hub?.method === 'rider' && hub.rider ? hub.rider : null;
+  const failed = hub?.result === 'failed' && !hub.returned_at;
+  const toCollect = failed && order.stage === 'refunded' && hub.failed_choice === 'collect';
   const dropBy = order.dropoff_due_at ? `drop by ${atWhen(order.dropoff_due_at, now)}` : null;
   const fee = order.money.platform_fee;
 
+  const go = (screen: string) => navigation.navigate(screen, { orderId: order.id });
   const footer = order.can_send_to_hub ? (
-    <PrimaryButton label={sending ? 'Sending…' : 'Send to hub'} onPress={sendToHub} disabled={sending} />
+    hub?.method === 'dropoff' ? (
+      <>
+        <PrimaryButton label="Show drop-off code" onPress={() => go('HubDropoffCode')} />
+        <TextButton label="Change how it gets there" onPress={() => go('SendToHub')} />
+      </>
+    ) : hub?.method === 'rider' ? (
+      <SecondaryButton label="Change pickup" onPress={() => go('SendToHub')} />
+    ) : (
+      <PrimaryButton label="Send to hub" onPress={() => go('SendToHub')} />
+    )
+  ) : toCollect ? (
+    <PrimaryButton label="Show collection code" onPress={() => go('HubCollect')} />
+  ) : failed ? (
+    <PrimaryButton label="See what the hub found" onPress={() => go('HubInspection')} />
   ) : order.payout.batch ? (
     <SecondaryButton label="See payout" onPress={() => navigation.navigate('PayoutDetail', { payoutId: order.payout.batch!.id })} />
   ) : order.case ? (
@@ -245,6 +266,8 @@ export const SellerOrderScreen: React.FC<{ navigation: any; route: { params?: { 
       label={`See case ${order.case.number}`}
       onPress={() => navigation.navigate('SellerCase', { disputeId: order.case!.id })}
     />
+  ) : hub?.result ? (
+    <SecondaryButton label="See the hub check" onPress={() => go('HubInspection')} />
   ) : null;
 
   return (
@@ -302,9 +325,31 @@ export const SellerOrderScreen: React.FC<{ navigation: any; route: { params?: { 
           </View>
         </GlassCard>
 
+        {riderCard ? (
+          <Pressable
+            onPress={() => go('SendToHub')}
+            style={({ pressed }) => pressed && styles.pressed}
+            accessibilityRole="button"
+            accessibilityLabel={`Rider booked, ${riderCard.label}. Asks for ${riderCard.contact}. Change`}
+          >
+            <GlassCard style={[styles.card, styles.itemRow]}>
+              <View style={[styles.codeTile, { backgroundColor: TINT.blue.bg }]}>
+                <Ionicons name="bicycle-outline" size={20} color={TINT.blue.text} />
+              </View>
+              <View style={styles.flex}>
+                <Text style={styles.itemTitle}>Rider booked</Text>
+                <Text style={styles.sub}>
+                  {riderCard.label} · asks for {riderCard.contact}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={G.faint} />
+            </GlassCard>
+          </Pressable>
+        ) : null}
+
         {showCode ? (
           <Pressable
-            onPress={() => setCodeOpen(true)}
+            onPress={() => go('HubDropoffCode')}
             style={({ pressed }) => pressed && styles.pressed}
             accessibilityRole="button"
             accessibilityLabel={`Drop-off code ${order.order_number.split('').join(' ')}. Show this at the hub.`}
@@ -347,24 +392,6 @@ export const SellerOrderScreen: React.FC<{ navigation: any; route: { params?: { 
       </ScrollView>
 
       {footer ? <FooterBar>{footer}</FooterBar> : null}
-
-      <BottomSheet visible={codeOpen} onClose={() => setCodeOpen(false)}>
-        <Text style={styles.sheetTitle}>Drop-off code</Text>
-        <Text
-          style={styles.bigCode}
-          selectable
-          accessibilityLabel={`Code ${order.order_number.split('').join(' ')}`}
-          adjustsFontSizeToFit
-          numberOfLines={1}
-        >
-          {order.order_number}
-        </Text>
-        <Text style={styles.sheetBody}>
-          Show this at our Computer Village hub{dropBy ? `, ${dropBy}` : ''}. Anyone on your store staff list can drop it off.
-        </Text>
-        <Text style={styles.sheetCaption}>{SELLER_POLICY.hubAddress}</Text>
-        <SecondaryButton label="Done" onPress={() => setCodeOpen(false)} style={styles.topGap} />
-      </BottomSheet>
     </GlassScreen>
   );
 };
@@ -423,19 +450,6 @@ const styles = StyleSheet.create({
   note: { marginTop: 12, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14 },
   noteText: { fontSize: 14, lineHeight: 20, fontFamily: fonts.regular },
 
-  sheetTitle: { color: G.ink, fontSize: 19, fontFamily: fonts.medium },
-  bigCode: {
-    color: G.ink,
-    fontSize: 32,
-    letterSpacing: 1.5,
-    fontFamily: fonts.medium,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 16,
-  },
-  sheetBody: { color: G.slate, fontSize: 14, lineHeight: 20, fontFamily: fonts.regular, textAlign: 'center' },
-  sheetCaption: { color: G.muted, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular, textAlign: 'center', marginTop: 8 },
 
   boneGap: { marginTop: 12 },
   boneLines: { gap: 6 },

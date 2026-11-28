@@ -53,7 +53,7 @@ const PROBLEM_LABEL: Record<string, string> = {
   other: 'Refunded',
 };
 
-type Inspection = { checks?: { label?: string; passed?: boolean }[]; passed?: number; total?: number; note?: string | null; at?: string };
+type Inspection = { checks?: { key?: string; label?: string; passed?: boolean }[]; passed?: number; total?: number; note?: string | null; at?: string };
 
 const readInspection = (v: unknown): Inspection | null =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Inspection) : null;
@@ -64,12 +64,25 @@ export const inspectionFailed = (v: unknown) => {
   return !!i && typeof i.total === 'number' && typeof i.passed === 'number' && i.total > 0 && i.passed < i.total;
 };
 
-/** The first thing the hub found: its note's first line, else the first failed check. */
+/** A failed hub check, said as what went wrong ("Battery lower than listed"). Keys: HUB_INSPECTION_CHECKS. */
+export const FAILED_CHECK: Record<string, string> = {
+  imei_match: 'IMEI didn’t match',
+  not_stolen: 'Reported lost or stolen',
+  account_removed: 'Account not removed',
+  screen: 'Screen or touch fault',
+  battery: 'Battery lower than listed',
+  cameras_audio: 'Camera or audio fault',
+  body_grade: 'Worse than the grade listed',
+};
+
+/** What the hub found, short: the first failed check, else the note's first words. */
 const hubReason = (v: unknown) => {
   const i = readInspection(v);
+  const failed = i?.checks?.find(c => c.passed === false);
+  if (failed?.key && FAILED_CHECK[failed.key]) return FAILED_CHECK[failed.key];
   const note = i?.note?.split(/\r?\n/)[0]?.trim();
-  if (note) return note.length > 40 ? `${note.slice(0, 39)}…` : note;
-  return i?.checks?.find(c => c.passed === false)?.label ?? 'Didn’t pass the hub check';
+  if (note) return note.length > 28 ? `${note.slice(0, 27).trimEnd()}…` : note;
+  return 'Didn’t pass the hub check';
 };
 
 /** When the window starts for this seller: 90 days back, or when our team last lifted the pause. */

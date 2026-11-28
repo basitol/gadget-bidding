@@ -44,7 +44,12 @@ export const SoldView: React.FC<{ order: SoldOrder; navigation: any; orderId: st
           title={`Sold for ${naira(order.money.sale_price)}!`}
           sub="The buyer has paid and the money is held safely. Get it to our hub so we can check it."
         />
-        {due ? <DueBanner label={late ? 'Drop-off is overdue' : 'Drop it at the hub within'} value={late ? 'Now' : leftLabel(due, now)} /> : null}
+        {due ? (
+          <DueBanner
+            label={late ? 'Drop-off is overdue' : 'Drop it at the hub within'}
+            value={late ? 'Now' : leftLabel(due, now)}
+          />
+        ) : null}
         <ItemRow
           title={order.item.title}
           image={order.item.image}
@@ -63,7 +68,10 @@ export const SoldView: React.FC<{ order: SoldOrder; navigation: any; orderId: st
   );
 };
 
-export const SoldScreen: React.FC<{ navigation: any; route: { params?: { orderId?: string } } }> = ({ navigation, route }) => {
+export const SoldScreen: React.FC<{ navigation: any; route: { params?: { orderId?: string } } }> = ({
+  navigation,
+  route,
+}) => {
   const orderId = route.params?.orderId ?? '';
   const { view, error, load } = useHubView(orderId);
   if (!view) return <LoadingScreen title="Sold" onBack={() => navigation.goBack()} failed={error} onRetry={load} />;

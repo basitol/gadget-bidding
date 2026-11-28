@@ -15,7 +15,11 @@ const router: Router = Router();
 router.use(authenticate, adminOnly);
 
 const act =
-  (action: string, fn: (id: string) => Promise<{ id: string; orderNumber?: string; order_number?: string }>, message: string) =>
+  (
+    action: string,
+    fn: (id: string) => Promise<{ id: string; orderNumber?: string; order_number?: string }>,
+    message: string
+  ) =>
   async (req: Request, res: Response) => {
     const id = String(req.params.id);
     try {

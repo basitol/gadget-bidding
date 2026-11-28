@@ -13,14 +13,19 @@ import { encodeQr } from './qr';
 /** Pieces shared by the hub screens (Sold, Send to hub, Book a rider, codes, inspection). */
 
 export const HUB_ICONS = {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   tag: require('../../../../assets/icons/tag.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   shield: require('../../../../assets/icons/shield.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   box: require('../../../../assets/icons/box.png') as ImageSourcePropType,
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   store: require('../../../../assets/icons/store.png') as ImageSourcePropType,
 };
 
 export const toast = (m: string, t: 'success' | 'error' = 'error') => useToastStore.getState().show(m, t);
-export const errText = (e: unknown, fallback = "That didn't work. Try again.") => (e instanceof Error && e.message ? e.message : fallback);
+export const errText = (e: unknown, fallback = "That didn't work. Try again.") =>
+  e instanceof Error && e.message ? e.message : fallback;
 export const naira = (n: number) => `₦${Math.round(n).toLocaleString('en-NG')}`;
 
 /** "7h 28m", "6d 23h", "28m". */
@@ -78,7 +83,12 @@ export const useHubView = (orderId: string) => {
 };
 
 /** The item: photo, name and one line under it. */
-export const ItemRow: React.FC<{ title: string; image: string | null; sub: string; style?: StyleProp<ViewStyle> }> = ({ title, image, sub, style }) => (
+export const ItemRow: React.FC<{ title: string; image: string | null; sub: string; style?: StyleProp<ViewStyle> }> = ({
+  title,
+  image,
+  sub,
+  style,
+}) => (
   <GlassCard style={[hs.card, hs.itemRow, style]}>
     <GadgetImage uri={image} size={56} style={hs.thumb} />
     <View style={hs.flex}>
@@ -91,7 +101,13 @@ export const ItemRow: React.FC<{ title: string; image: string | null; sub: strin
 );
 
 /** Key on the left, value on the right, a hairline between rows. */
-export const KeyRow: React.FC<{ k: string; v: string; last?: boolean; strong?: boolean; vColor?: string }> = ({ k, v, last, strong, vColor }) => (
+export const KeyRow: React.FC<{ k: string; v: string; last?: boolean; strong?: boolean; vColor?: string }> = ({
+  k,
+  v,
+  last,
+  strong,
+  vColor,
+}) => (
   <View style={[hs.keyRow, !last && hs.line]}>
     <Text style={hs.key}>{k}</Text>
     <Text style={[strong ? hs.valueStrong : hs.value, vColor ? { color: vColor } : null]}>{v}</Text>
@@ -102,7 +118,10 @@ export const KeyRow: React.FC<{ k: string; v: string; last?: boolean; strong?: b
 export const MoneyCard: React.FC<{ money: HubView['money']; style?: StyleProp<ViewStyle> }> = ({ money, style }) => (
   <GlassCard style={[hs.rows, style]}>
     <KeyRow k="Sale price" v={naira(money.sale_price)} />
-    <KeyRow k={`Platform fee (${money.fee_label})`} v={money.platform_fee > 0 ? `−${naira(money.platform_fee)}` : naira(0)} />
+    <KeyRow
+      k={`Platform fee (${money.fee_label})`}
+      v={money.platform_fee > 0 ? `−${naira(money.platform_fee)}` : naira(0)}
+    />
     <KeyRow k="You'll receive" v={naira(money.you_receive)} last strong />
   </GlassCard>
 );
@@ -153,7 +172,16 @@ export const QrCode: React.FC<{ value: string; size?: number }> = ({ value, size
           return (
             <View key={y} style={{ height: cell, flexDirection: 'row' }}>
               {runs.map(r => (
-                <View key={r.x} style={{ position: 'absolute', left: r.x * cell, width: r.w * cell + 0.5, height: cell + 0.5, backgroundColor: G.ink }} />
+                <View
+                  key={r.x}
+                  style={{
+                    position: 'absolute',
+                    left: r.x * cell,
+                    width: r.w * cell + 0.5,
+                    height: cell + 0.5,
+                    backgroundColor: G.ink,
+                  }}
+                />
               ))}
             </View>
           );
@@ -171,7 +199,14 @@ export const hs = StyleSheet.create({
   gap: { marginTop: 12 },
   section: { marginTop: 22, marginBottom: 10 },
   title: { color: G.ink, fontSize: 26, lineHeight: 32, letterSpacing: -0.52, fontFamily: fonts.medium },
-  centerTitle: { color: G.ink, fontSize: 26, lineHeight: 32, letterSpacing: -0.52, fontFamily: fonts.medium, textAlign: 'center' },
+  centerTitle: {
+    color: G.ink,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.52,
+    fontFamily: fonts.medium,
+    textAlign: 'center',
+  },
   lead: { color: G.muted, fontSize: 15, lineHeight: 22, fontFamily: fonts.regular, textAlign: 'center', marginTop: 8 },
   caption: { color: G.muted, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular },
   centerCaption: { color: G.muted, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular, textAlign: 'center' },
@@ -180,14 +215,35 @@ export const hs = StyleSheet.create({
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   thumb: { width: 56, height: 56, borderRadius: 12 },
   itemTitle: { color: G.ink, fontSize: 16, fontFamily: fonts.medium },
-  sub: { color: G.slate, fontSize: 13, lineHeight: 18, fontFamily: fonts.regular, marginTop: 2, fontVariant: ['tabular-nums'] },
+  sub: {
+    color: G.slate,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: fonts.regular,
+    marginTop: 2,
+    fontVariant: ['tabular-nums'],
+  },
   pinTile: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
   rows: { paddingHorizontal: 16 },
-  keyRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, paddingVertical: 14 },
+  keyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    paddingVertical: 14,
+  },
   line: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(28,31,42,0.08)' },
   key: { color: G.slate, fontSize: 15, lineHeight: 20, fontFamily: fonts.regular },
-  value: { flexShrink: 1, color: G.ink, fontSize: 15, lineHeight: 20, fontFamily: fonts.medium, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  value: {
+    flexShrink: 1,
+    color: G.ink,
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: fonts.medium,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
   valueStrong: { color: G.ink, fontSize: 17, lineHeight: 22, fontFamily: fonts.medium, fontVariant: ['tabular-nums'] },
 
   qrTile: {

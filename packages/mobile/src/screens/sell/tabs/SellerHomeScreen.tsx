@@ -25,6 +25,8 @@ const ICON = {
   dropoff: require('../../../../assets/icons/box.png'),
   changes: require('../../../../assets/icons/camera.png'),
   case: require('../../../../assets/icons/shield.png'),
+  hub_failed: require('../../../../assets/icons/box.png'),
+  hub_collect: require('../../../../assets/icons/store.png'),
 };
 
 /** "Today, 6 pm" / "Tomorrow, 6 pm" / "Mon, 6 pm" */
@@ -74,6 +76,8 @@ export const SellerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
   const openTodo = async (t: SellerTodo) => {
     if (t.kind === 'case') return navigation.navigate('SellerCase', { disputeId: t.id });
+    if (t.kind === 'hub_failed') return navigation.navigate('HubInspection', { orderId: t.order_id ?? t.id });
+    if (t.kind === 'hub_collect') return navigation.navigate('HubCollect', { orderId: t.order_id ?? t.id });
     if (t.kind === 'dropoff') return t.order_id ? navigation.navigate('SellerOrder', { orderId: t.order_id }) : navigation.navigate('Orders');
     try {
       const res = await auctionService.getGadget(t.id);
@@ -86,6 +90,8 @@ export const SellerHomeScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   const todoSub = (t: SellerTodo) => {
     if (t.kind === 'dropoff' && t.due_at) return { text: `Drop off ${byWhen(t.due_at, now)}`, urgent: isSoon(t.due_at, now) };
     if (t.kind === 'case' && t.due_at) return { text: `${t.item} · ${hoursLeft(t.due_at, now)} to respond`, urgent: true };
+    if (t.kind === 'hub_failed') return { text: 'Choose what happens next', urgent: true };
+    if (t.kind === 'hub_collect') return { text: t.due_at ? `Free to collect ${byWhen(t.due_at, now)}` : t.item, urgent: !!t.due_at && isSoon(t.due_at, now) };
     return { text: [t.item, t.note].filter(Boolean).join(' — '), urgent: false };
   };
 

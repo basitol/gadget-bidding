@@ -16,7 +16,7 @@ export class HubError extends Error {
   }
 }
 
-const call = async <T,>(p: Promise<{ data: { data: T } }>): Promise<T> => {
+const call = async <T>(p: Promise<{ data: { data: T } }>): Promise<T> => {
   try {
     return (await p).data.data;
   } catch (error) {

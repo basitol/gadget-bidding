@@ -5,7 +5,7 @@ import api, { getErrorMessage } from './api';
 export type Tone = 'amber' | 'red' | 'blue' | 'green' | 'neutral';
 
 export interface SellerTodo {
-  kind: 'dropoff' | 'changes' | 'case';
+  kind: 'dropoff' | 'changes' | 'case' | 'hub_failed' | 'hub_collect';
   id: string;
   order_id?: string;
   title: string;

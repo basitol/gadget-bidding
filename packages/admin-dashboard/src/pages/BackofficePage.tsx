@@ -17,6 +17,7 @@ import { formatAddress, friendlyTime, money } from '@/lib/format';
 import { mediaUrl } from '@/lib/media';
 import { TINTS, type Tint } from '@/lib/nav';
 import { cn } from '@/lib/utils';
+import { hubApi, type OrderHub } from '@/lib/hubApi';
 
 type QueueStatus = 'sent_to_backoffice' | 'received_by_backoffice' | 'shipped' | 'delivered';
 
@@ -32,8 +33,8 @@ type Queue = {
 const queues: Queue[] = [
   {
     status: 'sent_to_backoffice',
-    title: 'Seller sent to us',
-    description: () => "The seller says it's on the way. Mark it received once it's at the hub.",
+    title: 'Coming to the hub',
+    description: () => 'Drop-offs and rider pickups on the way. Scan the code and check it in once it’s here.',
     icon: 'box',
     tint: 'amber',
     empty: 'Nothing on its way to the hub.',
@@ -41,7 +42,8 @@ const queues: Queue[] = [
   {
     status: 'received_by_backoffice',
     title: 'At the hub',
-    description: n => `Run the ${n || 7}-point check. It leaves the hub only when every check passes.`,
+    description: n =>
+      `Run the ${n || 7}-point check. It leaves the hub only when every check passes; failed items go back to their seller.`,
     icon: 'phonecheck',
     tint: 'blue',
     empty: 'Nothing waiting for the check.',
@@ -88,6 +90,9 @@ type Move = { label: string; next: QueueStatus; tracking?: boolean };
 
 /** The next step for an order, or why there isn't one yet. */
 const nextMove = (order: any, checks: InspectionCheck[]): Move | null => {
+  if (order.payment_status !== 'paid') return null;
+  // The seller chose drop-off or booked a rider: it's checked in straight from the code.
+  if (order.fulfillment_status === 'processing') return { label: 'Check in at hub', next: 'received_by_backoffice' };
   switch (order.fulfillment_status as QueueStatus) {
     case 'sent_to_backoffice':
       return { label: 'Mark received at hub', next: 'received_by_backoffice' };
@@ -115,14 +120,26 @@ export function BackofficePage() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const results = await Promise.all(
-        queues.map(queue =>
-          adminApi.orders({ payment_status: 'paid', fulfillment_status: queue.status, page: 1, limit: 50 })
-        )
-      );
+      const [results, expected, returning] = await Promise.all([
+        Promise.all(
+          queues.map(queue =>
+            adminApi.orders({ payment_status: 'paid', fulfillment_status: queue.status, page: 1, limit: 50 })
+          )
+        ),
+        // Paid, the seller chose drop-off or booked a rider: on its way in.
+        adminApi.orders({ payment_status: 'paid', fulfillment_status: 'processing', hub_method: 'set', page: 1, limit: 50 }),
+        // Failed the check and refunded: still at the hub until it goes back to the seller.
+        adminApi.orders({ payment_status: 'refunded', fulfillment_status: 'received_by_backoffice', page: 1, limit: 50 }),
+      ]);
       setOrdersByStatus(
         queues.reduce<Record<string, any[]>>((next, queue, index) => {
-          next[queue.status] = results[index]?.data || [];
+          const own = results[index]?.data || [];
+          next[queue.status] =
+            queue.status === 'sent_to_backoffice'
+              ? [...(expected?.data || []), ...own]
+              : queue.status === 'received_by_backoffice'
+                ? [...own, ...(returning?.data || [])]
+                : own;
           return next;
         }, {})
       );
@@ -204,7 +221,7 @@ export function BackofficePage() {
             <div className="mt-3 text-[32px] font-medium leading-none tracking-[-0.02em] text-ink tabular-nums">
               {loading ? '–' : totals[queue.status] || 0}
             </div>
-            <div className="mt-2 text-[13px] text-hint">Paid orders at this step</div>
+            <div className="mt-2 text-[13px] text-hint">Orders at this step</div>
           </div>
         ))}
       </div>
@@ -268,6 +285,7 @@ function OrderCard({
   const pickup = isPickup(order);
   const atHub = order.fulfillment_status === 'received_by_backoffice';
   const onHold = !!order.open_dispute;
+  const refunded = order.payment_status === 'refunded';
 
   return (
     <article
@@ -294,7 +312,7 @@ function OrderCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <Badge tone="ok">Paid</Badge>
+        {refunded ? <Badge tone="warn">Refunded</Badge> : <Badge tone="ok">Paid</Badge>}
         <Badge tone="neutral">{pickup ? 'Pickup at hub' : 'Delivery'}</Badge>
         {onHold ? <Badge tone="danger">Open dispute</Badge> : null}
       </div>
@@ -348,7 +366,11 @@ function OrderCard({
         </div>
       )}
 
-      {atHub ? <InspectionPanel order={order} checks={checks} disabled={onHold} onSaved={onInspected} /> : null}
+      <HubPanel order={order} onDone={onInspected} />
+
+      {atHub ? (
+        <InspectionPanel order={order} checks={checks} disabled={onHold || refunded} onSaved={onInspected} />
+      ) : null}
 
       {step ? (
         <div className="mt-4 space-y-3">
@@ -382,6 +404,106 @@ function OrderCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+
+/**
+ * How it's getting in (drop-off, or a booked rider with who to ask for) and, after a failed check,
+ * what the seller chose: a second check, collecting it, or a rider to their shop (then hand it back).
+ */
+function HubPanel({ order, onDone }: { order: any; onDone: () => void }) {
+  const hub: OrderHub | undefined = order.hub;
+  const [busy, setBusy] = useState(false);
+  if (!hub) return null;
+  const fs = order.fulfillment_status;
+  const refunded = order.payment_status === 'refunded';
+
+  const act = async (fn: () => Promise<{ message?: string }>, fallback: string) => {
+    setBusy(true);
+    try {
+      const res = await fn();
+      toast.success(res.message || fallback);
+      onDone();
+      refreshQueues();
+    } catch (err: any) {
+      toast.error(err.message || 'That didn’t work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const box = 'mt-3 rounded-[12px] p-3 text-[13px]';
+
+  if (fs === 'processing' && hub.method === 'rider' && hub.rider) {
+    return (
+      <div className={cn(box, 'bg-[#F1F5FF]')}>
+        <div className="font-medium text-ink">Rider pickup · {hub.rider.label}</div>
+        <div className="mt-1 text-slate">{hub.rider.address}</div>
+        <div className="text-slate">Ask for {hub.rider.contact}</div>
+        <Button
+          variant="outline"
+          className="mt-3 h-9 w-full rounded-[10px] bg-white text-[14px]"
+          disabled={busy}
+          onClick={() => act(() => hubApi.riderCollected(order.id), 'It’s on its way to the hub')}
+        >
+          {busy ? 'Saving…' : 'Rider collected it'}
+        </Button>
+      </div>
+    );
+  }
+  if (fs === 'processing' && hub.method === 'dropoff') {
+    return (
+      <div className={cn(box, 'bg-fill text-ink')}>
+        The seller is dropping it off with code <span className="font-medium tabular-nums">{order.order_number}</span>.
+      </div>
+    );
+  }
+  if (fs === 'sent_to_backoffice' && hub.method === 'rider') {
+    return <div className={cn(box, 'bg-fill text-ink')}>Our rider has it on the way to the hub.</div>;
+  }
+  if (!hub.failed || fs !== 'received_by_backoffice') return null;
+
+  if (hub.second_check_pending) {
+    return (
+      <div className={cn(box, 'bg-[#FFF6EE] text-[#DB7A2E]')}>
+        The seller asked for a second check{hub.second_check_at ? ` on ${shortDate(hub.second_check_at)}` : ''}. Ask a
+        senior inspector to check it again, then record the result below.
+      </div>
+    );
+  }
+  if (!refunded) {
+    return (
+      <div className={cn(box, 'bg-fill text-ink')}>
+        Waiting for the seller to choose: collect it, a rider to their shop
+        {hub.second_check_at ? '' : ', or a second check'}. The buyer is refunded once they do.
+      </div>
+    );
+  }
+  const deliver = hub.failed_choice === 'deliver';
+  return (
+    <div className={cn(box, 'bg-[#F5F2FF]')}>
+      <div className="font-medium text-ink">
+        {deliver ? 'Rider to the seller’s shop' : `Seller collects · code ${hub.collect_code}`}
+      </div>
+      <div className="mt-1 text-slate">
+        {deliver
+          ? 'Book a rider to their shop. The fee comes off their next payout.'
+          : hub.collect_by
+            ? `Free until ${shortDate(hub.collect_by)}. Check their ID before you hand it over.`
+            : 'Check their ID before you hand it over.'}
+      </div>
+      <div className="text-slate">The buyer was refunded.</div>
+      <Button
+        className="mt-3 h-9 w-full rounded-[10px] text-[14px]"
+        disabled={busy}
+        onClick={() => act(() => hubApi.handedBack(order.id), 'Marked as back with the seller')}
+      >
+        {busy ? 'Saving…' : deliver ? 'Delivered to the seller' : 'Handed back to the seller'}
+      </Button>
+    </div>
   );
 }
 
